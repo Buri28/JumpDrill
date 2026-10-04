@@ -225,6 +225,7 @@ namespace JumpDrill.Gui
             _initialId = selectId;
 
             Text = Lang.T("JumpDrill — スコア", "JumpDrill — Scores");
+            Icon = AppIcon.Value;
             AutoScaleMode = AutoScaleMode.Font;
             Font = new Font("Yu Gothic UI", 9f);
             MinimumSize = new Size(980, 560);

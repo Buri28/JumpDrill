@@ -267,6 +267,7 @@ namespace JumpDrill.Gui
             _settings = settings;
 
             Text = Lang.T("MOD のインストール", "Install MOD");
+            Icon = AppIcon.Value;
             AutoScaleMode = AutoScaleMode.Font;
             Font = new Font("Yu Gothic UI", 9f);
             StartPosition = FormStartPosition.CenterParent;

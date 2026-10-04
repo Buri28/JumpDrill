@@ -205,6 +205,7 @@ namespace JumpDrill.Updater
             _options = options;
 
             Text = Title;
+            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Font = new Font("Yu Gothic UI", 9f);
             AutoScaleMode = AutoScaleMode.Dpi;
             StartPosition = FormStartPosition.CenterScreen;

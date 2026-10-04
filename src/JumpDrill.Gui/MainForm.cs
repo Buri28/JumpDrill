@@ -148,6 +148,7 @@ namespace JumpDrill.Gui
         public MainForm()
         {
             Text = "JumpDrill";
+            Icon = AppIcon.Value;
             AutoScaleMode = AutoScaleMode.Font;
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Yu Gothic UI", 9f);

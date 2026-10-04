@@ -55,6 +55,7 @@ namespace JumpDrill.Gui
             _followReplay = followReplay;
 
             Text = Lang.T("JumpDrill — メダル", "JumpDrill — Medals");
+            Icon = AppIcon.Value;
             AutoScaleMode = AutoScaleMode.Font;
             Font = new Font("Yu Gothic UI", 9f);
             MinimumSize = new Size(560, 360);

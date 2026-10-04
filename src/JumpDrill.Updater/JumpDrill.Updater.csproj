@@ -11,6 +11,8 @@
     <RootNamespace>JumpDrill.Updater</RootNamespace>
     <AssemblyName>Update</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 本体と同じアイコン -->
+    <ApplicationIcon>..\JumpDrill.Gui\JumpDrill.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

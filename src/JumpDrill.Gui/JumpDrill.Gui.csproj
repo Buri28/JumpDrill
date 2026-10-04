@@ -9,10 +9,16 @@
     <RootNamespace>JumpDrill.Gui</RootNamespace>
     <AssemblyName>JumpDrillGui</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>JumpDrill.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\JumpDrill.Core\JumpDrill.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 窓のアイコン（AppIcon）。exe のアイコンと同じものを埋め込む -->
+  <ItemGroup>
+    <EmbeddedResource Include="JumpDrill.ico" LogicalName="JumpDrill.ico" />
   </ItemGroup>
 
   <!-- 開発中も配布版と同じ並び（Update.exe・version.json・mod\）にして、更新と MOD のボタンを出す。
