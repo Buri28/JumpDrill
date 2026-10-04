@@ -1,0 +1,43 @@
+<!--
+  配布用に DLL を1本にまとめる。
+
+  JumpDrill.Core はツールと同じ DLL を共有する前提ではなく、ソースを共有しているだけなので、
+  MOD には取り込んでしまってよい。取り込むのは:
+    - JumpDrill.Core            生成・解析・描画
+    - OggVorbisEncoder          ogg のエンコード（ゲームに同梱されていない）
+    - System.Memory ほか3つ     OggVorbisEncoder が要求する BCL の補助。ゲームに同梱されていない
+
+  取り込んだものは内部扱いにする（Internalize）。他の MOD が同じ名前の DLL を
+  Libs に置いていても、型がぶつからない。MOD 本体（JumpDrillMod）の型はそのまま。
+
+  ILRepack.Lib.MSBuild.Task は、プロジェクトの横にこのファイルがあるとこちらを使う
+  （無ければ copy-local の DLL を全部まとめる既定の動きになる）。
+-->
+<Project>
+  <Target Name="ILRepacker" AfterTargets="Build">
+    <ItemGroup>
+      <InputAssemblies Include="$(OutDir)$(AssemblyName).dll" />
+      <InputAssemblies Include="$(OutDir)JumpDrill.Core.dll" />
+      <InputAssemblies Include="$(OutDir)OggVorbisEncoder.dll" />
+      <InputAssemblies Include="$(OutDir)System.Memory.dll" />
+      <InputAssemblies Include="$(OutDir)System.Buffers.dll" />
+      <InputAssemblies Include="$(OutDir)System.Numerics.Vectors.dll" />
+      <InputAssemblies Include="$(OutDir)System.Runtime.CompilerServices.Unsafe.dll" />
+    </ItemGroup>
+
+    <!-- 取り込まない参照（ゲーム本体・他の MOD）を解決するための場所 -->
+    <ItemGroup>
+      <LibraryPath Include="$(BeatSaberManagedPath)" />
+      <LibraryPath Include="$(BeatSaberPluginsPath)" />
+      <LibraryPath Include="$(BeatSaberPath)\Libs" />
+    </ItemGroup>
+
+    <ILRepack Parallel="true"
+              Internalize="true"
+              DebugInfo="true"
+              InputAssemblies="@(InputAssemblies)"
+              LibraryPath="@(LibraryPath)"
+              TargetKind="Dll"
+              OutputFile="$(OutDir)$(AssemblyName).dll" />
+  </Target>
+</Project>

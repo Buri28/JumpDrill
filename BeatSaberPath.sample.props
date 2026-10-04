@@ -1,0 +1,6 @@
+<!-- BeatSaberPath.props として複製し、この環境のパスに直す（.gitignore 済み）。 -->
+<Project>
+  <PropertyGroup>
+    <BeatSaberPath>D:\BSManager\BSInstances\1.40.8</BeatSaberPath>
+  </PropertyGroup>
+</Project>

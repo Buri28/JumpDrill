@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{00C942CD-529B-4E27-AED4-D3B75DF9A180}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JumpDrill.Core", "src\JumpDrill.Core\JumpDrill.Core.csproj", "{2F6116A8-3F1C-48F1-86F9-8F7B232B792A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JumpDrill.Cli", "src\JumpDrill.Cli\JumpDrill.Cli.csproj", "{AE98B1D7-B61E-45F2-8D81-44AEFCC0ECCE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{86B2DC80-53ED-4070-908E-A7E28D65595D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JumpDrill.Core.Tests", "tests\JumpDrill.Core.Tests\JumpDrill.Core.Tests.csproj", "{DE03E5CC-6AC3-419A-8080-2D5A95E38CC2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JumpDrill.Gui", "src\JumpDrill.Gui\JumpDrill.Gui.csproj", "{450F4739-8BA2-43EC-91C3-AB075FEDF55A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JumpDrillMod", "src\JumpDrillMod\JumpDrillMod.csproj", "{6FA80DC8-A151-49CF-B954-9530DE9D7932}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JumpDrill.Updater", "src\JumpDrill.Updater\JumpDrill.Updater.csproj", "{7DFD81C3-33D6-42BB-A28C-234244D8D993}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2F6116A8-3F1C-48F1-86F9-8F7B232B792A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F6116A8-3F1C-48F1-86F9-8F7B232B792A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F6116A8-3F1C-48F1-86F9-8F7B232B792A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F6116A8-3F1C-48F1-86F9-8F7B232B792A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AE98B1D7-B61E-45F2-8D81-44AEFCC0ECCE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AE98B1D7-B61E-45F2-8D81-44AEFCC0ECCE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AE98B1D7-B61E-45F2-8D81-44AEFCC0ECCE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AE98B1D7-B61E-45F2-8D81-44AEFCC0ECCE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DE03E5CC-6AC3-419A-8080-2D5A95E38CC2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DE03E5CC-6AC3-419A-8080-2D5A95E38CC2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DE03E5CC-6AC3-419A-8080-2D5A95E38CC2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DE03E5CC-6AC3-419A-8080-2D5A95E38CC2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{450F4739-8BA2-43EC-91C3-AB075FEDF55A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{450F4739-8BA2-43EC-91C3-AB075FEDF55A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{450F4739-8BA2-43EC-91C3-AB075FEDF55A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{450F4739-8BA2-43EC-91C3-AB075FEDF55A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6FA80DC8-A151-49CF-B954-9530DE9D7932}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6FA80DC8-A151-49CF-B954-9530DE9D7932}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6FA80DC8-A151-49CF-B954-9530DE9D7932}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6FA80DC8-A151-49CF-B954-9530DE9D7932}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7DFD81C3-33D6-42BB-A28C-234244D8D993}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7DFD81C3-33D6-42BB-A28C-234244D8D993}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7DFD81C3-33D6-42BB-A28C-234244D8D993}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7DFD81C3-33D6-42BB-A28C-234244D8D993}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2F6116A8-3F1C-48F1-86F9-8F7B232B792A} = {00C942CD-529B-4E27-AED4-D3B75DF9A180}
+		{AE98B1D7-B61E-45F2-8D81-44AEFCC0ECCE} = {00C942CD-529B-4E27-AED4-D3B75DF9A180}
+		{DE03E5CC-6AC3-419A-8080-2D5A95E38CC2} = {86B2DC80-53ED-4070-908E-A7E28D65595D}
+		{450F4739-8BA2-43EC-91C3-AB075FEDF55A} = {00C942CD-529B-4E27-AED4-D3B75DF9A180}
+		{6FA80DC8-A151-49CF-B954-9530DE9D7932} = {00C942CD-529B-4E27-AED4-D3B75DF9A180}
+		{7DFD81C3-33D6-42BB-A28C-234244D8D993} = {00C942CD-529B-4E27-AED4-D3B75DF9A180}
+	EndGlobalSection
+EndGlobal

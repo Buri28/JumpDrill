@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <RootNamespace>JumpDrill.Gui</RootNamespace>
+    <AssemblyName>JumpDrillGui</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JumpDrill.Core\JumpDrill.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 開発中も配布版と同じ並び（Update.exe・version.json・mod\）にして、更新と MOD のボタンを出す。
+       MOD はビルド済みのものがあれば入れる（Beat Saber が無くても GUI はビルドできるように、ここでは MOD を建てない）。
+       配布物は build-release.ps1 が別に組むので、publish には載せない。 -->
+  <PropertyGroup>
+    <RepoRoot>$(MSBuildThisFileDirectory)..\..\</RepoRoot>
+    <UpdaterProject>$(MSBuildThisFileDirectory)..\JumpDrill.Updater\JumpDrill.Updater.csproj</UpdaterProject>
+    <ModOutput>$(MSBuildThisFileDirectory)..\JumpDrillMod\bin\Debug\</ModOutput>
+  </PropertyGroup>
+
+  <Target Name="CopyDistributionLayout" AfterTargets="Build" Condition="'$(_IsPublishing)' != 'true'">
+    <MSBuild Projects="$(UpdaterProject)" Targets="Build" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="UpdaterExe" />
+    </MSBuild>
+    <Copy SourceFiles="@(UpdaterExe)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(RepoRoot)version.json" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <!-- deploy-mod.ps1 がゲームの版ごとに建てたものを mod\<ゲームの版>\ に置く。
+         配布版は GitHub のリリースから取るが、開発中はこちらを先に使う。 -->
+    <ItemGroup>
+      <_ModBuild Include="$(ModOutput)*\JumpDrillMod.dll" Exclude="$(ModOutput)net48\JumpDrillMod.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ModBuild)"
+          DestinationFiles="@(_ModBuild->'$(OutDir)mod\$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName('%(FullPath)'))))\JumpDrillMod.dll')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

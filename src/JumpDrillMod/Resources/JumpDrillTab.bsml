@@ -1,0 +1,177 @@
+<!--
+  曲選択画面の Mods タブ。
+
+  上から:
+    1. Drill                      ドリルセット（一番よく使う入口なので左上。一括生成もその中）
+    2. 遷移の表示と Generate       いま組んでいるドリルと、それを書き出すボタン
+    3. 状態の1行
+    4. タブ（Transition / Hand & Direction / Timing / Click）
+
+  スクロールさせずにタブで分けてある。設定を1列に積むと縦に収まらず、
+  下の項目がスクロールの外に隠れて探しにくい。タブの中身は、どのタブも枠の高さに収まる量にしてある。
+
+  組み方の注意:
+    - ルートを PreferredSize の vertical にしない。Mods タブは全MODで
+      1枚のパネルを共有していて、他MODのタブまで崩れる
+    - <tab-select> と <tab> は絶対配置される。高さと幅を明示した入れ物で包む
+      （包まないと高さ0とみなされ、全タブが同じ位置に重なる）
+    - タブの中で scroll-view を使わない（タブバーへのクリックを奪う）
+    - 幅は 100〜110
+  タブまわりの寸法は LRCounter（この Mods タブで正常に出ているもの）に合わせてある。
+-->
+<bg>
+  <vertical spacing='0.5' pad='1' align='TopCenter' pref-width='110'>
+
+    <!-- ───── ドリルセット ─────
+         Jump Drill 画面を開く。ドリルセット（112 本）のメダルと Lv、自作のドリル（Other）、
+         一括生成（Generate drills）、そこからのプレイがまとまっている -->
+    <horizontal spacing='2' pad='0'>
+      <button text='Drill' on-click='open-medals' pref-width='40' pref-height='8'
+              hover-hint='Browse the 112 drills with medals and levels, generate them, and play a drill from there. Other drills you made are under Other.'/>
+    </horizontal>
+
+    <!-- ───── いま組んでいるドリル ─────
+         Generate はどのタブからでも押せるように、タブの外に置く。
+         遷移を組んでから Timing で速さを決め、そのまま書き出す、という順で使うため -->
+    <horizontal spacing='2' pad='0'>
+      <text id='sequence-text' text='' font-size='4.5' align='Left' pref-width='64'/>
+      <button text='Generate' on-click='generate' pref-width='30' pref-height='7'
+              hover-hint='Write this drill to the JumpDrill pack and reload the song list. The pack is registered as WIP, so scores are not submitted to ScoreSaber or BeatLeader.'/>
+    </horizontal>
+
+    <horizontal spacing='1' pad='0'>
+      <text id='status' text='' font-size='3' align='Center'/>
+    </horizontal>
+
+    <!-- ───── タブ ───── -->
+    <vertical pref-height='7' pref-width='104'>
+      <tab-select tab-tag='jd-tabs' size-delta-y='7' child-expand-width='true'/>
+    </vertical>
+
+    <vertical pref-height='40' pref-width='110'>
+
+      <!-- 4x3 のノーツグリッド。JumpDrill の GUI のグリッドと同じく片手2点まで。
+           置いた点をもう一度押すと外し、2点あるところへ別の点を置くと置き直す。
+           記号は JumpDrill.Core の GridPosition と同じ並び。
+           ボタンは縦 7 に対して横 10。横に広いと格子の形に見えず、どのマスか読み取りにくい。
+           下の段は点ごとの「矢印をまっすぐ」（文字はその点の記法 4 / 4s）と、全部消す -->
+      <tab tags='jd-tabs' tab-name='Transition'>
+        <vertical spacing='1' pad='1' child-expand-height='false' child-align='UpperCenter'>
+          <horizontal spacing='1' pad='0'>
+            <button id='cell-button-1' text='1' on-click='cell-1' pref-width='10' pref-height='7'/>
+            <button id='cell-button-2' text='2' on-click='cell-2' pref-width='10' pref-height='7'/>
+            <button id='cell-button-3' text='3' on-click='cell-3' pref-width='10' pref-height='7'/>
+            <button id='cell-button-4' text='4' on-click='cell-4' pref-width='10' pref-height='7'/>
+          </horizontal>
+          <horizontal spacing='1' pad='0'>
+            <button id='cell-button-5' text='5' on-click='cell-5' pref-width='10' pref-height='7'/>
+            <button id='cell-button-6' text='6' on-click='cell-6' pref-width='10' pref-height='7'/>
+            <button id='cell-button-7' text='7' on-click='cell-7' pref-width='10' pref-height='7'/>
+            <button id='cell-button-8' text='8' on-click='cell-8' pref-width='10' pref-height='7'/>
+          </horizontal>
+          <horizontal spacing='1' pad='0'>
+            <button id='cell-button-9' text='9' on-click='cell-9' pref-width='10' pref-height='7'/>
+            <button id='cell-button-10' text='a' on-click='cell-10' pref-width='10' pref-height='7'/>
+            <button id='cell-button-11' text='b' on-click='cell-11' pref-width='10' pref-height='7'/>
+            <button id='cell-button-12' text='c' on-click='cell-12' pref-width='10' pref-height='7'/>
+          </horizontal>
+          <horizontal spacing='1' pad='0'>
+            <text text='Straighten' font-size='3.5' align='Right' pref-width='16'/>
+            <button id='straight-1' text='' on-click='straight-1' pref-width='10' pref-height='7'
+                    hover-hint='Snap this point&apos;s arrow to up/down/left/right (s in the notation).'/>
+            <button id='straight-2' text='' on-click='straight-2' pref-width='10' pref-height='7'
+                    hover-hint='Snap this point&apos;s arrow to up/down/left/right (s in the notation).'/>
+            <button text='Clear' on-click='sequence-clear' pref-width='16' pref-height='7'
+                    hover-hint='Remove both points.'/>
+          </horizontal>
+        </vertical>
+      </tab>
+
+      <!-- 手と方向。settings-container（スクロールする入れ物）は使わず素の vertical に並べる。
+           この量なら枠に収まり、スクロールさせる理由が無い -->
+      <tab tags='jd-tabs' tab-name='Hand &amp; Direction'>
+        <vertical spacing='0.5' pad='1' pref-width='104' child-expand-height='false' child-align='UpperCenter'>
+          <list-setting text='Hand'
+                        value='hand'
+                        options='hand-options'
+                        apply-on-change='true'
+                        hover-hint='Which hand the transition is for.'/>
+
+          <toggle-setting text='Mirror to Other Hand'
+                          value='mirror'
+                          apply-on-change='true'
+                          hover-hint='Also build the same shape, mirrored, for the other hand.'/>
+
+          <list-setting text='Both Hands'
+                        value='pattern'
+                        options='pattern-options'
+                        apply-on-change='true'
+                        hover-hint='How the two hands interleave. Split runs one hand at a time and is what jump practice usually wants. Only used with Mirror.'/>
+
+          <list-setting text='Cut Direction'
+                        value='direction'
+                        options='direction-options'
+                        apply-on-change='true'
+                        hover-hint='Axis follows the transition vector (back and forth along one line). Perpendicular crosses it. Dot removes the arrow.'/>
+
+        </vertical>
+      </tab>
+
+      <!-- 時間軸。間隔 / NJS / ジャンプ距離は完全に独立している。
+           速さは BPM だけで言う。細分化は 1/2 固定なので選ばせない -->
+      <tab tags='jd-tabs' tab-name='Timing'>
+        <vertical spacing='0.5' pad='1' pref-width='104' child-expand-height='false' child-align='UpperCenter'>
+          <slider-setting text='BPM'
+                          value='interval-bpm'
+                          apply-on-change='true'
+                          min='60' max='600' increment='5'
+                          hover-hint='Note speed, counted as two notes per beat (1/2). This is the one to nudge while playing.'/>
+
+          <slider-setting text='NJS'
+                          value='njs'
+                          apply-on-change='true'
+                          min='8' max='30' increment='0.5'
+                          hover-hint='Note jump speed. Independent of the interval and of the jump distance.'/>
+
+          <slider-setting text='Jump Distance (m)'
+                          value='jump-distance'
+                          apply-on-change='true'
+                          min='10' max='30' increment='0.5'
+                          hover-hint='Jump distance in meters. The offset is derived from this.'/>
+
+          <slider-setting text='Length (s)'
+                          value='duration'
+                          apply-on-change='true'
+                          min='5' max='180' increment='5'
+                          hover-hint='Length of one block. With Split this is the length per hand.'/>
+
+          <increment-setting text='Sets'
+                             value='sets'
+                             apply-on-change='true'
+                             integer-only='true'
+                             min='1' max='10' increment='1'
+                             hover-hint='How many times the whole thing repeats.'/>
+        </vertical>
+      </tab>
+
+      <tab tags='jd-tabs' tab-name='Click'>
+        <vertical spacing='0.5' pad='1' pref-width='104' child-expand-height='false' child-align='UpperCenter'>
+          <list-setting text='Click'
+                        value='click'
+                        options='click-options'
+                        apply-on-change='true'
+                        hover-hint='Which notes the click sounds on. Down is the standard.'/>
+
+          <increment-setting text='Count-in'
+                             value='count-in'
+                             apply-on-change='true'
+                             integer-only='true'
+                             min='0' max='16' increment='1'
+                             hover-hint='Clicks before the first note.'/>
+        </vertical>
+      </tab>
+
+    </vertical>
+
+  </vertical>
+</bg>

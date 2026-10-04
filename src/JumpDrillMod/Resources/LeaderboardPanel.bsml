@@ -1,0 +1,9 @@
+<!--
+  リーダーボード枠の上に出る小さい帯。どのドリルを見ているかだけ出す。
+  本体の枠は左右の矢印で切り替わるので、何が選ばれているか分かる必要がある。
+-->
+<bg>
+  <horizontal spacing='1' pad='1' pref-width='90'>
+    <text id='panel-text' text='JumpDrill' font-size='3.5' align='Center'/>
+  </horizontal>
+</bg>

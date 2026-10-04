@@ -1,0 +1,217 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>JumpDrillMod</AssemblyName>
+    <RootNamespace>JumpDrillMod</RootNamespace>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <OutputPath>bin\$(Configuration)\$(TargetFramework)\</OutputPath>
+    <!-- OutputPath に既に TFM を含めているので、SDK 既定の付加を止める -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!-- Beat Saber のインストール先。開発機のパスを既定にしてある。
+       別環境では次のいずれかで上書きする:
+         1. リポジトリ直下に BeatSaberPath.props を置く（.gitignore 済み）
+         2. 環境変数 BEATSABER_PATH
+         3. ビルド時に -p:BeatSaberPath=... -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\BeatSaberPath.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\BeatSaberPath.props')" />
+
+  <PropertyGroup>
+    <BeatSaberPath Condition="'$(BeatSaberPath)' == ''">$(BEATSABER_PATH)</BeatSaberPath>
+    <BeatSaberPath Condition="'$(BeatSaberPath)' == ''">D:\BSManager\BSInstances\1.40.8</BeatSaberPath>
+    <BeatSaberManagedPath>$(BeatSaberPath)\Beat Saber_Data\Managed</BeatSaberManagedPath>
+    <BeatSaberPluginsPath>$(BeatSaberPath)\Plugins</BeatSaberPluginsPath>
+  </PropertyGroup>
+
+  <!-- 任意の MOD は、そのゲームの版に入っていなければ参照せず、使うところをビルドから外す -->
+  <PropertyGroup Condition="Exists('$(BeatSaberPluginsPath)\LeaderboardCore.dll')">
+    <DefineConstants>$(DefineConstants);JUMPDRILL_LEADERBOARDCORE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="Exists('$(BeatSaberPluginsPath)\BeatLeader.dll')">
+    <DefineConstants>$(DefineConstants);JUMPDRILL_BEATLEADER</DefineConstants>
+  </PropertyGroup>
+
+  <Target Name="CheckPaths" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(BeatSaberManagedPath)')"
+           Text="Beat Saber install not found at '$(BeatSaberPath)'. Set BeatSaberPath via BeatSaberPath.props, the BEATSABER_PATH environment variable, or -p:BeatSaberPath=... See README.md." />
+  </Target>
+
+  <!-- 配布用に DLL を1本にまとめる（ILRepack.targets）。ビルドの時だけ使う道具なので配布物には入らない -->
+  <ItemGroup>
+    <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.34.2" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- JumpDrill.Core の生成ロジック。netstandard2.0 なのでそのまま net48 から参照できる。
+         Private=true で JumpDrill.Core.dll と OggVorbisEncoder.dll が出力に落ち、
+         ビルドの後で ILRepack が JumpDrillMod.dll へ取り込む（配るのは1本だけ） -->
+    <ProjectReference Include="..\JumpDrill.Core\JumpDrill.Core.csproj">
+      <Private>true</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Unity 本体 -->
+    <Reference Include="UnityEngine">
+      <HintPath>$(BeatSaberManagedPath)\UnityEngine.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(BeatSaberManagedPath)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <!-- IPA / BSIPA -->
+    <Reference Include="IPA.Loader">
+      <HintPath>$(BeatSaberManagedPath)\IPA.Loader.dll</HintPath>
+      <Private>False</Private>
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+
+    <!-- Zenject（インストーラー経由でメニュー・スコープに入る） -->
+    <Reference Include="Zenject">
+      <HintPath>$(BeatSaberManagedPath)\Zenject.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Zenject-usage">
+      <HintPath>$(BeatSaberManagedPath)\Zenject-usage.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <!-- SiraUtil。Zenjector でインストーラーをスコープごとに登録する -->
+    <Reference Include="SiraUtil">
+      <HintPath>$(BeatSaberPluginsPath)\SiraUtil.dll</HintPath>
+      <Private>False</Private>
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+
+    <!-- UI -->
+    <Reference Include="BSML">
+      <HintPath>$(BeatSaberPluginsPath)\BSML.dll</HintPath>
+      <Private>False</Private>
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(BeatSaberManagedPath)\Unity.TextMeshPro.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(BeatSaberManagedPath)\UnityEngine.UI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(BeatSaberManagedPath)\UnityEngine.UIModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="HMUI">
+      <HintPath>$(BeatSaberManagedPath)\HMUI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <!-- SongsLoadedEvent が渡してくる BeatmapLevel -->
+    <Reference Include="DataModels">
+      <HintPath>$(BeatSaberManagedPath)\DataModels.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <!-- Texture2D.LoadImage。PNG を読ませるのに要る -->
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(BeatSaberManagedPath)\UnityEngine.ImageConversionModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <!-- 曲選択の部品（StandardLevelDetailViewController など）。メダル画面から曲を選ぶのに使う -->
+    <Reference Include="Main">
+      <HintPath>$(BeatSaberManagedPath)\Main.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <!-- 叩いている間の記録（リプレイ）。ノーツ・切り方・結果の型と、頭やコントローラの機器名 -->
+    <Reference Include="GameplayCore">
+      <HintPath>$(BeatSaberManagedPath)\GameplayCore.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="BeatmapCore">
+      <HintPath>$(BeatSaberManagedPath)\BeatmapCore.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- ドリルをその場で始める（MenuTransitionsHelper.StartStandardLevel）のに要る型 -->
+    <Reference Include="Colors">
+      <HintPath>$(BeatSaberManagedPath)\Colors.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="BGLib.UnityExtension">
+      <HintPath>$(BeatSaberManagedPath)\BGLib.UnityExtension.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- 本体の採点に差し込む（リプレイのノーツ時刻と、上限なしの振りの評価）。BSIPA が Libs に置いている -->
+    <Reference Include="0Harmony">
+      <HintPath>$(BeatSaberPath)\Libs\0Harmony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.XRModule">
+      <HintPath>$(BeatSaberManagedPath)\UnityEngine.XRModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.VRModule">
+      <HintPath>$(BeatSaberManagedPath)\UnityEngine.VRModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <!-- HMUI.ViewController の基底。リーダーボードのビューがこれを継承する -->
+    <Reference Include="BeatSaber.ViewSystem">
+      <HintPath>$(BeatSaberManagedPath)\BeatSaber.ViewSystem.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <!-- BeatLeader のゲーム内リプレイヤー。任意（無くても動く）。
+         呼ぶのは BeatLeaderReplayer の中だけで、入っているか確かめてからにする -->
+    <Reference Include="BeatLeader" Condition="Exists('$(BeatSaberPluginsPath)\BeatLeader.dll')">
+      <HintPath>$(BeatSaberPluginsPath)\BeatLeader.dll</HintPath>
+      <Private>False</Private>
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+
+    <!-- 曲選択のリーダーボード枠に自前のものを足す口。任意（無くても動く）。
+         ビルドするゲームのフォルダに LeaderboardCore.dll が無ければ参照できないので、
+         そのときはリーダーボード枠への登録をビルドから外す（JUMPDRILL_LEADERBOARDCORE） -->
+    <Reference Include="LeaderboardCore" Condition="Exists('$(BeatSaberPluginsPath)\LeaderboardCore.dll')">
+      <HintPath>$(BeatSaberPluginsPath)\LeaderboardCore.dll</HintPath>
+      <Private>False</Private>
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+
+
+    <!-- 書き出した譜面を読み直させる -->
+    <Reference Include="SongCore">
+      <HintPath>$(BeatSaberPluginsPath)\SongCore.dll</HintPath>
+      <Private>False</Private>
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\*.bsml" />
+  </ItemGroup>
+
+  <!-- manifest.json の gameVersion を、ビルドする対象のゲームの版に合わせて埋め込む。
+       -p:GameVersion=1.44.1 のように渡す（build-release.ps1 / deploy-mod.ps1）。
+       渡さなければ manifest.json に書いてあるまま。 -->
+  <Target Name="EmbedManifest" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <_ManifestText>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)manifest.json'))</_ManifestText>
+      <_ManifestText Condition="'$(GameVersion)' != ''">$([System.Text.RegularExpressions.Regex]::Replace($(_ManifestText), '("gameVersion"\s*:\s*")[^"]*(")', '${1}$(GameVersion)${2}'))</_ManifestText>
+      <_ManifestPath>$(IntermediateOutputPath)manifest.json</_ManifestPath>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile File="$(_ManifestPath)" Lines="$([MSBuild]::Escape($(_ManifestText)))" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(_ManifestPath)" LogicalName="JumpDrillMod.manifest.json" />
+    </ItemGroup>
+  </Target>
+
+</Project>

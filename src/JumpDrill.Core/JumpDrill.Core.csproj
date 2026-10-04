@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- netstandard2.0 so the same assembly can be referenced from the
+         Beat Saber mod (Unity Mono / .NET Framework) without a rebuild. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <RootNamespace>JumpDrill</RootNamespace>
+    <AssemblyName>JumpDrill.Core</AssemblyName>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- libvorbis の純マネージド移植。ネイティブ DLL を同梱せずに済むので
+         MOD 側にもそのまま持って行ける。 -->
+    <PackageReference Include="OggVorbisEncoder" Version="1.2.2" />
+  </ItemGroup>
+
+</Project>

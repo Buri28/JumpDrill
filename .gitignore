@@ -1,0 +1,33 @@
+## Visual Studio / .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+
+## JetBrains Rider
+.idea/
+*.sln.iml
+
+## VSCode
+.vscode/launch.json
+
+## Generated drill maps / audio
+out/
+workspace/
+*.ogg
+*.egg
+
+## Logs
+*.log
+
+## Local machine paths (never commit)
+deploy_instances.json
+BeatSaberPath.props
+
+## Claude Code (local notes / design docs - not for publication)
+.claude/
+
+## Release build output
+release/

@@ -1,0 +1,112 @@
+<!--
+  リーダーボード枠の本体。LeaderboardCore に登録したビューの中身。
+
+  行は <list> ではなく固定の <text> を10本並べてある。BSML の list は
+  セルの作りを持ち込む必要があるうえ、入れ物によっては潰れる。10行しか出さないので、
+  テキストを差し替える方が確実で、崩れようがない。
+
+  **child-expand-height='false' を外さないこと。** 外すと vertical が
+  ビューいっぱいに伸びて、中身が上端と下端に散る
+  （見出しが上、注記が画面の底、という形になる）。
+
+  入れ物に pref-height は与えない。与えた版では中身が一切出なかった。
+  高さは子の pref-height の積み上げに任せる。
+
+  タイトルは出さない。どのドリルを見ているかは枠の上の帯（LeaderboardPanel）が
+  出しているので、ここにも書くと同じものが2度並ぶ。
+
+  図は <image> に Sprite を差し込む。src は BSML に要求される属性なので
+  空のものを入れてあるだけで、中身はコードが入れ替える。
+
+  行の右端の 🔁 を押すと、その行のリプレイを BeatLeader のリプレイヤーで再生する。
+  絵文字は文字では置かず、描いた絵（clickable-image）にしてある。絵文字が出るかは
+  文字のフォント次第で、出なければ豆腐になる。行の文字は幅固定の入れ物に入れて、🔁 の位置を揃える。
+  🔁 は常に行の右端に出る。文字の入れ物に pref-width を書いても効かず、入れ物が行の残り幅
+  いっぱいに伸びるため（child-control-width を付けても変わらない）。
+  🔁 を寄せるのではなく、列の位置（JumpDrillLeaderboardView.ColumnAt）を右へ広げて、
+  最後の列を 🔁 の手前で終わらせてある。入れ物の幅は実際に取られる幅（81）に合わせて書いておく。
+
+  行は <clickable-text>。押すとその記録の図に切り替わる。
+  ただの <text> だと押せず、<button> だと枠と余白が付いて表に見えなくなる。
+-->
+<bg>
+  <vertical pref-width='90' pad='2' spacing='0.2'
+            child-expand-height='false' child-align='UpperCenter'>
+
+    <!-- 行は5本しか出せないので、6件目から先はページ送りで見る。
+         矢印は ▲▼。本体の日本語フォントに載っている字なので出る -->
+    <horizontal pref-height='5' pad='0' spacing='1'>
+      <text id='note' text='' font-size='2.8' align='Left' color='#8899AA'/>
+      <!-- 並べ方。2択でもボタンにはしない。ボタンの字（押すと切り替わる先）からは
+           今どちらで並んでいるかが読めない。プルダウンなら今の並べ方がそのまま出る。
+           見出しの字（text）は付けない。幅が足りず1字ずつ縦に折り返して崩れる -->
+      <dropdown-list-setting id='order-dropdown' text='' value='order' options='order-options'
+                             apply-on-change='true' bind-value='true' on-change='order-changed'
+                             pref-width='30' pref-height='5'
+                             hover-hint='Best: by rank. Newest: by date. The # stays the rank.'/>
+      <button text='▲' on-click='page-up' pref-width='8' pref-height='5'
+              hover-hint='Show the previous five records.'/>
+      <button text='▼' on-click='page-down' pref-width='8' pref-height='5'
+              hover-hint='Show the next five records.'/>
+    </horizontal>
+
+    <!-- 見出しは行のすぐ上。間に注記を挟むと、どの列が何かが読み取りにくい -->
+    <horizontal pref-height='4' pad='0'>
+      <text id='header' text='' font-size='2.8' align='Left' color='#8899AA' word-wrapping='false'/>
+    </horizontal>
+
+    <horizontal pref-height='4' pad='0' spacing='0.5' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>
+      <horizontal pref-width='81' min-width='81' child-expand-width='true' pad='0'>
+        <clickable-text id='row-1' on-click='pick-1' text='' font-size='2.8' align='Left' word-wrapping='false'/>
+      </horizontal>
+      <clickable-image id='replay-1' src='#EmptySprite' on-click='replay-1' pref-width='4' pref-height='4' preserve-aspect='true'
+                       hover-hint='Watch this record in the BeatLeader replayer.'/>
+    </horizontal>
+    <horizontal pref-height='4' pad='0' spacing='0.5' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>
+      <horizontal pref-width='81' min-width='81' child-expand-width='true' pad='0'>
+        <clickable-text id='row-2' on-click='pick-2' text='' font-size='2.8' align='Left' word-wrapping='false'/>
+      </horizontal>
+      <clickable-image id='replay-2' src='#EmptySprite' on-click='replay-2' pref-width='4' pref-height='4' preserve-aspect='true'
+                       hover-hint='Watch this record in the BeatLeader replayer.'/>
+    </horizontal>
+    <horizontal pref-height='4' pad='0' spacing='0.5' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>
+      <horizontal pref-width='81' min-width='81' child-expand-width='true' pad='0'>
+        <clickable-text id='row-3' on-click='pick-3' text='' font-size='2.8' align='Left' word-wrapping='false'/>
+      </horizontal>
+      <clickable-image id='replay-3' src='#EmptySprite' on-click='replay-3' pref-width='4' pref-height='4' preserve-aspect='true'
+                       hover-hint='Watch this record in the BeatLeader replayer.'/>
+    </horizontal>
+    <horizontal pref-height='4' pad='0' spacing='0.5' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>
+      <horizontal pref-width='81' min-width='81' child-expand-width='true' pad='0'>
+        <clickable-text id='row-4' on-click='pick-4' text='' font-size='2.8' align='Left' word-wrapping='false'/>
+      </horizontal>
+      <clickable-image id='replay-4' src='#EmptySprite' on-click='replay-4' pref-width='4' pref-height='4' preserve-aspect='true'
+                       hover-hint='Watch this record in the BeatLeader replayer.'/>
+    </horizontal>
+    <horizontal pref-height='4' pad='0' spacing='0.5' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>
+      <horizontal pref-width='81' min-width='81' child-expand-width='true' pad='0'>
+        <clickable-text id='row-5' on-click='pick-5' text='' font-size='2.8' align='Left' word-wrapping='false'/>
+      </horizontal>
+      <clickable-image id='replay-5' src='#EmptySprite' on-click='replay-5' pref-width='4' pref-height='4' preserve-aspect='true'
+                       hover-hint='Watch this record in the BeatLeader replayer.'/>
+    </horizontal>
+
+    <!-- 選んでいる記録の軌道。GUI の横から見た図と同じもの（JumpDrill.Core の SwingDiagram が描く）。
+         枠が縦長なので行は5本までにして、残りを図に回す -->
+    <!-- 2枚並べると横に長いので、幅いっぱいを使って高さを抑える -->
+    <horizontal pref-height='32' pad='0' pad-top='1'>
+      <image id='diagram' src='#EmptySprite' pref-width='86' pref-height='32'/>
+    </horizontal>
+
+    <horizontal pref-height='5' pad='0' spacing='1'>
+      <text id='diagram-note' text='' font-size='2.6' align='Center' color='#8899AA'/>
+      <button id='view-button' text='Mean only' on-click='toggle-mean' pref-width='22' pref-height='5'
+              hover-hint='Draw only the mean path of each transition, or every swing. Same as the mean-only switch in the JumpDrill app.'/>
+      <!-- 曲選択の枠から Jump Drill 画面を開く。Jump Drill 画面の右の枠に出しているときは出さない -->
+      <button id='drill-set-button' text='Drill' on-click='open-drill-set' pref-width='20' pref-height='5'
+              hover-hint='Open the Jump Drill screen.'/>
+
+    </horizontal>
+
+  </vertical>
+</bg>

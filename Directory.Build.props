@@ -1,0 +1,9 @@
+<Project>
+
+  <!-- バージョンの正は version.json。開発中のビルドも配布版と同じ番号になる。
+       build-release.ps1 は -p:Version を渡すが、中身は同じ。 -->
+  <PropertyGroup Condition="'$(Version)' == '' And Exists('$(MSBuildThisFileDirectory)version.json')">
+    <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)version.json')), '"version"\s*:\s*"v?([^"]+)"').Groups[1].Value)</Version>
+  </PropertyGroup>
+
+</Project>

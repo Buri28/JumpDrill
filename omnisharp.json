@@ -1,0 +1,9 @@
+{
+    "msbuildProperties": {
+        "BeatSaberPath": "D:\\BSManager\\BSInstances\\1.40.8"
+    },
+    "FormattingOptions": {
+        "useTabs": false,
+        "indentSize": 4
+    }
+}
