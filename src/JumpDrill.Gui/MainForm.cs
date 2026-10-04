@@ -131,7 +131,7 @@ namespace JumpDrill.Gui
         private readonly Button _update = new Button { Text = Lang.T("更新を確認中", "Checking for updates"), Height = 34, Dock = DockStyle.Fill, Enabled = false };
         private string _latestTag;
         /// <summary>配布版だけに出す。同梱の MOD を Beat Saber へ入れる。</summary>
-        private readonly Button _mod = new Button { Text = Lang.T("MOD を入れる", "Install MOD"), Height = 34, Dock = DockStyle.Fill };
+        private readonly Button _mod = new Button { Text = Lang.T("MOD のインストール", "Install MOD"), Height = 34, Dock = DockStyle.Fill };
         /// <summary>画面の言語。切り替えたら窓を作り直す（Program が開き直す）。</summary>
         private readonly ComboBox _language = Combo("日本語", "English");
 
@@ -734,7 +734,7 @@ namespace JumpDrill.Gui
         {
             bool outdated = await Task.Run(() => LevelWriter.FindInstalls().Any(ModPackage.IsOutdated));
             if (IsDisposed) return;
-            _mod.Text = outdated ? Lang.T("MOD を更新", "Update MOD") : Lang.T("MOD を入れる", "Install MOD");
+            _mod.Text = outdated ? Lang.T("MOD を更新", "Update MOD") : Lang.T("MOD のインストール", "Install MOD");
             _mod.Font = new Font(_mod.Font, outdated ? FontStyle.Bold : FontStyle.Regular);
             _tips.SetToolTip(_mod, outdated ? Lang.T("入っている JumpDrillMod が古くなっています。", "The installed JumpDrillMod is out of date.") : "");
         }

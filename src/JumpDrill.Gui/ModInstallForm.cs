@@ -259,14 +259,14 @@ namespace JumpDrill.Gui
         private readonly Label _summary = new Label { AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
         private readonly Label _status = new Label { AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
         private readonly Button _add = new Button { Text = Lang.T("フォルダを追加...", "Add folder..."), AutoSize = true };
-        private readonly Button _install = new Button { Text = Lang.T("入れる", "Install"), AutoSize = true, Padding = new Padding(14, 1, 14, 1) };
+        private readonly Button _install = new Button { Text = Lang.T("インストール", "Install"), AutoSize = true, Padding = new Padding(14, 1, 14, 1) };
         private readonly Button _close = new Button { Text = Lang.T("閉じる", "Close"), AutoSize = true };
 
         public ModInstallForm(SettingsStore settings)
         {
             _settings = settings;
 
-            Text = Lang.T("MOD を入れる", "Install MOD");
+            Text = Lang.T("MOD のインストール", "Install MOD");
             AutoScaleMode = AutoScaleMode.Font;
             Font = new Font("Yu Gothic UI", 9f);
             StartPosition = FormStartPosition.CenterParent;
@@ -276,7 +276,7 @@ namespace JumpDrill.Gui
             MinimumSize = new Size(520, 280);
 
             _summary.Text = "JumpDrillMod v" + ModPackage.Version + Environment.NewLine
-                          + Lang.T("チェックしたフォルダのプラグインを入れます。", "Installs the plugin into the checked folders.");
+                          + Lang.T("チェックしたフォルダに MOD をインストールします。", "Installs the MOD into the checked folders.");
 
             _list.Columns.Add(Lang.T("場所", "Location"));
             _list.Columns.Add(Lang.T("ゲーム", "Game"));
@@ -425,7 +425,7 @@ namespace JumpDrill.Gui
             var targets = _list.CheckedItems.Cast<ListViewItem>().Select(i => (LevelWriter.BeatSaberInstall)i.Tag).ToList();
             if (targets.Count == 0)
             {
-                MessageBox.Show(this, Lang.T("入れる先をチェックしてください。", "Check where to install."), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, Lang.T("インストール先をチェックしてください。", "Check where to install."), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -452,14 +452,14 @@ namespace JumpDrill.Gui
                     {
                         if (games.Count == 0)
                         {
-                            failed.Add(target.Name + Lang.T(": 入れられる MOD がありません", ": no MOD is available"));
+                            failed.Add(target.Name + Lang.T(": インストールできる MOD がありません", ": no MOD is available"));
                             continue;
                         }
 
                         game = ChooseGame(target, games);
                         if (game == null)
                         {
-                            failed.Add(target.Name + Lang.T(": 入れませんでした", ": skipped"));
+                            failed.Add(target.Name + Lang.T(": インストールしませんでした", ": skipped"));
                             continue;
                         }
                     }
@@ -490,13 +490,13 @@ namespace JumpDrill.Gui
 
             var message = new StringBuilder();
             if (done.Count > 0)
-                message.AppendLine(Lang.T("入れました: ", "Installed: ") + string.Join(Lang.T("、", ", "), done));
+                message.AppendLine(Lang.T("インストールしました: ", "Installed: ") + string.Join(Lang.T("、", ", "), done));
             if (failed.Count > 0)
             {
-                message.AppendLine(Lang.T("入れられませんでした:", "Could not install:"));
+                message.AppendLine(Lang.T("インストールできませんでした:", "Could not install:"));
                 foreach (string line in failed) message.AppendLine("  " + line);
             }
-            _status.Text = done.Count > 0 ? Lang.T("入れました: ", "Installed: ") + string.Join(Lang.T("、", ", "), done) : "";
+            _status.Text = done.Count > 0 ? Lang.T("インストールしました: ", "Installed: ") + string.Join(Lang.T("、", ", "), done) : "";
             MessageBox.Show(this, message.ToString().TrimEnd(), Text, MessageBoxButtons.OK,
                 failed.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
@@ -532,7 +532,7 @@ namespace JumpDrill.Gui
                     Margin = new Padding(0, 0, 0, 10),
                     Text = Lang.T(
                         where + " に合う MOD はありません。" + Environment.NewLine +
-                        "どのバージョン用の MOD を入れますか？" + Environment.NewLine +
+                        "どのバージョン用の MOD をインストールしますか？" + Environment.NewLine +
                         "バージョンが合わない MOD は、正しく動かないことがあります。",
                         "There is no MOD for " + where + "." + Environment.NewLine +
                         "Which version's MOD do you want to install?" + Environment.NewLine +
@@ -543,8 +543,8 @@ namespace JumpDrill.Gui
                 foreach (string game in games) combo.Items.Add(Lang.T("Beat Saber " + game + " 用", "For Beat Saber " + game));
                 combo.SelectedIndex = Math.Max(0, games.IndexOf(ModPackage.ClosestGame(target.GameVersion, games)));
 
-                var ok = new Button { Text = Lang.T("入れる", "Install"), AutoSize = true, DialogResult = DialogResult.OK, Padding = new Padding(14, 1, 14, 1) };
-                var cancel = new Button { Text = Lang.T("入れない", "Skip"), AutoSize = true, DialogResult = DialogResult.Cancel };
+                var ok = new Button { Text = Lang.T("インストール", "Install"), AutoSize = true, DialogResult = DialogResult.OK, Padding = new Padding(14, 1, 14, 1) };
+                var cancel = new Button { Text = Lang.T("インストールしない", "Skip"), AutoSize = true, DialogResult = DialogResult.Cancel };
                 var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, Margin = new Padding(0) };
                 buttons.Controls.Add(cancel);
                 buttons.Controls.Add(ok);
