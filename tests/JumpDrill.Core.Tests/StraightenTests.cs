@@ -95,10 +95,10 @@ namespace JumpDrill.Core.Tests
         [InlineData("L4b", "L4b")]
         [InlineData("R4bs", "R4bs")]
         [InlineData("R4sbs", "R4sbs")]
-        [InlineData("l194c", "L194c")]
+        [InlineData("l9c", "L9c")]
         // 昔の形もそのまま読める。書き戻すと短い形になる。
         [InlineData("R:4>bs", "R4bs")]
-        [InlineData("L:1>9>4>c", "L194c")]
+        [InlineData("L:1>9", "L19")]
         public void The_compact_form_means_the_same_as_the_arrow_form(string compact, string expected)
         {
             Assert.Equal(expected, SequenceParser.ParseOne(compact).ToString());

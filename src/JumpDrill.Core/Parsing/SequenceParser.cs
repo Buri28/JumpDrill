@@ -69,6 +69,11 @@ namespace JumpDrill.Parsing
             if (steps.Count < 2)
                 throw new FormatException(Lang.T("'" + spec + "' は2点以上必要です（例: 8>b / 4b）。", "'" + spec + "' needs at least 2 points (e.g. 8>b / 4b)."));
 
+            // 測るのは2点の間の往復（行きと帰りが同じ線を通るか）。3点以上を回ると往復が無く、
+            // 再現性が出せないので記録に残らない。グリッド（GUI・MOD）と同じく片手2点までにする
+            if (steps.Count > 2)
+                throw new FormatException(Lang.T("'" + spec + "' は片手2点までです（例: 8b）。", "'" + spec + "' allows at most 2 points per hand (e.g. 8b)."));
+
             return new HandSequence(hand, steps);
         }
 

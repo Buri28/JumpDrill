@@ -119,22 +119,21 @@ namespace JumpDrill.Tests
             Assert.Equal("b", all[0].Steps[1].Position.ToString());
         }
 
-        [Fact]
-        public void Parses_a_cycle_longer_than_two_points()
+        [Theory]
+        [InlineData("L:1>9>4>c")]
+        [InlineData("L194c")]
+        [InlineData("R194")]
+        public void Rejects_more_than_two_points_per_hand(string spec)
         {
-            var seq = SequenceParser.ParseOne("L:1>9>4>c");
-
-            Assert.Equal(4, seq.Length);
-
-            // 昔の : > の形も読めるが、書き戻すのは短い形。
-            Assert.Equal("L194c", seq.ToString());
+            // 往復が無いと再現性が出せない。グリッドと同じく片手2点まで
+            Assert.Throws<FormatException>(() => SequenceParser.ParseOne(spec));
         }
 
         [Fact]
         public void Wraps_around_at_the_end_of_the_cycle()
         {
-            var seq = SequenceParser.ParseOne("R:1>9>4");
-            Assert.Equal(seq.StepAt(0).Position, seq.StepAt(3).Position);
+            var seq = SequenceParser.ParseOne("R:1>9");
+            Assert.Equal(seq.StepAt(0).Position, seq.StepAt(2).Position);
         }
 
         [Fact]
@@ -188,7 +187,7 @@ namespace JumpDrill.Tests
         [Fact]
         public void Mirror_of_a_mirror_is_the_original()
         {
-            var source = SequenceParser.ParseOne("R:1>9>4>c");
+            var source = SequenceParser.ParseOne("R:1>c");
             var back = SequenceParser.Mirror(SequenceParser.Mirror(source, Hand.Left), Hand.Right);
 
             Assert.Equal(source.Steps.Select(s => s.Position).ToArray(),

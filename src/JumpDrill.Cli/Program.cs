@@ -376,7 +376,7 @@ namespace JumpDrill.Cli
         private const string HelpText = @"JumpDrill - ジャンプ練習譜面ジェネレータ
 
   drill --seq ""R8b, La1"" --interval 110 --sec 20 --dir axis
-  drill --seq ""L194c""    --interval 130 --sec 30 --install
+  drill --seq ""L9c""      --interval 130 --sec 30 --install
   drill --seq ""R4sbs""    --interval 110 --sec 30
   drill --seq ""R8b"" --interval 350bpm --div 1/2 --sec 20
   drill --bulk --register-pack ""JumpDrill""
@@ -386,11 +386,11 @@ namespace JumpDrill.Cli
 グリッド記法
   1 2 3 4     左上から 1、下段は 9 a b c。
   5 6 7 8     手の接頭辞 R: / L: を付ける（省略すると右手）。
-  9 a b c     カンマで両手ぶんを並べられる。2点でも3点以上でもよい。
+  9 a b c     カンマで両手ぶんを並べられる。点は片手2点まで。
               : と > は省ける。""R:4>b"" は ""R4b"" と書いてもよい。
 
 遷移と方向
-  --seq <spec>       遷移。例 ""R8b""、""L194c""、""R8b, La1""
+  --seq <spec>       遷移。例 ""R8b""、""L9c""、""R8b, La1""
                      点の後ろに s を付けると、その点の矢印を
                      上下左右のいちばん近い向きに倒す（Straight / Square）
                        R4b    4→b は Δ(-1,-2) なので b は斜めの ↙

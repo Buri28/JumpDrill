@@ -339,18 +339,18 @@ namespace JumpDrill.Gui
             };
             _seqText.Font = new Font("Consolas", 10f);
             _seqText.Dock = DockStyle.Top;
-            _seqText.PlaceholderText = Lang.T("例: R8b, La1 / L194c / R4sbs", "e.g. R8b, La1 / L194c / R4sbs");
+            _seqText.PlaceholderText = Lang.T("例: R8b, La1 / R4sbs", "e.g. R8b, La1 / R4sbs");
             seqBox.Controls.Add(_seqText);
 
             _tips.SetToolTip(_seqText,
                 Lang.T(
-                "例: R8b, La1 / L194c / R4sbs\r\n" +
+                "例: R8b, La1 / R4sbs\r\n" +
                 "R / L で手を指定（省略すると右手）\r\n" +
                 "カンマで両手ぶんを並べる:  R8b, La1\r\n" +
                 "点は片手2点まで（その2点の間をどれだけ直線で振れたかを測る）\r\n" +
                 "点の後ろの s で矢印を上下左右に倒す: R4bs（b が ▼）\r\n" +
                 "上の［矢印をまっすぐ］のボタンと同じもの",
-                "e.g. R8b, La1 / L194c / R4sbs\r\n" +
+                "e.g. R8b, La1 / R4sbs\r\n" +
                 "R / L picks the hand (right if omitted)\r\n" +
                 "Separate the two hands with a comma:  R8b, La1\r\n" +
                 "Up to 2 points per hand (measures how straight you swing between them)\r\n" +

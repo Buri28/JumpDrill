@@ -94,13 +94,13 @@ namespace JumpDrill.Tests
         [Fact]
         public void Positions_repeat_the_cycle()
         {
-            var map = DrillGenerator.Generate(Options("L:1>9>4>c", interval: 200, sec: 4));
+            var map = DrillGenerator.Generate(Options("L:1>9", interval: 200, sec: 4));
             var tokens = map.Notes.Select(n => n.Position.ToToken()).ToArray();
 
-            // 記法 1>9>4>c は「1 から 9 へ振る」から始まるので、最初のノーツは 9。
-            Assert.Equal(new[] { '9', '4', 'c', '1', '9', '4', 'c', '1' }, tokens.Take(8).ToArray());
-            for (int i = 4; i < tokens.Length; i++)
-                Assert.Equal(tokens[i - 4], tokens[i]);
+            // 記法 1>9 は「1 から 9 へ振る」から始まるので、最初のノーツは 9。
+            Assert.Equal(new[] { '9', '1', '9', '1' }, tokens.Take(4).ToArray());
+            for (int i = 2; i < tokens.Length; i++)
+                Assert.Equal(tokens[i - 2], tokens[i]);
         }
 
         [Fact]
@@ -120,26 +120,6 @@ namespace JumpDrill.Tests
 
             foreach (var n in map.Notes)
                 Assert.Equal(n.Position.ToToken() == '8' ? CutDirection.UpRight : CutDirection.DownLeft, n.Direction);
-        }
-
-        [Fact]
-        public void A_longer_cycle_also_uses_the_incoming_move()
-        {
-            // 1>9>4>c。9 は 1 から降りてきて切るので Down、
-            // 4 は 9 から上がってきて切るので UpRight。
-            var map = DrillGenerator.Generate(Options("L:1>9>4>c", interval: 200, sec: 1));
-
-            Assert.Equal('9', map.Notes[0].Position.ToToken());
-            Assert.Equal(CutDirection.Down, map.Notes[0].Direction);     // 1→9
-
-            Assert.Equal('4', map.Notes[1].Position.ToToken());
-            Assert.Equal(CutDirection.UpRight, map.Notes[1].Direction);  // 9→4
-
-            Assert.Equal('c', map.Notes[2].Position.ToToken());
-            Assert.Equal(CutDirection.Down, map.Notes[2].Direction);     // 4→c
-
-            Assert.Equal('1', map.Notes[3].Position.ToToken());
-            Assert.Equal(CutDirection.UpLeft, map.Notes[3].Direction);   // c→1
         }
 
         [Fact]

@@ -99,7 +99,7 @@ namespace JumpDrill.Tests
         [Fact]
         public void Note_fields_match_the_generated_notes()
         {
-            var map = Sample("L:1>9>4>c");
+            var map = Sample("L:1>9");
             using (var doc = JsonDocument.Parse(BeatmapSerializer.WriteDifficulty(map)))
             {
                 var notes = doc.RootElement.GetProperty("_notes").EnumerateArray().ToList();
