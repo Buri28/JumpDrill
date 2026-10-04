@@ -8,6 +8,9 @@ Beat Saber のジャンプ配置を練習するための譜面（ドリル）を
 パソコンで使う **アプリ（JumpDrill）** と、ゲームの中で使う **MOD（JumpDrillMod）** があります。
 どちらも同じドリルを作り、同じ記録を読むので、片方だけでも両方でも使えます。
 
+・MOD版  
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/c10b201e-631d-4c43-a3e0-d6e4b6581259" />
+
 ## ダウンロードとインストール
 
 ### アプリ
@@ -51,8 +54,6 @@ Beat Saber のジャンプ配置を練習するための譜面（ドリル）を
 | リプレイを見る | ［BeatLeader でリプレイ］（ブラウザで開きます） | 記録の行の 🔁（BeatLeader のゲーム内再生） |
 | 置き場所 | 選べます（[置き場所](#置き場所)を参照） | 専用パック「JumpDrill」 |
 
-MOD の画面は英語です。
-
 ## アプリの使い方
 
 1. グリッドをクリックして、ノーツを置く位置と順番を指定します（右クリックでその手の指定を消します）。「遷移（記法）」欄に[配置の書き方](#配置の書き方)で入力することもできます
@@ -75,6 +76,8 @@ MOD の画面は英語です。
 ## MOD の使い方
 
 ### Jump Drill 画面
+* GUI版 ／ MOD版  
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/80963af7-e6a1-445b-a780-773598ce1af1" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/ac20cd32-a853-4661-8e93-016dd72db876" />
 
 メインメニューの **JumpDrill** ボタンで開きます。
 
@@ -152,7 +155,16 @@ BPM は片手あたりの速さで、EBPM と同じ値です。ID は配置・�
 再現精度に応じてメダルとして表示されます（🥉 70% / 🥈 80% / 🥇 90% 以上）。
 Lv はメダルのポイント（🥉1 🥈2 🥇3）の合計で、最大 336 です。
 
+・GUI版／MOD版  
+MOD版はドリル一括生成をメダル画面のGENERATE DRILLSボタンから生成できます。  
+選択したドリルはPLAYボタンからプレイできます。  
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/ebb1ab26-98b5-493b-924e-bd281169b7a4" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/b7663832-8ef8-483a-af04-45ac718c9edd" />
+
+
+
 ## スコアの見方
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/7a5f01ab-7708-454f-8bf0-0eb21c625288" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/365c1fb6-1ac1-49f6-8841-b732b8c68ade" />
+
 
 BeatLeader / LocalLeaderboard / JumpDrillMod が保存したリプレイ（`.bsor`）を読み込み、譜面ごとに記録を表示します。
 同じプレイが複数の MOD に保存されている場合は、1 件として数えます。
