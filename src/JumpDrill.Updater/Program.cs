@@ -187,7 +187,8 @@ namespace JumpDrill.Updater
         public const string Title = "JumpDrill の更新";
 
         private readonly Options _options;
-        private readonly Label _header = new Label { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 8) };
+        // 長いフォルダのパスで列が広がらないよう、収まらない分は「…」で切る
+        private readonly Label _header = new Label { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 8), AutoEllipsis = true };
         private readonly Label _status = new Label { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 4) };
         private readonly ListBox _list = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false, HorizontalScrollbar = true };
         private readonly TextBox _notes = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
@@ -226,6 +227,8 @@ namespace JumpDrill.Updater
             buttons.Controls.Add(_reload);
 
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(12) };
+            // 列は窓の幅に合わせる。既定（中身に合わせる）だと、長いパスに引っぱられて右端が窓の外に出る
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
@@ -239,6 +242,9 @@ namespace JumpDrill.Updater
             root.Controls.Add(_progress, 0, 4);
             root.Controls.Add(buttons, 0, 5);
             Controls.Add(root);
+            DarkTheme.Apply(this);
+            // 最初は一覧を選んでおく（読むだけのリリースノートに入力のカーソルが出ないように）
+            ActiveControl = _list;
 
             AcceptButton = _apply;
             CancelButton = _close;
