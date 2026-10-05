@@ -27,6 +27,15 @@ namespace JumpDrill.Audio
         /// </summary>
         private const int TailPadSamples = 8192;
 
+        /// <summary>
+        /// 先頭に足す無音サンプル。このエンコーダが書く ogg は、デコードすると
+        /// <b>頭の 1024 サンプル（長いブロックの半分）が落ちる</b>。libvorbis 系のデコーダでも NVorbis でも同じで、
+        /// サンプルレート（44.1k / 48k）や品質を変えても変わらない。
+        /// 落ちたぶん音全体が前にずれ、44.1kHz ではクリックがノーツより約 23 ms 早く鳴る。
+        /// 落ちる分を先に足しておけば、デコードした音がサンプル 0 から元の位置に揃う。
+        /// </summary>
+        private const int LeadPadSamples = 1024;
+
         public static void Write(Stream output, float[] samples, int sampleRate, float quality = DefaultQuality)
         {
             if (output == null) throw new ArgumentNullException(nameof(output));
@@ -53,18 +62,22 @@ namespace JumpDrill.Audio
             const int BlockSize = 1024;
             var block = new float[Channels][];
 
-            int totalSamples = samples.Length + TailPadSamples;
+            // 入力は「先頭の無音 + 元の波形 + 末尾の無音」。written はこの並びでの位置
+            int totalSamples = LeadPadSamples + samples.Length + TailPadSamples;
             int written = 0;
             while (written < totalSamples)
             {
                 int count = Math.Min(BlockSize, totalSamples - written);
-                int fromSource = Math.Max(0, Math.Min(count, samples.Length - written));
 
                 // 左右に同じ波形を入れる。配列は共有せず channel ごとに持つ。
                 for (int c = 0; c < Channels; c++)
                 {
                     var chunk = new float[count];
-                    if (fromSource > 0) Array.Copy(samples, written, chunk, 0, fromSource);
+                    for (int i = 0; i < count; i++)
+                    {
+                        int source = written + i - LeadPadSamples;
+                        if (source >= 0 && source < samples.Length) chunk[i] = samples[source];
+                    }
                     block[c] = chunk;
                 }
 
