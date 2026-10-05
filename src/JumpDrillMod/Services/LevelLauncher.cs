@@ -60,13 +60,29 @@ namespace JumpDrillMod.Services
             try
             {
                 return Resolve(drillId) == null
-                    ? "This drill has not been generated yet. Use \"Generate drills\"."
+                    ? "This drill has not been generated yet."
                     : null;
             }
             catch (Exception e)
             {
                 Plugin.Log?.Error("could not look up the drill: " + e);
                 return "Could not look up the drill. See the log.";
+            }
+        }
+
+        /// <summary>
+        /// そのドリルの譜面がまだ無いか。曲一覧を読み込んでいる最中は分からないので false。
+        /// </summary>
+        internal bool IsMissing(string drillId)
+        {
+            try
+            {
+                return !SongCore.Loader.AreSongsLoading && Resolve(drillId) == null;
+            }
+            catch (Exception e)
+            {
+                Plugin.Log?.Error("could not look up the drill: " + e);
+                return false;
             }
         }
 
@@ -93,7 +109,7 @@ namespace JumpDrillMod.Services
                 if (InMultiplayer()) return "Drills cannot be played from a multiplayer lobby.";
 
                 var found = Resolve(drillId);
-                if (found == null) return "This drill has not been generated yet. Use \"Generate drills\".";
+                if (found == null) return "This drill has not been generated yet.";
 
                 var helper = transitions ?? Find<MenuTransitionsHelper>();
                 var model = playerData ?? Find<PlayerDataModel>();

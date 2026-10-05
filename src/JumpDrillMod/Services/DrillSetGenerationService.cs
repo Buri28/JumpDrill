@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using IPA.Utilities.Async;
 using JumpDrill.Model;
@@ -38,11 +39,27 @@ namespace JumpDrillMod.Services
         internal static int Total => DrillSet.All().Count;
 
         /// <summary>
-        /// 書き始める。<paramref name="onProgress"/> と <paramref name="onDone"/> はメインスレッドで呼ばれる。
+        /// 全部を書き始める。<paramref name="onProgress"/> と <paramref name="onDone"/> はメインスレッドで呼ばれる。
         /// </summary>
+        /// <param name="overwrite">
+        /// false なら既にあるものは書き直さない。ID は設定から決まるので同じ名前なら中身も同じ。
+        /// 途中でやめても、次は続きから書ける。true は作り方が変わった版で作り直すとき。
+        /// </param>
         /// <param name="onProgress">1本書くごとに（書いた数, 全体）。</param>
         /// <param name="onDone">終わったら（成功したか, 画面に出す1行）。</param>
-        internal void Start(Action<int, int> onProgress, Action<bool, string> onDone)
+        internal void Start(bool overwrite, Action<int, int> onProgress, Action<bool, string> onDone)
+        {
+            Start(DrillSet.All(), overwrite, onProgress, onDone);
+        }
+
+        /// <summary>1本だけ書く。Play で無かったときと、選んだものを作り直すとき。</summary>
+        internal void StartOne(DrillSetEntry entry, bool overwrite, Action<bool, string> onDone)
+        {
+            Start(new[] { entry }, overwrite, (done, total) => { }, onDone);
+        }
+
+        private void Start(IReadOnlyList<DrillSetEntry> entries, bool overwrite,
+            Action<int, int> onProgress, Action<bool, string> onDone)
         {
             if (IsRunning) return;
 
@@ -64,11 +81,9 @@ namespace JumpDrillMod.Services
 
             Task.Run(() =>
             {
-                // 既にあるものは書き直さない。ID は設定から決まるので同じ名前なら中身も同じ。
-                // 途中でやめても、次は続きから書ける
-                DrillSetWriter.WriteAll(root, new LevelWriteOptions { Format = AudioFormat.Ogg },
+                DrillSetWriter.Write(root, entries, new LevelWriteOptions { Format = AudioFormat.Ogg },
                     (done, total, name) => OnMainThread(() => onProgress(done, total)),
-                    skipExisting: true);
+                    skipExisting: !overwrite);
             })
             .ContinueWith(task =>
             {
@@ -81,14 +96,15 @@ namespace JumpDrillMod.Services
                 }
 
                 // 書き終えたら曲一覧に読ませる。ここも待つ必要があるので、
-                // IsRunning を落とすのは読み込みが終わってから
+                // IsRunning を落とすのは読み込みが終わってから。
+                // 上書きしたときは全部読み直す。差分だけだと、読み込み済みのフォルダは見直されない
                 refresher.Refresh(ok =>
                 {
                     IsRunning = false;
-                    onDone(true, ok
-                        ? "The drills are ready."
+                    onDone(ok, ok
+                        ? (entries.Count == 1 ? "The drill is ready." : "The drills are ready.")
                         : "Written, but the song list did not reload. Restart the game.");
-                }, fullRefresh: false);
+                }, fullRefresh: overwrite);
             }, UnityMainThreadTaskScheduler.Default);
         }
 

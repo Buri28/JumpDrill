@@ -93,7 +93,9 @@ namespace JumpDrillMod
         /// </summary>
         /// <remarks>
         /// 譜面名には間隔や尺が入る（JumpDrill.Core の <c>DrillNaming</c>）ので、
-        /// 指定を変えれば別フォルダになる。上書きが効くのは同じ指定で作り直したときだけ。
+        /// 指定を変えれば別フォルダになる。上書きが効くのは同じ名前になるときだけ
+        /// （クリック音・NJS など名前に入らないものだけを変えたときも含む）。
+        /// false なら既にあるときは書かずに知らせる。
         /// </remarks>
         public virtual bool Overwrite { get; set; } = true;
 

@@ -54,6 +54,9 @@ namespace JumpDrillMod.Services
             public string Message { get; internal set; } = string.Empty;
 
             public bool Ok => Folder != null;
+
+            /// <summary>既にあったフォルダを書き直したか。</summary>
+            public bool Overwrote { get; internal set; }
         }
 
         /// <summary>
@@ -65,11 +68,19 @@ namespace JumpDrillMod.Services
             try
             {
                 var map = DrillGenerator.Generate(BuildOptions(config));
+                string root = pack.ResolveOutputFolder(config.PackName);
 
-                string folder = LevelWriter.Write(map, pack.ResolveOutputFolder(config.PackName), null, new LevelWriteOptions
+                // 名前は「遷移・向き・片手の間隔・尺・セット数」から決まる。クリック音などは入らないので、
+                // それだけ変えて作ると同じフォルダになる。上書きしないなら書かずに知らせる
+                // 既にあるかは Info.dat で見る（一括生成と同じ）。書きかけで止まったフォルダは作り直せるように
+                bool exists = File.Exists(Path.Combine(root, LevelWriter.SanitizeFolderName(map.Name), "Info.dat"));
+                if (exists && !config.Overwrite)
+                    return new Result { Message = "Already exists. Turn on Overwrite to write it again." };
+
+                string folder = LevelWriter.Write(map, root, null, new LevelWriteOptions
                 {
                     Format = AudioFormat.Ogg,
-                    Overwrite = config.Overwrite,
+                    Overwrite = true,
                 });
 
                 Plugin.LogDebug("generated: " + folder);
@@ -78,6 +89,7 @@ namespace JumpDrillMod.Services
                     Folder = folder,
                     SongName = map.Name,
                     Message = map.Name,
+                    Overwrote = exists,
                 };
             }
             catch (FormatException e)

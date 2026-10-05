@@ -117,6 +117,14 @@ namespace JumpDrill.Gui
 
         /// <summary>ドリル（14方向 × 8 Stage）を出力先へ一括で書く。画面の指定は使わない。</summary>
         private readonly Button _bulk = new Button { Text = Lang.T("ドリル一括生成", "Generate all drills"), Height = 34, Dock = DockStyle.Fill };
+        /// <summary>
+        /// 同じ名前の譜面が既にあるとき書き直すか。生成と一括生成の両方に効く。
+        /// 名前に入らない指定（クリック音・NJS など）だけ変えたときも同じ名前になる。
+        /// </summary>
+        private readonly CheckBox _overwrite = new CheckBox { Text = Lang.T("上書き", "Overwrite"), AutoSize = true, Anchor = AnchorStyles.Left, Checked = true };
+
+        /// <summary>生成（メダル画面からの分も含む）の最中か。同時に2つ書かない。</summary>
+        private bool _setRunning;
         private readonly Button _openOut = new Button { Text = Lang.T("出力先を開く", "Open output folder"), Height = 34, Dock = DockStyle.Fill };
         private readonly Button _preview = new Button { Text = Lang.T("ArcViewer でプレビュー", "Preview in ArcViewer"), Height = 34, Dock = DockStyle.Fill };
 
@@ -360,7 +368,8 @@ namespace JumpDrill.Gui
             panel.Controls.Add(seqBox, 0, 4);
 
             // 遷移を書いたらすぐ押せるよう、生成はその真下に大きく置く。
-            var generateRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, AutoSize = true, Margin = new Padding(0, 6, 0, 0) };
+            // 上書きはその下の段。同じ段に並べると、英語で［出力先を開く］の文字が切れる
+            var generateRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, AutoSize = true, Margin = new Padding(0, 6, 0, 0) };
             generateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
             generateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
             _generate.Font = new Font(Font.FontFamily, 11f, FontStyle.Bold);
@@ -368,8 +377,10 @@ namespace JumpDrill.Gui
             _generate.Margin = new Padding(3, 0, 4, 0);
             _openOut.Height = 44;
             _openOut.Margin = new Padding(4, 0, 3, 0);
+            _overwrite.Margin = new Padding(3, 6, 3, 0);
             generateRow.Controls.Add(_generate, 0, 0);
             generateRow.Controls.Add(_openOut, 1, 0);
+            generateRow.Controls.Add(_overwrite, 0, 1);
             panel.Controls.Add(generateRow, 0, 5);
 
             // 言語は左の列の下の空きに固定する。ボタンの並びに入れると、
@@ -438,7 +449,7 @@ namespace JumpDrill.Gui
                     Row(Lang.T("手の並べ方", "Hand pattern"), _hands),
                     Row(Lang.T("セットの順番", "Set order"), _order),
                     Row(Lang.T("セット数", "Sets"), _sets))),
-                Group(Lang.T("クリック（音源に焼き込む）", "Click (baked into the audio)"), Rows(
+                Group(Lang.T("クリック音（音源に焼き込む）", "Click (baked into the audio)"), Rows(
                     Row(Lang.T("粒度", "Pattern"), _click),
                     Row(Lang.T("カウントイン", "Count-in"), _countIn),
                     Row(Lang.T("末尾の余白", "Tail padding"), _tail))));
@@ -782,6 +793,10 @@ namespace JumpDrill.Gui
             _browse.Click += (s, e) => Browse();
             _generate.Click += async (s, e) => await GenerateAsync();
             _bulk.Click += async (s, e) => await GenerateBulkAsync();
+            _overwrite.CheckedChanged += (s, e) => RefreshPreview();
+            _tips.SetToolTip(_overwrite, Lang.T(
+                "オフ: 同じ名前の譜面が既にあれば書かない（一括生成は無いものだけ作る）\r\nオン: 書き直す。記録は消えない",
+                "Off: maps that already exist are left as is (Generate all writes only the missing ones)\r\nOn: they are written again. Records are kept"));
             _tips.SetToolTip(_bulk, Lang.T("14方向 × 8 Stage の譜面（112曲）を出力先に作成します。", "Writes 112 maps (14 directions × 8 stages) to the output folder."));
             _openOut.Click += (s, e) => OpenOutputFolder();
             _preview.Click += (s, e) => OpenInArcViewer();
@@ -1070,6 +1085,7 @@ namespace JumpDrill.Gui
 
             sb.Append(" --out \"").Append(_outDir.Text.Trim()).Append('"');
             if (_zip.Checked) sb.Append(" --zip");
+            if (!_overwrite.Checked) sb.Append(" --skip-existing");
 
             return sb.ToString();
         }
@@ -1108,6 +1124,7 @@ namespace JumpDrill.Gui
                 PopulateOutputPresets();
                 SelectOutputPreset(_settings.GetString("out.dir", DefaultOutputDirectory()));
                 _zip.Checked = _settings.GetBool("out.zip", false);
+                _overwrite.Checked = _settings.GetBool("out.overwrite", true);
                 // 以前の既定（ユーザーフォルダ）が保存されていたら、アプリ配下に移す。
                 string savedWorkspace = _settings.GetString("paths.workspace", Workspace.DefaultRoot());
                 if (savedWorkspace.IndexOf("AppData", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -1196,6 +1213,7 @@ namespace JumpDrill.Gui
 
             _settings.Set("out.dir", _outDir.Text);
             _settings.Set("out.zip", _zip.Checked);
+            _settings.Set("out.overwrite", _overwrite.Checked);
             _settings.Set("paths.workspace", _workspace.Text);
             _settings.Set("seq", _seqText.Text);
             _settings.Set("preview.dir", _lastPreviewFolder ?? "");
@@ -1414,6 +1432,21 @@ namespace JumpDrill.Gui
                 return;
             }
 
+            options.Name = DrillNaming.Compose(options);
+            if (!_overwrite.Checked && File.Exists(Path.Combine(root, LevelWriter.SanitizeFolderName(options.Name), "Info.dat")))
+            {
+                _status.Text = AlreadyExists;
+                return;
+            }
+
+            // メダル画面の生成と同時に書かない（同じフォルダや zip の出力を取り合う）
+            if (_setRunning)
+            {
+                _status.Text = Lang.T("生成中です。終わってからもう一度押してください。", "Already generating. Try again when it is done.");
+                return;
+            }
+
+            _setRunning = true;
             _generate.Enabled = false;
             _openOut.Enabled = false;
             _status.Text = Lang.T("生成中...", "Generating...");
@@ -1440,11 +1473,27 @@ namespace JumpDrill.Gui
             }
             finally
             {
+                _setRunning = false;
                 _generate.Enabled = true;
             }
         }
 
+        private static string AlreadyExists => Lang.T(
+            "既にあります。作り直すときは［上書き］にチェックを入れてください。",
+            "Already exists. Check [Overwrite] to write it again.");
+
         private async Task GenerateBulkAsync()
+        {
+            await GenerateSetAsync(this, DrillSet.All(), _overwrite.Checked, text => _status.Text = text);
+        }
+
+        /// <summary>
+        /// 一括生成のドリルを書く。全部でも1本でもよい。メダル画面からも呼ぶ。
+        /// </summary>
+        /// <param name="overwrite">false なら既にあるものは飛ばす（途中から再開できる）。</param>
+        /// <param name="report">進み具合と結果の1行。呼んだ画面の状態欄に出す。</param>
+        /// <returns>書いたか。</returns>
+        internal async Task<bool> GenerateSetAsync(IWin32Window owner, IReadOnlyList<DrillSetEntry> entries, bool overwrite, Action<string> report)
         {
             string root;
             try
@@ -1453,14 +1502,29 @@ namespace JumpDrill.Gui
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                MessageBox.Show(owner, ex.Message, "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
             }
 
+            if (_setRunning)
+            {
+                report(Lang.T("生成中です。終わってからもう一度押してください。", "Already generating. Try again when it is done."));
+                return false;
+            }
+
+            // 1本だけなら、飛ばして黙って終わるより、既にあると知らせる
+            if (!overwrite && entries.Count == 1 &&
+                File.Exists(Path.Combine(root, LevelWriter.SanitizeFolderName(entries[0].Options.Name), "Info.dat")))
+            {
+                report(AlreadyExists);
+                return false;
+            }
+
+            _setRunning = true;
             _generate.Enabled = false;
             _bulk.Enabled = false;
             _openOut.Enabled = false;
-            _status.Text = Lang.T("一括生成中...", "Generating all...");
+            report(Lang.T("生成中...", "Generating..."));
 
             try
             {
@@ -1468,24 +1532,32 @@ namespace JumpDrill.Gui
                 {
                     ZipDirectory = _zip.Checked ? CurrentWorkspace().ZipFolder : null,
                 };
-                var progress = new Progress<string>(text => _status.Text = text);
-                IProgress<string> report = progress;
+                var progress = new Progress<string>(report);
+                IProgress<string> step = progress;
 
-                await Task.Run(() => DrillSetWriter.WriteAll(root, writeOptions,
-                    (done, total, name) => report.Report(string.Format(CultureInfo.CurrentCulture,
-                        Lang.T("一括生成中... {0}/{1}  {2}", "Generating all... {0}/{1}  {2}"), done, total, name))));
+                var folders = await Task.Run(() => DrillSetWriter.Write(root, entries, writeOptions,
+                    (done, total, name) => step.Report(string.Format(CultureInfo.CurrentCulture,
+                        Lang.T("生成中... {0}/{1}  {2}", "Generating... {0}/{1}  {2}"), done, total, name)),
+                    skipExisting: !overwrite));
 
-                _lastOutputFolder = root;
-                _status.Text = string.Format(CultureInfo.CurrentCulture, Lang.T("一括生成が完了しました: {0}", "All drills written: {0}"), root);
+                _lastOutputFolder = entries.Count == 1 ? folders[0] : root;
+                report(entries.Count == 1
+                    ? string.Format(CultureInfo.CurrentCulture, Lang.T("書き出しました: {0}", "Written: {0}"), folders[0])
+                    : string.Format(CultureInfo.CurrentCulture, Lang.T("一括生成が完了しました: {0}", "All drills written: {0}"), root));
                 _openOut.Enabled = true;
+                return true;
             }
             catch (Exception ex)
             {
-                _status.Text = Lang.T("失敗しました。", "Failed.");
-                MessageBox.Show(this, ex.Message, "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                report(Lang.T("失敗しました。", "Failed."));
+                // 書いている間に呼んだ画面が閉じられていたら、こちらを親にする
+                var parent = owner is Control control && control.IsDisposed ? this : owner;
+                MessageBox.Show(parent, ex.Message, "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
             finally
             {
+                _setRunning = false;
                 _generate.Enabled = true;
                 _bulk.Enabled = true;
             }
@@ -1493,7 +1565,6 @@ namespace JumpDrill.Gui
 
         private static string Run(DrillOptions options, string root, LevelWriteOptions writeOptions)
         {
-            options.Name = DrillNaming.Compose(options);
             return LevelWriter.Write(DrillGenerator.Generate(options), root, null, writeOptions);
         }
 
@@ -1548,7 +1619,7 @@ namespace JumpDrill.Gui
                 return;
             }
 
-            var form = new MedalForm(CurrentWorkspace().Root, _settings, PreviewByName, OpenScoreboard, FollowScoreboard);
+            var form = new MedalForm(CurrentWorkspace().Root, _settings, PreviewByName, OpenScoreboard, FollowScoreboard, GenerateSetAsync);
             form.FormClosed += (s, e) => _medalForm = null;
             _medalForm = form;
             form.Show(this);

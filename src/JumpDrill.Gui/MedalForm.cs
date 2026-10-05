@@ -28,6 +28,20 @@ namespace JumpDrill.Gui
         private readonly Label _status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
         private readonly Button _rescan = new Button { Text = Lang.T("再スキャン", "Rescan"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1) };
         private readonly Button _preview = new Button { Text = Lang.T("ArcViewer でプレビュー", "Preview in ArcViewer"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1), Enabled = false };
+        private readonly Button _generate = new Button { Text = Lang.T("生成", "Generate"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1), Enabled = false };
+        private readonly Button _generateAll = new Button { Text = Lang.T("すべて生成", "Generate all"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1) };
+
+        /// <summary>
+        /// 既にある譜面を書き直すか。開くたびに外す（全部の上書きは時間がかかるので、うっかり押さないように）。
+        /// </summary>
+        private readonly CheckBox _overwrite = new CheckBox { Text = Lang.T("上書き", "Overwrite"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(6, 3, 0, 3) };
+        private readonly ToolTip _tips = new ToolTip();
+
+        /// <summary>この画面から生成している最中か。</summary>
+        private bool _generating;
+
+        /// <summary>ドリルを出力先へ書く（メイン画面の一括生成と同じもの）。書いたら true。</summary>
+        private readonly Func<IWin32Window, IReadOnlyList<DrillSetEntry>, bool, Action<string>, Task<bool>> _generateSet;
         private readonly Button _replay = new Button { Text = Lang.T("スコア", "Scores"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1), Enabled = false };
         private TableLayoutPanel _top;
 
@@ -46,8 +60,10 @@ namespace JumpDrill.Gui
         /// <summary>読んでいる間に見る版が変わった。読み終えたら読み直す。</summary>
         private bool _reloadPending;
 
-        internal MedalForm(string workspaceRoot, SettingsStore settings, Action<IWin32Window, string> openPreview, Action<string> openReplay, Action<string> followReplay)
+        internal MedalForm(string workspaceRoot, SettingsStore settings, Action<IWin32Window, string> openPreview, Action<string> openReplay, Action<string> followReplay,
+            Func<IWin32Window, IReadOnlyList<DrillSetEntry>, bool, Action<string>, Task<bool>> generateSet)
         {
+            _generateSet = generateSet;
             _workspaceRoot = workspaceRoot;
             _install = new InstallPicker(settings) { Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 8, 3) };
             _openPreview = openPreview;
@@ -74,9 +90,13 @@ namespace JumpDrill.Gui
             top.Controls.Add(_replay, 3, 0);
             top.Controls.Add(_preview, 4, 0);
             top.Controls.Add(_rescan, 5, 0);
-            // 状態の文は2段目に横いっぱいで出す。1段目は版の欄とボタンで埋まり、並べると切れる
+            // 状態の文は2段目に出す。1段目は版の欄とボタンで埋まり、並べると切れる。
+            // 生成のボタンは2段目の右。生成の進み具合はこの状態の文に出るので、並べて置く
             top.Controls.Add(_status, 0, 1);
-            top.SetColumnSpan(_status, 6);
+            top.SetColumnSpan(_status, 3);
+            top.Controls.Add(_generate, 3, 1);
+            top.Controls.Add(_generateAll, 4, 1);
+            top.Controls.Add(_overwrite, 5, 1);
 
             var outer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
             outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -109,10 +129,22 @@ namespace JumpDrill.Gui
             {
                 var cell = _board.Selected;
                 _preview.Enabled = cell != null;
+                _generate.Enabled = cell != null && !_generating;
                 _replay.Enabled = cell != null && cell.BestPercent.HasValue;
                 if (_replay.Enabled && _followReplay != null) _followReplay(cell.Id);
             };
             _preview.Click += (s, e) => OpenPreview();
+            _generate.Click += async (s, e) =>
+            {
+                var cell = _board.Selected;
+                if (cell != null) await Generate(new[] { cell.Entry });
+            };
+            _generateAll.Click += async (s, e) => await Generate(DrillSet.All());
+            _tips.SetToolTip(_generate, Lang.T("選んだマスの譜面を出力先に作成します。", "Writes the selected map to the output folder."));
+            _tips.SetToolTip(_generateAll, Lang.T("14方向 × 8 Stage の譜面（112曲）を出力先に作成します。", "Writes 112 maps (14 directions × 8 stages) to the output folder."));
+            _tips.SetToolTip(_overwrite, Lang.T(
+                "オフ: 既にある譜面は書かない\r\nオン: 書き直す。記録は消えない",
+                "Off: maps that already exist are left as is\r\nOn: they are written again. Records are kept"));
             _replay.Click += (s, e) => OpenReplay();
             _board.CellDoubleClicked += (s, e) => OpenReplay();
 
@@ -189,6 +221,29 @@ namespace JumpDrill.Gui
             Location = new Point(
                 Math.Max(area.Left, Math.Min(x, area.Right - outer.Width)),
                 Math.Max(area.Top, Math.Min(y, area.Bottom - outer.Height)));
+        }
+
+        /// <summary>譜面を書く。書いている間は生成のボタンを止める。</summary>
+        private async Task Generate(IReadOnlyList<DrillSetEntry> entries)
+        {
+            if (_generateSet == null || _generating) return;
+
+            _generating = true;
+            _generate.Enabled = false;
+            _generateAll.Enabled = false;
+            try
+            {
+                await _generateSet(this, entries, _overwrite.Checked, text => { if (!IsDisposed) _status.Text = text; });
+            }
+            finally
+            {
+                _generating = false;
+                if (!IsDisposed)
+                {
+                    _generate.Enabled = _board.Selected != null;
+                    _generateAll.Enabled = true;
+                }
+            }
         }
 
         private void OpenPreview()

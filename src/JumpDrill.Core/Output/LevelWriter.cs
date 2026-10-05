@@ -418,7 +418,7 @@ namespace JumpDrill.Output
             }
             sb.AppendLine(string.Format(ci, Lang.T("  NJS         {0:0.##}   オフセット {1:0.###} 拍", "  NJS         {0:0.##}   offset {1:0.###} beats"), map.Njs, map.NoteJumpStartBeatOffset));
             sb.AppendLine(string.Format(ci, Lang.T("  ジャンプ    距離 {0:0.##} m   反応時間 {1:0} ms", "  Jump        distance {0:0.##} m   reaction time {1:0} ms"), map.Jump.JumpDistance, map.Jump.ReactionTimeSeconds * 1000.0));
-            sb.AppendLine(string.Format(ci, Lang.T("  クリック    {0}  周期 {1:0} ms  カウントイン {2} 発", "  Click       {0}  period {1:0} ms  count-in {2}"), map.Options.Click, map.ClickPeriodSeconds * 1000.0, map.Options.CountInClicks));
+            sb.AppendLine(string.Format(ci, Lang.T("  クリック音  {0}  周期 {1:0} ms  カウントイン {2} 発", "  Click       {0}  period {1:0} ms  count-in {2}"), map.Options.Click, map.ClickPeriodSeconds * 1000.0, map.Options.CountInClicks));
             sb.AppendLine(string.Format(ci, Lang.T("  尺          先頭 {0:0.##} 秒 + 本体 + 末尾 {1:0.##} 秒 = {2:0.##} 秒", "  Length      lead-in {0:0.##} s + body + tail {1:0.##} s = {2:0.##} s"), map.LeadInSeconds, map.Options.TailSeconds, map.TotalSeconds));
             return sb.ToString();
         }

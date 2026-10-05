@@ -34,9 +34,14 @@
          Generate はどのタブからでも押せるように、タブの外に置く。
          遷移を組んでから Timing で速さを決め、そのまま書き出す、という順で使うため -->
     <horizontal spacing='2' pad='0'>
-      <text id='sequence-text' text='' font-size='4.5' align='Left' pref-width='64'/>
-      <button text='Generate' on-click='generate' pref-width='30' pref-height='7'
+      <text id='sequence-text' text='' font-size='4.5' align='Left' pref-width='42'/>
+      <button text='Generate' on-click='generate' pref-width='28' pref-height='7'
               hover-hint='Write this drill to the JumpDrill pack and reload the song list. The pack is registered as WIP, so scores are not submitted to ScoreSaber or BeatLeader.'/>
+      <!-- toggle-setting は文字を左端、スイッチを右端に置くので、幅を詰めて間を空けすぎないようにする -->
+      <horizontal pref-width='26'>
+        <toggle-setting text='Overwrite' value='overwrite' apply-on-change='true'
+                        hover-hint='Off: if this drill already exists, it is left as is. On: it is written again. Records are kept.'/>
+      </horizontal>
     </horizontal>
 
     <horizontal spacing='1' pad='0'>

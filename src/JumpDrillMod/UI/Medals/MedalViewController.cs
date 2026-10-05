@@ -236,24 +236,36 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("</vertical>");
 
             // 選んだものの内訳と Play
-            sb.Append("<horizontal pref-height='7' spacing='3' pad-top='1'>");
+            sb.Append("<horizontal pref-height='9' spacing='3' pad-top='1'>");
             sb.Append("<text id='detail' text='' font-size='3' align='Left' pref-width='")
-              .Append(TableWidth - 26).Append("'/>");
-            sb.Append("<button text='Play' on-click='play' pref-width='22' pref-height='7'");
-            sb.Append(" hover-hint='Play this drill now (practice mode; scores are not submitted). You come back here when it ends.'/>");
+              .Append(TableWidth - 35).Append("'/>");
+            sb.Append("<button text='Play' on-click='play' pref-width='32' pref-height='9'");
+            sb.Append(" hover-hint='Play this drill now (practice mode; scores are not submitted). If it is not generated yet, it is generated first. You come back here when it ends.'/>");
             sb.Append("</horizontal>");
 
-            // 一番下は状態の行と Generate drills。生成の進み具合はこの状態の行に出るので、並べて置く。
-            // 叩くつもりで開いて譜面が無いと分かったとき、この画面を離れずに作れるように
-            sb.Append("<horizontal pref-height='6' spacing='3'>");
+            // 状態の行。生成の進み具合もここに出る
+            sb.Append("<horizontal pref-height='4'>");
             sb.Append("<text id='status' text='' font-size='2.6' align='Left' color='#8899AA' pref-width='")
-              .Append(TableWidth - 34).Append("'/>");
-            sb.Append("<button text='Generate drills' on-click='generate-set' pref-width='30' pref-height='6'");
-            sb.Append(" hover-hint='Write the 112 drills (14 directions x 8 stages) to the JumpDrill pack.");
-            sb.Append(" Drills that already exist are skipped, so it can resume.'/>");
+              .Append(TableWidth).Append("'/>");
             sb.Append("</horizontal>");
 
-            sb.Append("</vertical></bg>");
+            // 一番下に生成のボタン。叩くつもりで開いて譜面が無いと分かったとき、この画面を離れずに作れるように。
+            // 上書きはボタンを分けずにチェックで切り替える（ボタンが4つだと横に収まらない）
+            sb.Append("<horizontal pref-height='6' spacing='2'>");
+            sb.Append("<button text='Generate' on-click='generate-selected' pref-width='24' pref-height='6'");
+            sb.Append(" hover-hint='Generate the selected drill.'/>");
+            sb.Append("<button text='Generate all' on-click='generate-all' pref-width='28' pref-height='6'");
+            sb.Append(" hover-hint='Generate all 112 drills (14 directions x 8 stages).'/>");
+            // toggle-setting は文字を左端、スイッチを右端に置くので、幅を詰めて間を空けすぎないようにする
+            sb.Append("<horizontal pref-width='26'>");
+            sb.Append("<toggle-setting text='Overwrite' value='overwrite' apply-on-change='true' get-event='overwrite-reset'");
+            sb.Append(" hover-hint='Off: drills that already exist are skipped. On: they are written again. Records are kept.'/>");
+            sb.Append("</horizontal>");
+            sb.Append("</horizontal>");
+
+            sb.Append("</vertical>");
+
+            sb.Append("</bg>");
             return sb.ToString();
         }
 
@@ -531,15 +543,37 @@ namespace JumpDrillMod.UI.Medals
         }
 
         /// <summary>
+        /// 開くたびに Overwrite を外す。ビューは使い回すので、外さないと前に開いたときのままになる。
+        /// </summary>
+        protected override void DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling)
+        {
+            base.DidActivate(firstActivation, addedToHierarchy, screenSystemEnabling);
+            if (firstActivation) return;
+
+            Overwrite = false;
+            parserParams?.EmitEvent("overwrite-reset");
+        }
+
+        /// <summary>
+        /// 既にあるものを書き直すか。既定は書き直さない（足りない分だけ作る）。
+        /// 設定には残さない。上書きは作り方が変わった版を入れたときにだけ要るので、開くたびに外しておく。
+        /// </summary>
+        [UIValue("overwrite")]
+        public bool Overwrite { get; set; }
+
+        /// <summary>
         /// ドリルセット（14方向 × 8段）を全部書く。GUI の「ドリル一括生成」と同じもの。
         /// </summary>
         /// <remarks>
         /// 数十秒かかるので別スレッドで回し、進み具合を状態の行に出す。
-        /// 既にあるものは書き直さないので、途中でやめても続きから再開できる。
+        /// 上書きしなければ既にあるものは飛ばすので、途中でやめても続きから再開できる。
+        /// 記録は ID で引くので、上書きしても残る。
         /// 書き終えたら曲一覧が読み直されるので、そのあとで表も読み直す（Play が通るようになる）。
         /// </remarks>
-        [UIAction("generate-set")]
-        public void GenerateSet()
+        [UIAction("generate-all")]
+        public void GenerateAll() => GenerateSet(Overwrite);
+
+        private void GenerateSet(bool overwrite)
         {
             if (drillSet == null) return;
 
@@ -552,7 +586,7 @@ namespace JumpDrillMod.UI.Medals
             SetStatus(string.Format(CultureInfo.InvariantCulture,
                 "Generating drills... 0/{0}", DrillSetGenerationService.Total));
 
-            drillSet.Start(
+            drillSet.Start(overwrite,
                 (done, total) => SetStatus(string.Format(CultureInfo.InvariantCulture,
                     "Generating drills... {0}/{1}", done, total)),
                 (ok, message) =>
@@ -562,6 +596,61 @@ namespace JumpDrillMod.UI.Medals
                 });
         }
 
+        /// <summary>選んでいる1本を書く。ドリルセットのものだけ（Other は作った設定が分からない）。</summary>
+        [UIAction("generate-selected")]
+        public void GenerateSelected() => GenerateOne(Overwrite);
+
+        private void GenerateOne(bool overwrite)
+        {
+            if (drillSet == null) return;
+
+            if (selectedId == null)
+            {
+                SetStatus("Pick a drill first.");
+                return;
+            }
+
+            var entry = SetEntry(selectedId);
+            if (entry == null)
+            {
+                SetStatus("Only drills in the table can be generated.");
+                return;
+            }
+
+            if (drillSet.IsRunning)
+            {
+                SetStatus("Already generating...");
+                return;
+            }
+
+            // 曲一覧の読み込み中は、譜面があるか分からない
+            if (SongCore.Loader.AreSongsLoading)
+            {
+                SetStatus("Songs are still loading. Try again in a moment.");
+                return;
+            }
+
+            if (!overwrite && launcher != null && !launcher.IsMissing(selectedId))
+            {
+                SetStatus("This drill already exists. Turn on Overwrite to write it again.");
+                return;
+            }
+
+            SetStatus("Generating the drill...");
+            drillSet.StartOne(entry, overwrite, (ok, message) =>
+            {
+                SetStatus(message);
+                if (ok) Rescan();
+            });
+        }
+
+        /// <summary>
+        /// 選んでいるドリルを始める。ドリルセットの譜面がまだ無ければ、その1本だけ作ってから始める。
+        /// </summary>
+        /// <remarks>
+        /// 112本を先にまとめて作らなくても、叩きたいものから叩ける。
+        /// 作っている間に別のドリルを選んだり画面を閉じたりしたら、始めずに知らせだけ出す。
+        /// </remarks>
         [UIAction("play")]
         public void Play()
         {
@@ -571,7 +660,38 @@ namespace JumpDrillMod.UI.Medals
                 return;
             }
 
-            onPlay?.Invoke(selectedId);
+            string id = selectedId;
+            var entry = SetEntry(id);
+            if (entry == null || drillSet == null || launcher == null || !launcher.IsMissing(id))
+            {
+                onPlay?.Invoke(id);
+                return;
+            }
+
+            if (drillSet.IsRunning)
+            {
+                SetStatus("Generating drills. Try again when it is done.");
+                return;
+            }
+
+            SetStatus("Generating the drill...");
+            drillSet.StartOne(entry, overwrite: false, (ok, message) =>
+            {
+                if (ok && isActivated && selectedId == id)
+                {
+                    SetStatus(string.Empty);
+                    onPlay?.Invoke(id);
+                    return;
+                }
+
+                SetStatus(message);
+            });
+        }
+
+        /// <summary>ドリルセットの1本。ドリルセットの ID でなければ null。</summary>
+        private DrillSetEntry? SetEntry(string id)
+        {
+            return rows.SelectMany(r => r.Cells).FirstOrDefault(c => c.Id == id)?.Entry;
         }
 
         // ───────── 塗り ─────────

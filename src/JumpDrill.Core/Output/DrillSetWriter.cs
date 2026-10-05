@@ -25,9 +25,19 @@ namespace JumpDrill.Output
         public static List<string> WriteAll(string root, LevelWriteOptions options,
             Action<int, int, string> progress = null, bool skipExisting = false)
         {
-            if (string.IsNullOrEmpty(root)) throw new ArgumentException(Lang.T("出力先が空です。", "The output folder is empty."), nameof(root));
+            return Write(root, DrillSet.All(), options, progress, skipExisting);
+        }
 
-            var entries = DrillSet.All();
+        /// <summary>
+        /// 指定したマスだけを書く。1本だけ作る・作り直すときに使う。
+        /// 引数の意味は <see cref="WriteAll"/> と同じ。
+        /// </summary>
+        public static List<string> Write(string root, IReadOnlyList<DrillSetEntry> entries, LevelWriteOptions options,
+            Action<int, int, string> progress = null, bool skipExisting = false)
+        {
+            if (string.IsNullOrEmpty(root)) throw new ArgumentException(Lang.T("出力先が空です。", "The output folder is empty."), nameof(root));
+            if (entries == null) throw new ArgumentNullException(nameof(entries));
+
             var folders = new List<string>(entries.Count);
 
             for (int i = 0; i < entries.Count; i++)

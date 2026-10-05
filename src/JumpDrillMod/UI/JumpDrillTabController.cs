@@ -213,6 +213,14 @@ namespace JumpDrillMod.UI
             }
         }
 
+        /// <summary>同じ名前のドリルが既にあるとき書き直すか。</summary>
+        [UIValue("overwrite")]
+        public bool Overwrite
+        {
+            get => Config?.Overwrite ?? true;
+            set { if (Config != null) Config.Overwrite = value; }
+        }
+
         /// <summary>
         /// 左右反転して反対の手にも同じ形を組む（CLI の --mirror）。GUI のチェックと同じ。
         /// グリッドで組むのは片手ぶんで済む。
@@ -355,9 +363,10 @@ namespace JumpDrillMod.UI
                 return;
             }
 
+            // 書き直したときは全部読み直す。差分だけだと、読み込み済みのフォルダは見直されない
             refresher.Refresh(ok => SetStatus(ok
-                ? "Added: " + result.SongName
-                : "Written, but the song list did not reload. Restart the game."));
+                ? (result.Overwrote ? "Overwritten: " : "Added: ") + result.SongName
+                : "Written, but the song list did not reload. Restart the game."), fullRefresh: result.Overwrote);
         }
 
         // ───────── ドリルセット ─────────

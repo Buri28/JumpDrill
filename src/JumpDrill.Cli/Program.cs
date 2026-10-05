@@ -82,6 +82,14 @@ namespace JumpDrill.Cli
             Console.WriteLine(map.Name);
             Console.Write(LevelWriter.Summarize(map));
 
+            if (!dryRun && cmd.Has("skip-existing") &&
+                File.Exists(Path.Combine(outRoot, LevelWriter.SanitizeFolderName(map.Name), "Info.dat")))
+            {
+                Console.WriteLine("  既にあるので書きませんでした（--skip-existing）");
+                Console.WriteLine();
+                return 0;
+            }
+
             if (!dryRun)
             {
                 string folder = LevelWriter.Write(map, outRoot, null, writeOptions);
@@ -451,7 +459,8 @@ namespace JumpDrill.Cli
                      遠い配置（49 85 c9）は BPM ×1/2、
                      横・斜めの遠め（4a 89 86 ca）は ×2/3
                      曲名は {R3bL2a 100} [<ID>] Drill ... で方向・速さ順に並ぶ
-  --skip-existing    すでに書いてある段は飛ばす（途中から再開するとき）
+  --skip-existing    すでに書いてある譜面は飛ばす（一括生成を途中から再開するとき）。
+                     1本だけ作るときも、同じ名前の譜面があれば書かない
   --medals           一括生成のドリルのメダルと Lv を出す（リプレイから読む）
                      🥉 70% / 🥈 80% / 🥇 90% 以上（再現精度）。Lv は 🥉1 🥈2 🥇3 の合計
 
