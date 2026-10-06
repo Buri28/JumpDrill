@@ -167,16 +167,14 @@ BPM は片手あたりの速さで、EBPM と同じ値です。ID は配置・�
 再現精度に応じてメダルとして表示されます（🥉 70% / 🥈 80% / 🥇 90% 以上）。
 Lv はメダルのポイント（🥉1 🥈2 🥇3）の合計で、最大 336 です。
 
-・GUI版／MOD版  
 MOD版は Jump Drill 画面の GENERATE ALL ボタンで 112 本をまとめて作れます。GENERATE ボタンでは選択したドリルだけを作れます。  
 選択したドリルは PLAY ボタンからプレイできます。まだ作っていないドリルは、作ってから始まります。  
-<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/ebb1ab26-98b5-493b-924e-bd281169b7a4" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/b7663832-8ef8-483a-af04-45ac718c9edd" />
-
-
+・GUI版／MOD版  
+<img width="35%" height="35%" alt="image" src="https://github.com/user-attachments/assets/ebb1ab26-98b5-493b-924e-bd281169b7a4" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/b7663832-8ef8-483a-af04-45ac718c9edd" />
 
 ## スコアの見方
-<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/7a5f01ab-7708-454f-8bf0-0eb21c625288" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/365c1fb6-1ac1-49f6-8841-b732b8c68ade" />
-
+・GUI版／MOD版  
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/7a5f01ab-7708-454f-8bf0-0eb21c625288" /><img width="35%" height="35%" alt="image" src="https://github.com/user-attachments/assets/365c1fb6-1ac1-49f6-8841-b732b8c68ade" />
 
 BeatLeader / LocalLeaderboard / JumpDrillMod が保存したリプレイ（`.bsor`）を読み込み、譜面ごとに記録を表示します。
 同じプレイが複数の MOD に保存されている場合は、1 件として数えます。
