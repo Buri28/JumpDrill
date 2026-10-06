@@ -7,7 +7,7 @@ Beat Saber のジャンプ配置を練習するための譜面（ドリル）を
 ドリルのスコアは、どれだけ往復の振りの再現性があるかを示す再現度や再現精度を独自に計算しています。  
 
 PCから使う **アプリ（JumpDrill）** と、BeatSaberで使う **MOD（JumpDrillMod）** があります。  
-どちらも同じドリルを作り、同じリプレイデータを使用するため、片方だけでも使用可能です。  
+どちらも同じドリルを作り、同じ記録(リプレイデータ)を使用するため、片方だけでも使用可能です。  
 
 ・MOD版  
 <img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/c10b201e-631d-4c43-a3e0-d6e4b6581259" />
