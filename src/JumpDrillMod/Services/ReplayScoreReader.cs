@@ -101,11 +101,23 @@ namespace JumpDrillMod.Services
             {
                 string token = "[" + drillId + "]";
 
-                return ListReplayFiles()
-                    .Where(file => Path.GetFileName(file).IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
-                    .Select(file => Analyze(file))
-                    .Where(score => score != null)
-                    .Select(score => score!)
+                // 重複を落とすのは読めたものの中で。先に落とすと、BeatLeader の分が書きかけなどで
+                // 読めなかったときに、同じプレイを残した自分の分まで消えて記録が出ない
+                var scores = new Dictionary<string, DrillScore>(StringComparer.OrdinalIgnoreCase);
+                var readable = new List<string>();   // MOD の並びのまま（RemoveDuplicates は前にあるものを採る）
+                foreach (var file in ListReplayFiles(removeDuplicates: false))
+                {
+                    if (Path.GetFileName(file).IndexOf(token, StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                    var score = Analyze(file);
+                    if (score == null) continue;
+
+                    scores[file] = score;
+                    readable.Add(file);
+                }
+
+                return ReplayLibrary.RemoveDuplicates(readable)
+                    .Select(file => scores[file])
                     // 記録として数えるものを先に。自動プレイと速度を変えたものは比べる相手にならない（GUI と同じ）
                     .OrderBy(s => !s.CountsAsRecord)
                     .ThenByDescending(s => s.ReproducibilityPercent)
@@ -168,7 +180,7 @@ namespace JumpDrillMod.Services
         /// 同じプレイが複数のMODに残っていれば、JumpDrill.Core と同じ決め方
         /// （<c>ReplayLibrary.RemoveDuplicates</c>）で1つにする。
         /// </remarks>
-        private static List<string> ListReplayFiles()
+        private static List<string> ListReplayFiles(bool removeDuplicates = true)
         {
             string userData = InstallPaths.UserData;
             var all = new List<string>();
@@ -183,7 +195,7 @@ namespace JumpDrillMod.Services
                 catch (UnauthorizedAccessException) { }
             }
 
-            return ReplayLibrary.RemoveDuplicates(all);
+            return removeDuplicates ? ReplayLibrary.RemoveDuplicates(all) : all;
         }
 
         /// <summary>

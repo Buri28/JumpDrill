@@ -171,6 +171,26 @@ namespace JumpDrill.Replays
             return order.Where(file => !dropped.Contains(file)).ToList();
         }
 
+        /// <summary>
+        /// 同じプレイのリプレイか。<see cref="RemoveDuplicates"/> と同じ見方で、
+        /// 名前が揃うか、譜面が同じで開始時刻が <see cref="SamePlaySeconds"/> 秒以内なら同じとみなす。
+        /// </summary>
+        /// <returns>同じなら開始時刻のずれ（秒）。違えば -1。</returns>
+        public static long SamePlayGap(string a, string b)
+        {
+            if (string.Equals(NormalizeName(Path.GetFileNameWithoutExtension(a)),
+                              NormalizeName(Path.GetFileNameWithoutExtension(b)), StringComparison.OrdinalIgnoreCase))
+                return 0;
+
+            string mapA, mapB;
+            long startA, startB;
+            if (!TryParsePlay(a, out mapA, out startA) || !TryParsePlay(b, out mapB, out startB)) return -1;
+            if (!string.Equals(mapA, mapB, StringComparison.OrdinalIgnoreCase)) return -1;
+
+            long gap = Math.Abs(startA - startB);
+            return gap <= SamePlaySeconds ? gap : -1;
+        }
+
         /// <summary>JumpDrillMod が自分で残したリプレイか（置き場のフォルダで見る）。</summary>
         public static bool IsOwnRecording(string file)
         {

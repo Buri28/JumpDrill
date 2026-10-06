@@ -93,18 +93,33 @@ namespace JumpDrillMod.UI.Leaderboard
         /// <remarks>
         /// 戻った後も枠は何度か読み直される（曲選択に戻ったとき・リプレイを書き終えたとき）。
         /// 1回選んだだけだと次の読み直しでベストに戻るので、行を押すか別の譜面に移るまでは選び続ける。
+        ///
+        /// 一覧に出るのがこのMODのリプレイとは限らない。BeatLeader も同じプレイを残していればそちらが出る
+        /// （BeatLeader が書き終えるのが後なら、最初は自分の分、読み直すと BeatLeader の分）。
+        /// なのでファイル名ではなく、同じプレイかどうかで探す。
         /// </remarks>
         private void SelectJustPlayed()
         {
             string? latest = Gameplay.DrillReplayRecorder.LastSavedPath;
             if (latest == null || latest == justPlayedDone) return;
 
+            int found = -1;
+            long nearest = long.MaxValue;
             for (int i = 0; i < scores.Count; i++)
             {
-                if (!string.Equals(scores[i].ReplayPath, latest, StringComparison.OrdinalIgnoreCase)) continue;
+                long gap = string.Equals(scores[i].ReplayPath, latest, StringComparison.OrdinalIgnoreCase)
+                    ? 0
+                    : JumpDrill.Replays.ReplayLibrary.SamePlayGap(scores[i].ReplayPath, latest);
+                if (gap < 0 || gap >= nearest) continue;
 
-                selected = i;
-                page = i / Rows;
+                found = i;
+                nearest = gap;
+            }
+
+            if (found >= 0)
+            {
+                selected = found;
+                page = found / Rows;
                 lastShown = latest;
                 return;
             }
