@@ -279,26 +279,48 @@ namespace JumpDrill.Replays
         public double Score { get; internal set; }
 
         /// <summary>
-        /// 再現スコア。<c>再現性 % × 振り数</c>。
-        /// 綺麗さと本数の両方が要る形にした素点。
+        /// 有効振りに掛かった倍率の合計。振り 1 本ごとに、その振りが行き着いたノーツ（切ったノーツ）に
+        /// 本体が掛けたコンボ倍率を足したもの。
         /// </summary>
-        public double ReproducibilityScore { get { return Score * SwingCount; } }
+        public int SwingMultiplierSum { get; internal set; }
 
         /// <summary>
-        /// 再現精度 %。満点は「振れるはずのノーツを全部、再現性 100 で振る」。
+        /// 再現スコア。<c>再現性 % × 有効振りに掛かった倍率の合計</c>。
+        /// 綺麗さと本数の両方が要る形にした素点。精度 % と同じく、ミスで倍率が下がったあとの振りは軽く数える。
+        /// </summary>
+        public double ReproducibilityScore { get { return Score * SwingMultiplierSum; } }
+
+        /// <summary>
+        /// この手の満点の倍率の合計。<see cref="Accuracy"/> の満点を 115 で割ったもの。
+        /// リプレイに残ったノーツはその時点の満点の倍率、残っていないノーツは ×8 で数える。
+        /// </summary>
+        public long MaxMultiplierSum
+        {
+            get
+            {
+                return PlayedMaxScore / NoteScore.Max
+                    + (long)NoteScore.MaxMultiplier * Math.Max(NoteCount - PlayedNotes, 0);
+            }
+        }
+
+        /// <summary>
+        /// 再現精度 %。満点は「譜面のノーツを全部ミスなしで、再現性 100 で振る」。
         ///
-        /// <code>再現スコア / (100 × 振れるはずの数) × 100</code>
+        /// <code>再現スコア / (100 × 満点の倍率の合計) × 100</code>
         ///
         /// 分母が<b>実際に振れた数ではない</b>のが要点。
         /// 再現性そのものは本数を見ないので、少ししか振らずに崩れる前にやめた記録が
-        /// 上位に出てしまう。ミスして振れなかったぶんはここで引かれる。
+        /// 上位に出てしまう。ミスして振れなかったぶんと、ミスで倍率が下がったぶんはここで引かれる。
         ///
-        /// 分母は <see cref="SwingableCount"/>（＝ノーツ数）。
-        /// ミス0・再現100 ならちょうど 100% になる。
+        /// 分母は <see cref="MaxMultiplierSum"/>。ミス0・再現100 ならちょうど 100% になる。
         /// </summary>
         public double ReproducibilityPercent
         {
-            get { return SwingableCount == 0 ? 0.0 : ReproducibilityScore / SwingableCount; }
+            get
+            {
+                long max = MaxMultiplierSum;
+                return max == 0 ? 0.0 : ReproducibilityScore / max;
+            }
         }
 
         /// <summary>
@@ -360,11 +382,12 @@ namespace JumpDrill.Replays
         /// </summary>
         public double Score { get; internal set; }
 
-        /// <summary>再現スコア。手ごとの「再現性 % × 振り数」の合計。</summary>
+        /// <summary>再現スコア。手ごとの「再現性 % × 有効振りに掛かった倍率の合計」の合計。</summary>
         public double ReproducibilityScore { get; internal set; }
 
         /// <summary>
-        /// 再現精度 %。<c>再現スコア / (100 × 両手の振れるはずの数) × 100</c>。
+        /// 再現精度 %。<c>再現スコア / (100 × 譜面の満点の倍率の合計) × 100</c>。
+        /// 満点の倍率の合計は <see cref="NoteScore.MaxMultipliedScore"/> を 115 で割ったもの。
         /// <b>順位はこれで付ける。</b>綺麗さと本数の両方が要る。
         /// </summary>
         public double ReproducibilityPercent { get; internal set; }
@@ -521,13 +544,15 @@ namespace JumpDrill.Replays
             result.DurationSeconds = replay.Frames.Count > 0 ? replay.Frames[replay.Frames.Count - 1].Time : 0.0;
             ResolveTempo(replay, result);
 
+            var combo = CountCombo(replay);
+
             foreach (var saberType in new[] { 0, 1 })
             {
-                var hand = AnalyzeHand(replay, saberType);
+                var hand = AnalyzeHand(replay, saberType, combo.Multipliers);
                 if (hand != null) result.PerHand.Add(hand);
             }
 
-            ApplyCombo(replay, result);
+            ApplyCombo(combo, result);
             Combine(result);
             return result;
         }
@@ -580,11 +605,12 @@ namespace JumpDrill.Replays
             score.NoteCount = score.MapNotesLeft + score.MapNotesRight;
             score.SwingableCount = score.NoteCount;
 
-            score.ReproducibilityPercent = score.SwingableCount > 0
-                ? score.ReproducibilityScore / score.SwingableCount
+            long max = NoteScore.MaxMultipliedScore(score.NoteCount);
+
+            score.ReproducibilityPercent = max > 0
+                ? score.ReproducibilityScore / (max / NoteScore.Max)
                 : 0.0;
 
-            long max = NoteScore.MaxMultipliedScore(score.NoteCount);
             int recorded = score.Replay != null ? score.Replay.Info.Score : 0;
             long got = recorded > 0 ? recorded : score.MultipliedScore;
             score.Accuracy = max > 0 ? got * 100.0 / max : 0.0;
@@ -598,13 +624,14 @@ namespace JumpDrill.Replays
         /// チェーン（バーストスライダー）は扱わない。本体は頭を 85 点満点、リンクを 20 点満点で数えるが、
         /// ここではどのノーツも 115 点満点として数える。ドリルにはチェーンが無い。
         /// </summary>
-        private static void ApplyCombo(Replay replay, ReplayScore result)
+        private static ComboTally CountCombo(Replay replay)
         {
             var combo = new ComboMultiplier();
             var max = new ComboMultiplier();
-            var score = new long[2];
-            var playedMax = new long[2];
-            var played = new int[2];
+            var tally = new ComboTally();
+            var score = tally.Score;
+            var playedMax = tally.PlayedMax;
+            var played = tally.Played;
 
             var events = replay.Notes.Select(n => new KeyValuePair<float, ReplayNote>(n.EventTime, n))
                 .Concat(replay.WallHits.Select(t => new KeyValuePair<float, ReplayNote>(t, null)))
@@ -624,10 +651,41 @@ namespace JumpDrill.Replays
                 playedMax[hand] += (long)NoteScore.Max * max.Hit();
 
                 if (note.EventType == NoteEventType.Good && note.Cut != null)
-                    score[hand] += (long)NoteScore.Total(note.Cut) * combo.Hit();
+                {
+                    int multiplier = combo.Hit();
+                    tally.Multipliers[note] = multiplier;
+                    score[hand] += (long)NoteScore.Total(note.Cut) * multiplier;
+                }
                 else
+                {
                     combo.Break();
+                }
             }
+
+            return tally;
+        }
+
+        /// <summary><see cref="CountCombo"/> の結果。</summary>
+        private sealed class ComboTally
+        {
+            /// <summary>切れたノーツごとに、本体が掛けた倍率。</summary>
+            public readonly Dictionary<ReplayNote, int> Multipliers = new Dictionary<ReplayNote, int>();
+
+            /// <summary>手ごと（0 左・1 右）の倍率込みの点。</summary>
+            public readonly long[] Score = new long[2];
+
+            /// <summary>手ごとの、リプレイに残ったノーツの倍率込みの満点。</summary>
+            public readonly long[] PlayedMax = new long[2];
+
+            /// <summary>手ごとの、リプレイに残ったノーツ数（爆弾を除く）。</summary>
+            public readonly int[] Played = new int[2];
+        }
+
+        private static void ApplyCombo(ComboTally tally, ReplayScore result)
+        {
+            var score = tally.Score;
+            var playedMax = tally.PlayedMax;
+            var played = tally.Played;
 
             result.MultipliedScore = score[0] + score[1];
 
@@ -828,7 +886,7 @@ namespace JumpDrill.Replays
             return gaps[gaps.Count / 2];
         }
 
-        private static SwingScore AnalyzeHand(Replay replay, int saberType)
+        private static SwingScore AnalyzeHand(Replay replay, int saberType, Dictionary<ReplayNote, int> multipliers)
         {
             var cuts = replay.Notes
                 .Where(n => n.EventType == NoteEventType.Good && n.Cut != null && n.Cut.SaberType == saberType)
@@ -860,6 +918,9 @@ namespace JumpDrill.Replays
 
             var groupFore = new Dictionary<string, bool>();
 
+            // 遷移ごとの、振りが行き着いたノーツに掛かった倍率の合計。再現精度 % の重み。
+            var groupMultipliers = new Dictionary<string, int>();
+
             // 打点は間隔ではなくノーツごとの判定ずれで測る。
             var deviations = cuts.Select(c => c.Cut.TimeDeviation * 1000.0).ToList();
 
@@ -868,11 +929,11 @@ namespace JumpDrill.Replays
             var sequence = HandSequence(replay, saberType);
             var first = VirtualPredecessor(cuts);
             if (first != null && sequence.Count > 0 && sequence[0] == cuts[0])
-                AddTransition(groups, spans, lines, groupFore, forehand, replay, saberType, first, cuts[0],
+                AddTransition(groups, spans, lines, groupFore, groupMultipliers, multipliers, forehand, replay, saberType, first, cuts[0],
                     cuts[0].EventTime - (float)(MedianGap(cuts) / 1000.0));
 
             foreach (var pair in CleanPairs(sequence, saberType))
-                AddTransition(groups, spans, lines, groupFore, forehand, replay, saberType, pair.Key, pair.Value,
+                AddTransition(groups, spans, lines, groupFore, groupMultipliers, multipliers, forehand, replay, saberType, pair.Key, pair.Value,
                     pair.Key.EventTime);
 
             // 先に格子の当てはめ誤差を1つ求める。往復で反転する成分だけがそこに入る。
@@ -894,12 +955,14 @@ namespace JumpDrill.Replays
             double lengthSum = 0.0;
             double spanSum = 0.0;
             int spreadWeight = 0;
+            int multiplierSum = 0;
 
             foreach (var pair in groups)
             {
                 var group = pair.Value;
                 if (group.Count < MinimumSwingsPerGroup) continue;
 
+                multiplierSum += groupMultipliers[pair.Key];
                 spreadSum += SpreadFromLine(group, lines[pair.Key], anchorX, anchorY) * group.Count;
                 scatterSum += SpreadFromMean(group) * group.Count;
                 lengthSum += group.Sum(PathLength);
@@ -926,6 +989,7 @@ namespace JumpDrill.Replays
                 Fore = DirectionOf(true, cuts, misses, forehand, groups, groupFore),
                 Back = DirectionOf(false, cuts, misses, forehand, groups, groupFore),
                 SwingCount = spreadWeight,
+                SwingMultiplierSum = multiplierSum,
                 TrajectorySpread = spreadMean,
                 PathScatter = scatterMean,
                 RoundTripGap = roundTrip,
@@ -1045,6 +1109,8 @@ namespace JumpDrill.Replays
             Dictionary<string, double> spans,
             Dictionary<string, Line> lines,
             Dictionary<string, bool> groupFore,
+            Dictionary<string, int> groupMultipliers,
+            Dictionary<ReplayNote, int> multipliers,
             Dictionary<ReplayNote, bool> forehand,
             Replay replay, int saberType, ReplayNote from, ReplayNote to, float fromTime)
         {
@@ -1065,8 +1131,12 @@ namespace JumpDrill.Replays
                 spans[key] = GridDistance(from, to);
                 lines[key] = Line.Between(from, to);
                 groupFore[key] = ForehandOf(forehand, to);
+                groupMultipliers[key] = 0;
             }
             list.Add(path);
+
+            int multiplier;
+            groupMultipliers[key] += multipliers.TryGetValue(to, out multiplier) ? multiplier : 1;
         }
 
         /// <summary>

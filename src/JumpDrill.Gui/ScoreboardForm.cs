@@ -981,7 +981,7 @@ namespace JumpDrill.Gui
                 // ここから JumpDrill 独自。
                 // 行きと帰りを突き合わせて出す値なので、片側だけでは定義できない。
                 AddHand(Lang.T("再現 /100", "Repro /100"), score.Score.ToString("0.0", ci), left, right, h => h.Score.ToString("0.0", ci));
-                // 再現 /100 × 振り数。振れた本数ぶんの素点なので、ここは残す。
+                // 再現 /100 × 有効振りに掛かった倍率の合計。振れた本数ぶんの素点なので、ここは残す。
                 AddHand(Lang.T("再現スコア", "Repro score"), score.ReproducibilityScore.ToString("0", ci), left, right, h => h.ReproducibilityScore.ToString("0", ci));
                 // 再現の元になる生の値。行きと帰りが何 m 離れているか。
                 AddHand(Lang.T("往復ずれ m", "Round-trip gap m"), score.RoundTripGap.ToString("0.0000", ci), left, right, h => h.RoundTripGap.ToString("0.0000", ci));

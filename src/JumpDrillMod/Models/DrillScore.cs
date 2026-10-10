@@ -28,7 +28,7 @@ namespace JumpDrillMod.Models
 
         /// <summary>
         /// 再現精度 %。<b>順位を決める値。</b>
-        /// JumpDrill の GUI のスコアボードと同じ指標で、<c>再現性 % × 振り数 ÷ ノーツ数</c>。
+        /// JumpDrill の GUI のスコアボードと同じ指標で、<c>再現性 % × 有効振りに掛かった倍率の合計 ÷ 譜面の満点の倍率の合計</c>。
         /// </summary>
         public double ReproducibilityPercent { get; set; }
 
@@ -66,7 +66,7 @@ namespace JumpDrillMod.Models
         /// <summary>実際に振った数。</summary>
         public int SwingCount { get; set; }
 
-        /// <summary>振れるはずだった数（＝譜面のノーツ数）。再現精度 % の分母。</summary>
+        /// <summary>振れるはずだった数（＝譜面のノーツ数）。</summary>
         public int SwingableCount { get; set; }
 
         public int MissCount { get; set; }

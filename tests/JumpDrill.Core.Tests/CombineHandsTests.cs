@@ -164,20 +164,21 @@ namespace JumpDrill.Core.Tests
         {
             var score = SwingAnalyzer.Analyze(BuildTwoHands(80, 10, rightJitter: 0.004, leftJitter: 1.2));
 
-            // 再現スコア = 手ごとの「再現性 % × 振り数」の合計。
-            Assert.Equal(score.PerHand.Sum(h => h.Score * h.SwingCount), score.ReproducibilityScore, 6);
+            // 再現スコア = 手ごとの「再現性 % × 有効振りに掛かった倍率の合計」の合計。
+            Assert.Equal(score.PerHand.Sum(h => h.Score * h.SwingMultiplierSum), score.ReproducibilityScore, 6);
 
-            // 再現スコア % = 再現スコア / (100 × 振れるはずの数) × 100。
-            int swingable = score.PerHand.Sum(h => h.SwingableCount);
-            Assert.Equal(score.ReproducibilityScore / (100.0 * swingable) * 100.0, score.ReproducibilityPercent, 9);
+            // 再現精度 % = 再現スコア / (100 × 満点の倍率の合計) × 100。
+            long maxMultipliers = NoteScore.MaxMultipliedScore(score.NoteCount) / NoteScore.Max;
+            Assert.Equal(score.ReproducibilityScore / (100.0 * maxMultipliers) * 100.0, score.ReproducibilityPercent, 9);
 
             // 手ごとに見れば、綺麗さだけの再現性より必ず低いか同じ。
-            // 振り数はノーツ数を超えられないので、振れなかったぶんが引かれる。
+            // 振りに掛かった倍率は満点の倍率を超えられないので、振れなかったぶんが引かれる。
             foreach (var hand in score.PerHand)
             {
-                // 循環なので最初のノーツにも前の点が決まっている。満点はノーツ数と同じ。
+                // 循環なので最初のノーツにも前の点が決まっている。振れるはずの数はノーツ数と同じ。
                 Assert.Equal(hand.NoteCount, hand.SwingableCount);
                 Assert.True(hand.SwingCount <= hand.SwingableCount);
+                Assert.True(hand.SwingMultiplierSum <= hand.MaxMultiplierSum);
                 Assert.True(hand.ReproducibilityPercent <= hand.Score);
             }
 
@@ -229,6 +230,18 @@ namespace JumpDrill.Core.Tests
             Assert.Equal(score.MultipliedScore * 100.0 / NoteScore.MaxMultipliedScore(82), score.Accuracy, 9);
         }
 
+        [Fact]
+        public void A_miss_also_lowers_the_weight_of_the_swings_after_it()
+        {
+            // 精度 % と同じく、ミスのあとは倍率が下がるので、その後の振りも軽く数える。
+            var clean = SwingAnalyzer.Analyze(BuildTwoHands(60, 0, 0.0, 0.0)).Hand(1);
+            var missed = SwingAnalyzer.Analyze(BuildTwoHands(60, 0, 0.0, 0.0, missAt: 30)).Hand(1);
+
+            // 振りはミスの前後の 2 本だけ減る。倍率の合計は、その 2 本ぶん（×8 で 16）より多く減る。
+            Assert.Equal(clean.SwingCount - 2, missed.SwingCount);
+            Assert.True(clean.SwingMultiplierSum - missed.SwingMultiplierSum > 2 * 8);
+        }
+
         [Theory]
         [InlineData("none", 97)]
         [InlineData("bomb", 73)]
@@ -273,8 +286,8 @@ namespace JumpDrill.Core.Tests
             double perHandMean = score.PerHand.Average(h => h.ReproducibilityPercent);
             Assert.NotEqual(perHandMean, score.ReproducibilityPercent, 3);
 
-            int swingable = score.PerHand.Sum(h => h.SwingableCount);
-            Assert.Equal(score.PerHand.Sum(h => h.ReproducibilityScore) / swingable, score.ReproducibilityPercent, 9);
+            long maxMultipliers = NoteScore.MaxMultipliedScore(score.NoteCount) / NoteScore.Max;
+            Assert.Equal(score.PerHand.Sum(h => h.ReproducibilityScore) / maxMultipliers, score.ReproducibilityPercent, 9);
         }
 
         [Fact]
@@ -356,7 +369,8 @@ namespace JumpDrill.Core.Tests
             SwingAnalyzer.ApplyMapNotes(score, leftNotes: 0, rightNotes: 80);
 
             Assert.True(score.ReproducibilityPercent < asRecorded);
-            Assert.Equal(score.ReproducibilityScore / 80.0, score.ReproducibilityPercent, 9);
+            Assert.Equal(score.ReproducibilityScore / (NoteScore.MaxMultipliedScore(80) / NoteScore.Max),
+                score.ReproducibilityPercent, 9);
         }
 
         [Fact]
@@ -398,11 +412,11 @@ namespace JumpDrill.Core.Tests
             Assert.Equal(a.GoodCount - 1, b.GoodCount);
             Assert.Equal(a.SwingCount - 2, b.SwingCount);
 
-            // 満点は同じまま。無傷ではなく、ちょうど2本ぶん落ちる。
-            Assert.Equal(a.SwingableCount, b.SwingableCount);
+            // 満点は同じまま。無傷ではなく、2本ぶんと、ミスで倍率が下がったぶんが落ちる。
+            Assert.Equal(a.MaxMultiplierSum, b.MaxMultiplierSum);
             Assert.True(b.ReproducibilityPercent < a.ReproducibilityPercent);
 
-            Assert.Equal(a.Score * (a.SwingCount - 2) / a.SwingableCount, b.ReproducibilityPercent, 6);
+            Assert.Equal(b.Score * b.SwingMultiplierSum / b.MaxMultiplierSum, b.ReproducibilityPercent, 6);
         }
 
         [Fact]
