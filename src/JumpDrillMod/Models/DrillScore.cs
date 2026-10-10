@@ -45,7 +45,7 @@ namespace JumpDrillMod.Models
         /// <summary>右手だけの再現精度 %。その手の振りが無ければ null。</summary>
         public double? RightReproducibilityPercent { get; set; }
 
-        /// <summary>左手だけの精度 %。ミスを 0 点として数える（全体の精度と同じ出し方）。</summary>
+        /// <summary>左手だけの精度 %。全体の精度 % を左手のノーツだけで出したもの（コンボ倍率込み）。</summary>
         public double? LeftAccuracy { get; set; }
 
         /// <summary>右手だけの精度 %。</summary>
@@ -60,7 +60,7 @@ namespace JumpDrillMod.Models
         /// <summary>再現性 %。全ての振りが1本の線に重なれば 100。本数は見ない。</summary>
         public double Reproducibility { get; set; }
 
-        /// <summary>精度 %。本体と同じ出し方（総合 /115）。</summary>
+        /// <summary>精度 %。ゲームの結果画面・BeatLeader の Acc と同じ値（コンボ倍率込みのスコア ÷ 譜面の満点）。</summary>
         public double Accuracy { get; set; }
 
         /// <summary>実際に振った数。</summary>

@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 
 namespace JumpDrillMod.Gameplay
@@ -17,6 +19,33 @@ namespace JumpDrillMod.Gameplay
     [HarmonyPatch(typeof(ScoreController), "LateUpdate")]
     internal static class ScoreControllerPatch
     {
+        /// <summary>
+        /// 外されていたらかけ直す。記録を始めるたびに呼ぶ。
+        /// </summary>
+        /// <remarks>
+        /// BeatLeader はリプレイの再生中この処理を止めていて、再生を終えると
+        /// 自分の分だけでなく<b>全MODの Prefix</b> を外す（<c>HarmonySilencer.Dispose</c> が
+        /// <c>Unpatch(method, Prefix, "*")</c>）。そのままだと再生の後はノーツが1つも記録されない。
+        /// </remarks>
+        internal static void EnsurePatched()
+        {
+            try
+            {
+                var original = AccessTools.Method(typeof(ScoreController), "LateUpdate");
+                if (original == null) return;
+
+                var info = Harmony.GetPatchInfo(original);
+                if (info != null && info.Prefixes.Any(p => p.owner == Plugin.HarmonyId)) return;
+
+                new Harmony(Plugin.HarmonyId).CreateClassProcessor(typeof(ScoreControllerPatch)).Patch();
+                Plugin.Log?.Info("ScoreController patch was removed by another mod; patched again");
+            }
+            catch (Exception e)
+            {
+                Plugin.Log?.Error("could not patch ScoreController again: " + e);
+            }
+        }
+
         private static void Prefix(AudioTimeSyncController ____audioTimeSyncController,
             List<float> ____sortedNoteTimesWithoutScoringElements,
             List<ScoringElement> ____sortedScoringElementsWithoutMultiplier)

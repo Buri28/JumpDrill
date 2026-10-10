@@ -96,6 +96,42 @@ namespace JumpDrill.Tests
             Assert.Equal(0, NoteScore.Total(null));
             Assert.Equal(0.0, NoteScore.TimeDependence(null), 9);
         }
+
+        [Theory]
+        [InlineData(0, 0)]
+        [InlineData(1, 115 * 1)]                     // ×1 が 1 個
+        [InlineData(5, 115 * (1 + 2 * 4))]           // ×2 が 4 個
+        [InlineData(13, 115 * (1 + 8 + 4 * 8))]      // ×4 が 8 個
+        [InlineData(14, 115 * (1 + 8 + 32 + 8))]     // 14 個目から ×8
+        public void The_max_score_follows_the_combo_multiplier(int notes, long expected)
+        {
+            Assert.Equal(expected, NoteScore.MaxMultipliedScore(notes));
+        }
+
+        [Fact]
+        public void The_multiplier_goes_up_before_it_is_applied()
+        {
+            // 本体は倍率を上げてからそのノーツに掛ける。
+            var combo = new ComboMultiplier();
+            Assert.Equal(1, combo.Hit());
+            Assert.Equal(2, combo.Hit());
+            for (int i = 0; i < 11; i++) combo.Hit();
+            Assert.Equal(8, combo.Hit());   // 14 個目
+        }
+
+        [Fact]
+        public void A_break_drops_the_multiplier_one_step()
+        {
+            var combo = new ComboMultiplier();
+            for (int i = 0; i < 14; i++) combo.Hit();
+
+            combo.Break();
+            Assert.Equal(4, combo.Multiplier);
+
+            // ×4 から ×8 へは、また 8 個続けて切る。8 個目から ×8 が掛かる。
+            for (int i = 0; i < 7; i++) Assert.Equal(4, combo.Hit());
+            Assert.Equal(8, combo.Hit());
+        }
     }
 
     /// <summary>

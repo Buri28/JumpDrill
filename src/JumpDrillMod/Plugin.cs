@@ -54,7 +54,9 @@ namespace JumpDrillMod
         /// 本体の処理への差し込み。リプレイを BeatLeader と同じ値で残すのに使う
         /// （<see cref="Gameplay.ScoreControllerPatch"/>、<see cref="Gameplay.SwingRatingPatches"/>）。
         /// </summary>
-        private readonly HarmonyLib.Harmony harmony = new HarmonyLib.Harmony("JumpDrillMod");
+        private readonly HarmonyLib.Harmony harmony = new HarmonyLib.Harmony(HarmonyId);
+
+        internal const string HarmonyId = "JumpDrillMod";
 
         [OnEnable]
         public void OnEnable()

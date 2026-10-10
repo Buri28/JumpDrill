@@ -267,5 +267,11 @@ namespace JumpDrill.Replays
         public ReplayInfo Info = new ReplayInfo();
         public List<ReplayFrame> Frames = new List<ReplayFrame>();
         public List<ReplayNote> Notes = new List<ReplayNote>();
+
+        /// <summary>
+        /// 壁に頭が入った時刻 (秒)。本体はここでコンボ倍率を1段下げる。
+        /// ドリルには壁が無いので、JumpDrillMod の記録では常に空。
+        /// </summary>
+        public List<float> WallHits = new List<float>();
     }
 }

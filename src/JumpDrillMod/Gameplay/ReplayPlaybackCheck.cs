@@ -23,13 +23,16 @@ namespace JumpDrillMod.Gameplay
             ("LocalLeaderboard", "LocalLeaderboard.AffinityPatches.ExtraSongData", "IsLocalLeaderboardReplay"),
         };
 
-        internal static bool IsPlayingBack()
+        internal static bool IsPlayingBack() => PlayingBackBy() != null;
+
+        /// <summary>再生中だと言っている印（型名.メンバー名）。再生中でなければ null。</summary>
+        internal static string? PlayingBackBy()
         {
             foreach (var (plugin, type, member) in Flags)
             {
-                if (ReadFlag(plugin, type, member)) return true;
+                if (ReadFlag(plugin, type, member)) return type + "." + member;
             }
-            return false;
+            return null;
         }
 
         private static bool ReadFlag(string pluginId, string typeName, string member)

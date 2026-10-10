@@ -79,6 +79,23 @@ namespace JumpDrill.Replays
             return SwingAngle(cut) + CutDistance(cut);
         }
 
+        /// <summary>コンボ倍率の上限。</summary>
+        public const int MaxMultiplier = 8;
+
+        /// <summary>
+        /// ノーツ数 <paramref name="noteCount"/> の譜面の満点。本体の <c>ScoreModel</c> と同じで、
+        /// 全ノーツを 115 点で切ったときの倍率込みの合計。
+        /// 倍率は上げてから掛けるので、×1 が 1 個、×2 が 4 個、×4 が 8 個、
+        /// 14 個目からが ×8 になる（BeatLeader の満点の出し方とも同じ）。
+        /// </summary>
+        public static long MaxMultipliedScore(int noteCount)
+        {
+            var combo = new ComboMultiplier();
+            long total = 0;
+            for (int i = 0; i < noteCount; i++) total += (long)Max * combo.Hit();
+            return total;
+        }
+
         private static double Clamp01(double value)
         {
             if (value < 0.0) return 0.0;

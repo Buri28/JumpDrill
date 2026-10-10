@@ -204,7 +204,7 @@ namespace JumpDrill.Replays
         /// <summary>
         /// この手のノーツ数。<b>満点の分母。</b>
         ///
-        /// 既定はリプレイに出たぶん（切れたもの＋ミス）。譜面が見つかれば
+        /// 既定はリプレイに出たぶん（Good・Bad Cut・ミス）。譜面が見つかれば
         /// <see cref="SwingAnalyzer.ApplyMapNotes"/> が譜面の数で上書きする。
         /// 途中でやめた記録は、そこから先のノーツがリプレイに残らないので、
         /// リプレイ由来のままだと振らなかったぶんが満点から消えてしまう。
@@ -302,20 +302,32 @@ namespace JumpDrill.Replays
         }
 
         /// <summary>
-        /// 精度 %。<b>ミスを 0 点として数えた</b>素点の割合。
+        /// この手のノーツの、コンボ倍率込みの点の合計。
+        /// 倍率は両手で1つなので、もう片方の手のミスでもこの手の倍率が下がる。
+        /// </summary>
+        public long MultipliedScore { get; internal set; }
+
+        /// <summary>リプレイに残ったこの手のノーツ（Good・Bad・ミス）の、倍率込みの満点の合計。</summary>
+        public long PlayedMaxScore { get; internal set; }
+
+        /// <summary>リプレイに残ったこの手のノーツ数（Good・Bad・ミス）。</summary>
+        public int PlayedNotes { get; internal set; }
+
+        /// <summary>
+        /// この手の精度 %。全体の精度 % をこの手のノーツだけで出したもの。
         ///
-        /// <code>切れたノーツの素点の合計 / (115 × ノーツ数) × 100</code>
+        /// <code>この手の倍率込みの点 / この手の倍率込みの満点 × 100</code>
         ///
-        /// 総合 /115 は切れたノーツだけの平均なので、ミスが多くても下がらない。
-        /// 実際にどれだけ取れているかはこちらで見る。
-        /// コンボ倍率は入っていない（1ノーツあたりで見る値）。
+        /// 満点は、リプレイに残ったノーツはその時点の満点の倍率、
+        /// 残っていないノーツ（途中でやめた後）は ×8 で数える。
         /// </summary>
         public double Accuracy
         {
             get
             {
-                return NoteCount == 0 ? 0.0
-                    : AverageCut * GoodCount / (NoteScore.Max * (double)NoteCount) * 100.0;
+                long max = PlayedMaxScore
+                    + (long)NoteScore.Max * NoteScore.MaxMultiplier * Math.Max(NoteCount - PlayedNotes, 0);
+                return max == 0 ? 0.0 : MultipliedScore * 100.0 / max;
             }
         }
     }
@@ -357,8 +369,20 @@ namespace JumpDrill.Replays
         /// </summary>
         public double ReproducibilityPercent { get; internal set; }
 
-        /// <summary>精度 %。ミスを 0 点として数えた素点の割合。</summary>
+        /// <summary>
+        /// 精度 %。ゲームの結果画面・BeatLeader の Acc と同じ値。
+        ///
+        /// <code>スコア / 譜面の満点 × 100</code>
+        ///
+        /// スコアはコンボ倍率込み・モディファイア倍率を掛ける前の点
+        /// （本体の <c>multipliedScore</c>。リプレイの <see cref="ReplayInfo.Score"/>）。
+        /// 満点は <see cref="NoteScore.MaxMultipliedScore"/>（譜面の全ノーツを 115 点で切ったとき）。
+        /// リプレイにスコアが無ければ、ノーツから数え直した <see cref="MultipliedScore"/> を使う。
+        /// </summary>
         public double Accuracy { get; internal set; }
+
+        /// <summary>ノーツから数え直した、コンボ倍率込みの点の合計（両手）。</summary>
+        public long MultipliedScore { get; internal set; }
 
         /// <summary>
         /// 譜面のノーツ数（両手ぶん）。<b>満点の分母。</b>
@@ -503,6 +527,7 @@ namespace JumpDrill.Replays
                 if (hand != null) result.PerHand.Add(hand);
             }
 
+            ApplyCombo(replay, result);
             Combine(result);
             return result;
         }
@@ -543,7 +568,7 @@ namespace JumpDrill.Replays
                 int notes = score.MapNotesFor(hand.SaberType);
 
                 // 譜面より多く記録されることは無いが、読み違いで縮めては困るので大きい方を採る。
-                hand.NoteCount = Math.Max(notes, hand.GoodCount + hand.MissCount);
+                hand.NoteCount = Math.Max(notes, hand.PlayedNotes);
             }
 
             Rescale(score);
@@ -552,8 +577,6 @@ namespace JumpDrill.Replays
         /// <summary>満点の分母が決まったところで、割合の欄を出し直す。</summary>
         private static void Rescale(ReplayScore score)
         {
-            var hands = score.PerHand;
-
             score.NoteCount = score.MapNotesLeft + score.MapNotesRight;
             score.SwingableCount = score.NoteCount;
 
@@ -561,14 +584,77 @@ namespace JumpDrill.Replays
                 ? score.ReproducibilityScore / score.SwingableCount
                 : 0.0;
 
-            score.Accuracy = score.NoteCount > 0
-                ? hands.Sum(h => h.AverageCut * h.GoodCount) / (NoteScore.Max * (double)score.NoteCount) * 100.0
-                : 0.0;
+            long max = NoteScore.MaxMultipliedScore(score.NoteCount);
+            int recorded = score.Replay != null ? score.Replay.Info.Score : 0;
+            long got = recorded > 0 ? recorded : score.MultipliedScore;
+            score.Accuracy = max > 0 ? got * 100.0 / max : 0.0;
+        }
+
+        /// <summary>
+        /// コンボ倍率込みの点を、ノーツの起きた順（切った・逃した時刻の順）に数え直す。
+        /// 本体も、前のノーツの結果を待たずに切れたノーツから倍率を進めるので、ノーツの時刻順ではない。
+        /// Bad Cut・ミス・爆弾・壁で倍率が下がる。
+        ///
+        /// チェーン（バーストスライダー）は扱わない。本体は頭を 85 点満点、リンクを 20 点満点で数えるが、
+        /// ここではどのノーツも 115 点満点として数える。ドリルにはチェーンが無い。
+        /// </summary>
+        private static void ApplyCombo(Replay replay, ReplayScore result)
+        {
+            var combo = new ComboMultiplier();
+            var max = new ComboMultiplier();
+            var score = new long[2];
+            var playedMax = new long[2];
+            var played = new int[2];
+
+            var events = replay.Notes.Select(n => new KeyValuePair<float, ReplayNote>(n.EventTime, n))
+                .Concat(replay.WallHits.Select(t => new KeyValuePair<float, ReplayNote>(t, null)))
+                .OrderBy(e => e.Key);
+
+            foreach (var e in events)
+            {
+                var note = e.Value;
+                if (note == null || note.EventType == NoteEventType.Bomb)
+                {
+                    combo.Break();
+                    continue;
+                }
+
+                int hand = note.ColorType == 0 ? 0 : 1;
+                played[hand]++;
+                playedMax[hand] += (long)NoteScore.Max * max.Hit();
+
+                if (note.EventType == NoteEventType.Good && note.Cut != null)
+                    score[hand] += (long)NoteScore.Total(note.Cut) * combo.Hit();
+                else
+                    combo.Break();
+            }
+
+            result.MultipliedScore = score[0] + score[1];
+
+            // 満点の分母の仮の値。手が PerHand に入らなかった（振りが少なすぎた）ときも、
+            // その手のノーツを満点に入れる。スコアの方には両手の点が入っているので、
+            // 片手ぶんの満点で割ると高く出る。譜面が見つかれば ApplyMapNotes が上書きする。
+            result.MapNotesLeft = played[0];
+            result.MapNotesRight = played[1];
+
+            foreach (var hand in result.PerHand)
+            {
+                int i = hand.SaberType == 0 ? 0 : 1;
+                hand.MultipliedScore = score[i];
+                hand.PlayedMaxScore = playedMax[i];
+                hand.PlayedNotes = played[i];
+            }
         }
 
         private static void Combine(ReplayScore result)
         {
             var hands = result.PerHand;
+
+            // 再現スコアと精度は割合なので、足し合わせてから割る。
+            // 手ごとに均すと、ノーツ数の違う手を同じ重みで数えることになって割合が崩れる。
+            // 手が1つも無くても精度は出す（スコアはリプレイにある）。
+            result.ReproducibilityScore = hands.Sum(h => h.ReproducibilityScore);
+            Rescale(result);
             if (hands.Count == 0) return;
 
             // 再現性は手ごとに跳び幅で割り終わっているので、点の方を平均する。
@@ -582,18 +668,6 @@ namespace JumpDrill.Replays
             result.TimeDeviationSpread = hands.Average(h => h.TimeDeviationSpread);
             result.AngleErrorMean = hands.Average(h => h.AngleErrorMean);
             result.CutDistanceMean = hands.Average(h => h.CutDistanceMean);
-
-            // 再現スコアと精度は割合なので、足し合わせてから割る。
-            // 手ごとに均すと、ノーツ数の違う手を同じ重みで数えることになって割合が崩れる。
-            result.ReproducibilityScore = hands.Sum(h => h.ReproducibilityScore);
-
-            foreach (var hand in hands)
-            {
-                if (hand.SaberType == 0) result.MapNotesLeft = hand.NoteCount;
-                else result.MapNotesRight = hand.NoteCount;
-            }
-
-            Rescale(result);
 
             int swings = hands.Sum(h => h.SwingCount);
             result.SwingCount = swings;
@@ -861,7 +935,7 @@ namespace JumpDrill.Replays
                 TimeDeviationSpread = StandardDeviation(deviations),
                 GoodCount = cuts.Count,
                 MissCount = replay.Notes.Count(n => n.EventType == NoteEventType.Miss && n.ColorType == saberType),
-                NoteCount = cuts.Count + replay.Notes.Count(n => n.EventType == NoteEventType.Miss && n.ColorType == saberType),
+                NoteCount = replay.Notes.Count(n => n.EventType != NoteEventType.Bomb && n.ColorType == saberType),
                 CutDistanceMean = cuts.Average(c => (double)c.Cut.CutDistanceToCenter),
                 AngleErrorMean = cuts.Average(c => Math.Abs((double)c.Cut.CutDirDeviation)),
                 SwingAngleScore = cuts.Average(c => (double)NoteScore.SwingAngle(c.Cut)),

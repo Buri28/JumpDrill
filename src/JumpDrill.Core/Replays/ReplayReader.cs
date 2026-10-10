@@ -46,9 +46,9 @@ namespace JumpDrill.Replays
                         case 1: ReadFrames(reader, replay); break;
                         case 2: ReadNotes(reader, replay); break;
 
-                        // walls / heights / pauses。ドリルの評価には使わないが、
-                        // 位置を進めないと後続が読めないので形だけ追う。
-                        case 3: SkipWalls(reader); break;
+                        // walls は倍率の数え直しに使う。
+                        // heights / pauses は使わないが、位置を進めないと後続が読めないので形だけ追う。
+                        case 3: ReadWalls(reader, replay); break;
                         case 4: SkipHeights(reader); break;
                         case 5: SkipPauses(reader); break;
 
@@ -160,14 +160,14 @@ namespace JumpDrill.Replays
             };
         }
 
-        private static void SkipWalls(BinaryReader reader)
+        private static void ReadWalls(BinaryReader reader, Replay replay)
         {
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
             {
                 reader.ReadInt32();     // wallId
                 reader.ReadSingle();    // energy
-                reader.ReadSingle();    // time
+                replay.WallHits.Add(reader.ReadSingle());   // time（壁に入った時刻）
                 reader.ReadSingle();    // spawnTime
             }
         }

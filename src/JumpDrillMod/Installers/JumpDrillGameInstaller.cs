@@ -25,9 +25,11 @@ namespace JumpDrillMod.Installers
             if (PluginConfig.Instance?.RecordReplays != true) return;
             if (DrillNaming.ExtractId(setupData.beatmapLevel?.songName) == null) return;
 
-            if (ReplayPlaybackCheck.IsPlayingBack())
+            // 記録しなかった理由は必ず残す。リプレイが無いと言われたときに、ログで追えるように
+            string? playback = ReplayPlaybackCheck.PlayingBackBy();
+            if (playback != null)
             {
-                Plugin.LogDebug("replay playback; not recording");
+                Plugin.Log?.Info("not recording (replay playback: " + playback + ")");
                 return;
             }
 

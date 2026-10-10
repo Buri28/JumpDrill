@@ -204,17 +204,64 @@ namespace JumpDrill.Core.Tests
         }
 
         [Fact]
-        public void The_accuracy_counts_a_miss_as_zero()
+        public void The_accuracy_includes_the_combo_multiplier()
         {
-            var score = SwingAnalyzer.Analyze(BuildTwoHands(80, 10, rightJitter: 0.004, leftJitter: 1.2));
+            var score = SwingAnalyzer.Analyze(BuildTwoHands(80, 80, rightJitter: 0.004, leftJitter: 0.004, missAt: 30, missAlsoAt: 50));
             var right = score.Hand(1);
 
-            // 総合 /115 は切れたノーツだけの平均。精度はミスも数える。
-            Assert.Equal(
-                right.AverageCut * right.GoodCount / (115.0 * right.NoteCount) * 100.0,
-                right.Accuracy, 9);
+            // 精度は倍率込みの点 ÷ 倍率込みの満点。
+            long max = right.PlayedMaxScore + 115L * 8 * (right.NoteCount - right.PlayedNotes);
+            Assert.Equal(right.MultipliedScore * 100.0 / max, right.Accuracy, 9);
 
-            Assert.Equal(right.GoodCount + right.MissCount, right.NoteCount);
+            // ミスで倍率が下がったあとのノーツは満点の倍率に届かないので、倍率なしの割合より低くなる。
+            double withoutMultiplier = right.AverageCut * right.GoodCount / (115.0 * right.NoteCount) * 100.0;
+            Assert.True(right.Accuracy < withoutMultiplier);
+        }
+
+        [Fact]
+        public void A_hand_too_short_to_analyze_still_counts_toward_the_max_score()
+        {
+            // 左は 2 本しか無いので PerHand に入らない。点は両手ぶん数えるので、満点も両手ぶん要る。
+            var score = SwingAnalyzer.Analyze(BuildTwoHands(80, 2, rightJitter: 0.0, leftJitter: 0.0));
+
+            Assert.Null(score.Hand(0));
+            Assert.Equal(82, score.NoteCount);
+            Assert.Equal(score.MultipliedScore * 100.0 / NoteScore.MaxMultipliedScore(82), score.Accuracy, 9);
+        }
+
+        [Theory]
+        [InlineData("none", 97)]
+        [InlineData("bomb", 73)]
+        [InlineData("bad", 73)]
+        [InlineData("wall", 73)]
+        public void Bombs_bad_cuts_and_walls_drop_the_multiplier(string breaker, int multiplierSum)
+        {
+            // 右手で 20 個切る。1 個 12 点（中心から 5 cm で中心点だけ）。14 個切ったところで倍率を下げる。
+            // 倍率は 1, 2×4, 4×8, 8 で 14 個目までが 49。下げなければ残り 6 個は ×8 で 48、
+            // ×4 に下がれば 7 個目まで ×4 のままなので 24。
+            var replay = new Replay();
+            for (int i = 0; i < 20; i++) AddNote(replay, 2, 0, colorType: 1, time: 1.0f + i * 0.3f);
+
+            float at = 1.0f + 13 * 0.3f + 0.1f;
+            switch (breaker)
+            {
+                case "bomb":
+                    replay.Notes.Add(new ReplayNote { NoteId = 2000 + 30, EventTime = at, SpawnTime = at, EventType = NoteEventType.Bomb });
+                    break;
+                case "bad":
+                    replay.Notes.Add(new ReplayNote
+                    {
+                        NoteId = 3000 + 10 + 6, EventTime = at, SpawnTime = at, EventType = NoteEventType.Bad,
+                        Cut = new NoteCutInfo { SaberType = 0 },
+                    });
+                    break;
+                case "wall":
+                    replay.WallHits.Add(at);
+                    break;
+            }
+
+            var score = SwingAnalyzer.Analyze(replay);
+            Assert.Equal(12L * multiplierSum, score.MultipliedScore);
         }
 
         [Fact]
@@ -318,10 +365,18 @@ namespace JumpDrill.Core.Tests
             var score = SwingAnalyzer.Analyze(BuildTwoHands(80, 0, rightJitter: 0.0, leftJitter: 0.0));
             SwingAnalyzer.ApplyMapNotes(score, leftNotes: 80, rightNotes: 80);
 
-            var right = score.Hand(1);
-            Assert.Equal(
-                right.AverageCut * right.GoodCount / (115.0 * 160) * 100.0,
-                score.Accuracy, 9);
+            Assert.Equal(score.MultipliedScore * 100.0 / NoteScore.MaxMultipliedScore(160), score.Accuracy, 9);
+        }
+
+        [Fact]
+        public void The_accuracy_uses_the_score_the_game_recorded()
+        {
+            var replay = BuildTwoHands(80, 80, rightJitter: 0.0, leftJitter: 0.0);
+            replay.Info.Score = 100000;
+            var score = SwingAnalyzer.Analyze(replay);
+            SwingAnalyzer.ApplyMapNotes(score, leftNotes: 80, rightNotes: 80);
+
+            Assert.Equal(100000 * 100.0 / NoteScore.MaxMultipliedScore(160), score.Accuracy, 9);
         }
 
         [Fact]

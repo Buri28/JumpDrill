@@ -134,6 +134,7 @@ namespace JumpDrillMod.Gameplay
 
         public void Initialize()
         {
+            ScoreControllerPatch.EnsurePatched();
             SwingRatingPatches.Clear();
             Active = this;
 
@@ -148,11 +149,14 @@ namespace JumpDrillMod.Gameplay
                 pauseController.didResumeEvent += OnResume;
             }
 
-            Plugin.LogDebug("recording " + setupData.beatmapLevel?.songName);
+            Plugin.Log?.Info("recording " + setupData.beatmapLevel?.songName);
         }
 
         public void Dispose()
         {
+            // 終わりの知らせが来ないまま場面が閉じた。書き出していないので、ログで分かるようにする
+            if (!stopped) Plugin.Log?.Warn("replay not saved: the level closed without a finish event");
+
             if (Active == this) Active = null;
             SwingRatingPatches.Clear();
 
@@ -394,7 +398,11 @@ namespace JumpDrillMod.Gameplay
             try
             {
                 replay.Notes.RemoveAll(undecided.Contains);
-                if (replay.Notes.Count == 0) return;
+                if (replay.Notes.Count == 0)
+                {
+                    Plugin.Log?.Info("replay not saved: no notes were recorded (" + results.levelEndAction + ")");
+                    return;
+                }
 
                 FillInfo(results);
 
@@ -428,7 +436,7 @@ namespace JumpDrillMod.Gameplay
                 if (File.Exists(path)) File.Delete(path);
                 File.Move(temp, path);
 
-                Plugin.LogDebug("replay saved: " + Path.GetFileName(path));
+                Plugin.Log?.Info("replay saved: " + Path.GetFileName(path));
 
                 LastSavedPath = path;
                 Task.Factory.StartNew(() => Saved?.Invoke(path), System.Threading.CancellationToken.None,
