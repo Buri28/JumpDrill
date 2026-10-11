@@ -63,6 +63,8 @@ PCから使う **アプリ（JumpDrill）** と、BeatSaberで使う **MOD（Jum
 
 ## アプリの使い方
 
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/80963af7-e6a1-445b-a780-773598ce1af1" />
+
 1. グリッドをクリックして、ノーツを置く位置と順番を指定します（右クリックでその手の指定を消します）。「遷移（記法）」欄に[配置の書き方](#配置の書き方)で入力することもできます
 2. BPM・切る方向・NJS・クリック音・置き場所を指定します
 3. ［生成］を押すと譜面ができます
@@ -77,18 +79,18 @@ PCから使う **アプリ（JumpDrill）** と、BeatSaberで使う **MOD（Jum
 | メダル | 一括生成した譜面のメダルと Lv を表示します。マスを選ぶと、その譜面のスコア画面や ArcViewer を開けます。［生成］で選んだ譜面だけ、［すべて生成］で 112 本を作れます（［上書き］はメイン画面と同じ意味です） |
 | MOD のインストール | JumpDrillMod を Beat Saber にインストールします |
 
-スコア画面とメダル画面では、どの Beat Saber の記録を見るかを選べます（「すべてのバージョン」または各インストール）。
+スコア画面とメダル画面では、どの Beat Saber の記録を見るかを選べます（「すべてのバージョン」または各インストール）。  
+メダルをダブルクリックまたはメダルを選択してスコアボタンを押下することで対象のスコア画面を表示します。　　
+<img width="28%" height="28%" alt="image" src="https://github.com/user-attachments/assets/a8ace871-37a5-43a8-bb5f-d39b11f2425f" /><img width="65%" height="65%" alt="image" src="https://github.com/user-attachments/assets/7a5f01ab-7708-454f-8bf0-0eb21c625288" />
 
 画面の設定は `%LOCALAPPDATA%\JumpDrill\settings.txt` に保存され、次回の起動時に戻ります。
 
 ## MOD の使い方
 
-### Jump Drill 画面
-* GUI版 ／ MOD版  
-<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/80963af7-e6a1-445b-a780-773598ce1af1" /><img width="43%" height="43%" alt="image" src="https://github.com/user-attachments/assets/3a839233-a586-4102-8aee-317438934526" />
-
-メインメニューの **JumpDrill** ボタンで開きます。(MODS/SETTINGSからも開けます)  
+メインメニューの **JumpDrill** ボタンで開きます。  
 <img width="30%" height="30%" alt="image" src="https://github.com/user-attachments/assets/b3ae64f4-3482-4ffc-a25b-34bead281da0" />
+### メダル画面  
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/6fa51bf1-8809-407d-8929-4ff9b28f59fb" />
 
 - **Drill**：112 本のドリルのメダルと Lv を一覧で表示します。ドリルを選んで **Play** を押すと練習モードで始まります。まだ作っていないドリルは、そのドリルだけを作ってから始まります
 - **Other**：自分で作ったドリルを選べます
@@ -97,11 +99,16 @@ PCから使う **アプリ（JumpDrill）** と、BeatSaberで使う **MOD（Jum
 - **Overwrite**：オンにすると、既にあるドリルも作り直します。オフのときは、まだ無いドリルだけを作ります。画面を開くたびにオフに戻ります
 - 右側に、選んだドリルの記録を表示します
 
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/e5c5cafe-dd5a-4d33-be29-ade6ed330d4d" />
+
+
 作り直しても、それまでの記録は消えません。
 
 ### ドリルを1本作る
 
 曲選択画面の Mods タブにある **JumpDrill** で指定します。
+
+<img width="43%" height="43%" alt="image" src="https://github.com/user-attachments/assets/3a839233-a586-4102-8aee-317438934526" />
 
 | タブ | 内容 |
 |---|---|
