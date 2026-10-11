@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 using UnityEngine;
 
@@ -98,6 +100,14 @@ namespace JumpDrillMod.Gameplay
         {
             private static void Postfix(SaberMovementData __instance, bool overrideSegmenAngle, float overrideValue)
             {
+                if (PatchGuard.Failed) return;
+                try { Run(__instance, overrideSegmenAngle, overrideValue); }
+                catch (Exception e) { PatchGuard.Fail("swing rating patch", e); }
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static void Run(SaberMovementData __instance, bool overrideSegmenAngle, float overrideValue)
+            {
                 // ドリルを記録していないときは数えない（表が増え続けないように）
                 if (!DrillReplayRecorder.IsRecording) return;
 
@@ -137,6 +147,22 @@ namespace JumpDrillMod.Gameplay
         {
             private static void Prefix(SaberSwingRatingCounter __instance)
             {
+                if (PatchGuard.Failed) return;
+                try { RunPrefix(__instance); }
+                catch (Exception e) { PatchGuard.Fail("swing rating patch", e); }
+            }
+
+            private static void Postfix(SaberSwingRatingCounter __instance, BladeMovementDataElement newData,
+                BladeMovementDataElement prevData)
+            {
+                if (PatchGuard.Failed) return;
+                try { RunPostfix(__instance, newData, prevData); }
+                catch (Exception e) { PatchGuard.Fail("swing rating patch", e); }
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static void RunPrefix(SaberSwingRatingCounter __instance)
+            {
                 if (!DrillReplayRecorder.IsRecording) return;
 
                 Post post;
@@ -144,7 +170,8 @@ namespace JumpDrillMod.Gameplay
                 post.AlreadyCut = NotePlaneWasCut(__instance);
             }
 
-            private static void Postfix(SaberSwingRatingCounter __instance, BladeMovementDataElement newData,
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static void RunPostfix(SaberSwingRatingCounter __instance, BladeMovementDataElement newData,
                 BladeMovementDataElement prevData)
             {
                 Post post;

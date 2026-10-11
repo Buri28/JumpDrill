@@ -138,7 +138,9 @@ namespace JumpDrillMod.Services
                     ["beatmapLevel"] = level,
                     ["overrideEnvironmentSettings"] = data.overrideEnvironmentSettings,
                     ["playerOverrideColorScheme"] = colors.GetOverrideColorScheme(),
-                    ["playerOverrideLightshowColors"] = colors.ShouldOverrideLightshowColors(),
+                    // 1.39 までの名前
+                    ["overrideColorScheme"] = colors.GetOverrideColorScheme(),
+                    ["playerOverrideLightshowColors"] = ShouldOverrideLightshowColors(colors),
                     ["beatmapOverrideColorScheme"] = level.GetColorScheme(key.beatmapCharacteristic, key.difficulty),
                     ["gameplayModifiers"] = data.gameplayModifiers,
                     ["playerSpecificSettings"] = data.playerSpecificSettings,
@@ -206,6 +208,17 @@ namespace JumpDrillMod.Services
             // 既定値も無いのに名前が合わない。次の版で引数の名前が変わったときに気づけるよう残す
             if (!parameter.HasDefaultValue) Plugin.LogDebug("StartStandardLevel: no value for " + name + ", passing the default");
             return type.IsValueType ? Activator.CreateInstance(type) : null;
+        }
+
+        /// <summary>
+        /// 自分の色をライトにも使うか。1.40 から。それより前の版には無いので false（その版の
+        /// <c>StartStandardLevel</c> にはこの引数も無く、値は使われない）。
+        /// </summary>
+        private static bool ShouldOverrideLightshowColors(ColorSchemesSettings colors)
+        {
+            var method = typeof(ColorSchemesSettings).GetMethod("ShouldOverrideLightshowColors",
+                BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            return method != null && (bool)method.Invoke(colors, null);
         }
 
         private static object Construct(Type type, Dictionary<string, object?> values)

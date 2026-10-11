@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 
 namespace JumpDrillMod.Gameplay
@@ -38,7 +39,7 @@ namespace JumpDrillMod.Gameplay
                 if (info != null && info.Prefixes.Any(p => p.owner == Plugin.HarmonyId)) return;
 
                 new Harmony(Plugin.HarmonyId).CreateClassProcessor(typeof(ScoreControllerPatch)).Patch();
-                Plugin.Log?.Info("ScoreController patch was removed by another mod; patched again");
+                Plugin.LogDebug("ScoreController patch was removed by another mod; patched again");
             }
             catch (Exception e)
             {
@@ -47,6 +48,25 @@ namespace JumpDrillMod.Gameplay
         }
 
         private static void Prefix(AudioTimeSyncController ____audioTimeSyncController,
+            List<float> ____sortedNoteTimesWithoutScoringElements,
+            List<ScoringElement> ____sortedScoringElementsWithoutMultiplier)
+        {
+            if (PatchGuard.Failed) return;
+            try
+            {
+                BeforeScoring(____audioTimeSyncController,
+                    ____sortedNoteTimesWithoutScoringElements,
+                    ____sortedScoringElementsWithoutMultiplier);
+            }
+            catch (Exception e)
+            {
+                PatchGuard.Fail("ScoreController patch", e);
+            }
+        }
+
+        // 分けておく。記録の型が読めないとき、例外がこのメソッドを呼んだところ（try の中）で出るように
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void BeforeScoring(AudioTimeSyncController ____audioTimeSyncController,
             List<float> ____sortedNoteTimesWithoutScoringElements,
             List<ScoringElement> ____sortedScoringElementsWithoutMultiplier)
         {

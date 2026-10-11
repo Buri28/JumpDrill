@@ -20,9 +20,9 @@ namespace JumpDrillMod
 
         /// <summary>
         /// 反転してもう片方の手にも同じ遷移を置くか（CLI の <c>--mirror</c>）。
-        /// 手の指定が「両手」のときだけ true になる。
+        /// 既定は有効（片手ぶん組めば両手のドリルになる）。
         /// </summary>
-        public virtual bool Mirror { get; set; } = false;
+        public virtual bool Mirror { get; set; } = true;
 
         /// <summary>
         /// ノーツ間隔を表す BPM。1拍に2ノーツ（1/2）で数える。
@@ -45,7 +45,7 @@ namespace JumpDrillMod
         public virtual float JumpDistance { get; set; } = 18f;
 
         /// <summary>ドリル本体の尺 (秒)。カウントインとテールは含まない。</summary>
-        public virtual float DurationSeconds { get; set; } = 30f;
+        public virtual float DurationSeconds { get; set; } = 10f;
 
         /// <summary>セットの繰り返し回数。</summary>
         public virtual int Sets { get; set; } = 1;

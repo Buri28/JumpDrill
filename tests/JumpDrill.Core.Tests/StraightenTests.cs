@@ -142,7 +142,7 @@ namespace JumpDrill.Core.Tests
                 IntervalMs = 100,
             };
 
-            Assert.Equal("Drill R4sbs axis 300 BPM 30s", DrillNaming.StripId(DrillNaming.Compose(options)));
+            Assert.Equal("Drill R4sbs axis 300 BPM 10s", DrillNaming.StripId(DrillNaming.Compose(options)));
         }
 
         [Fact]

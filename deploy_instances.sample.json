@@ -1,6 +1,10 @@
 {
   "instances": [
     {
+      "version": "1.39.1",
+      "pluginsPath": "D:\\BSManager\\BSInstances\\1.39.1\\Plugins"
+    },
+    {
       "version": "1.40.8",
       "pluginsPath": "D:\\BSManager\\BSInstances\\1.40.8\\Plugins"
     }

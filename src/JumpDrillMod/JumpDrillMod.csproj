@@ -31,8 +31,11 @@
   <PropertyGroup Condition="Exists('$(BeatSaberPluginsPath)\LeaderboardCore.dll')">
     <DefineConstants>$(DefineConstants);JUMPDRILL_LEADERBOARDCORE</DefineConstants>
   </PropertyGroup>
-  <PropertyGroup Condition="Exists('$(BeatSaberPluginsPath)\BeatLeader.dll')">
-    <DefineConstants>$(DefineConstants);JUMPDRILL_BEATLEADER</DefineConstants>
+
+  <!-- 1.39 まではノーツの出現まわりの型が違う（1.40 で VariableMovementDataProvider などに変わった）。
+       -p:GameVersion=1.39.1 のように渡したときだけ古い型でビルドする -->
+  <PropertyGroup Condition="'$(GameVersion)' != '' and $([MSBuild]::VersionLessThan('$(GameVersion)', '1.40.0'))">
+    <DefineConstants>$(DefineConstants);JUMPDRILL_BS139</DefineConstants>
   </PropertyGroup>
 
   <Target Name="CheckPaths" BeforeTargets="BeforeBuild">
@@ -168,13 +171,7 @@
       <Private>False</Private>
     </Reference>
 
-    <!-- BeatLeader のゲーム内リプレイヤー。任意（無くても動く）。
-         呼ぶのは BeatLeaderReplayer の中だけで、入っているか確かめてからにする -->
-    <Reference Include="BeatLeader" Condition="Exists('$(BeatSaberPluginsPath)\BeatLeader.dll')">
-      <HintPath>$(BeatSaberPluginsPath)\BeatLeader.dll</HintPath>
-      <Private>False</Private>
-      <SpecificVersion>False</SpecificVersion>
-    </Reference>
+    <!-- BeatLeader は参照しない。版で引数の形が変わるので、BeatLeaderReplayer が実行時に名前で探して呼ぶ -->
 
     <!-- 曲選択のリーダーボード枠に自前のものを足す口。任意（無くても動く）。
          ビルドするゲームのフォルダに LeaderboardCore.dll が無ければ参照できないので、

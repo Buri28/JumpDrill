@@ -58,7 +58,7 @@ namespace JumpDrill.Gui
         /// 1/4 で叩きたければ BPM を倍にすれば間隔は同じ。
         /// </summary>
         private const double NotesPerBeat = 2.0;
-        private readonly NumericUpDown _seconds = Spin(1, 600, 30, 0);
+        private readonly NumericUpDown _seconds = Spin(1, 600, 10, 0);
         private readonly ComboBox _direction = Combo(Lang.T("axis  配置ベクトルと一致", "axis  along the jump"), Lang.T("perp  垂直", "perp  perpendicular"), Lang.T("dot  ドット", "dot  dot notes"), Lang.T("explicit  記法内の @ 指定", "explicit  @ in the sequence"));
         private readonly ComboBox _hands = Combo(Lang.T("sync   両手同時", "sync   both hands together"), Lang.T("split  片手ずつ（右で1本→左で1本）", "split  one hand at a time (right, then left)"), Lang.T("alt    1ステップごとに交互", "alt    alternate every step"));
         private readonly CheckBox _mirror = new CheckBox { Text = Lang.T("左右反転して反対の手にも同じ形を組む", "Mirror the pattern onto the other hand"), AutoSize = true };
@@ -1103,7 +1103,7 @@ namespace JumpDrill.Gui
             try
             {
                 _interval.Value = LoadIntervalBpm();
-                _seconds.Value = _settings.GetDecimal("seconds", 30, _seconds.Minimum, _seconds.Maximum);
+                _seconds.Value = _settings.GetDecimal("seconds", 10, _seconds.Minimum, _seconds.Maximum);
 
                 _direction.SelectedIndex = _settings.GetInt("direction", 0, 0, _direction.Items.Count - 1);
                 _hands.SelectedIndex = _settings.GetInt("hands", 0, 0, _hands.Items.Count - 1);

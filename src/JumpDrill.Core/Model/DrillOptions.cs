@@ -13,7 +13,7 @@ namespace JumpDrill.Model
         public double IntervalMs { get; set; } = 300.0;
 
         /// <summary>ドリル本体の尺 (秒)。カウントインとテールは含まない。</summary>
-        public double DurationSeconds { get; set; } = 30.0;
+        public double DurationSeconds { get; set; } = 10.0;
 
         /// <summary>
         /// 表示のためだけの細分化（1拍あたりのノーツ数）。生成には一切効かない。

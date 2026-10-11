@@ -32,7 +32,7 @@ PCから使う **アプリ（JumpDrill）** と、BeatSaberで使う **MOD（Jum
 
 | 項目 | 内容 |
 |---|---|
-| 対応する Beat Saber | 1.40.8 / 1.44.1 |
+| 対応する Beat Saber | 1.39.1 / 1.40.8 / 1.44.1 |
 | 必要な MOD | BSIPA / BeatSaberMarkupLanguage / SiraUtil / SongCore |
 | LeaderboardCore（任意） | 曲選択画面のリーダーボードに記録を表示するのに使います |
 | BeatLeader（任意） | 記録したリプレイをゲーム内で再生するのに使います |

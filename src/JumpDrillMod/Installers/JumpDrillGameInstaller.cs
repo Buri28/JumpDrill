@@ -29,7 +29,7 @@ namespace JumpDrillMod.Installers
             string? playback = ReplayPlaybackCheck.PlayingBackBy();
             if (playback != null)
             {
-                Plugin.Log?.Info("not recording (replay playback: " + playback + ")");
+                Plugin.LogDebug("not recording (replay playback: " + playback + ")");
                 return;
             }
 

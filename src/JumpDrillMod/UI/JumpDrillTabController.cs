@@ -228,7 +228,7 @@ namespace JumpDrillMod.UI
         [UIValue("mirror")]
         public bool Mirror
         {
-            get => Config?.Mirror ?? false;
+            get => Config?.Mirror ?? true;
             set { if (Config != null) Config.Mirror = value; }
         }
 

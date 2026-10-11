@@ -42,7 +42,12 @@ namespace JumpDrillMod.Gameplay
         private readonly GameplayCoreSceneSetupData setupData;
         private readonly StandardLevelScenesTransitionSetupDataSO transitionSetup;
         private readonly PauseController? pauseController;
+#if JUMPDRILL_BS139
+        // 1.39 まではジャンプ距離を出現の係が持っている（VariableMovementDataProvider は 1.40 から）
+        private readonly IBeatmapObjectSpawnController? movementData;
+#else
         private readonly VariableMovementDataProvider? movementData;
+#endif
 
         private readonly Replay replay = new Replay
         {
@@ -116,7 +121,11 @@ namespace JumpDrillMod.Gameplay
             GameplayCoreSceneSetupData setupData,
             StandardLevelScenesTransitionSetupDataSO transitionSetup,
             [InjectOptional] PauseController? pauseController,
+#if JUMPDRILL_BS139
+            [InjectOptional] IBeatmapObjectSpawnController? movementData)
+#else
             [InjectOptional] VariableMovementDataProvider? movementData)
+#endif
         {
             this.saberManager = saberManager;
             this.playerTransforms = playerTransforms;
@@ -134,6 +143,13 @@ namespace JumpDrillMod.Gameplay
 
         public void Initialize()
         {
+            // 差し込みが前に落ちて止まっている。ノーツの時刻も振りの評価も取れないので記録しない
+            if (PatchGuard.Failed)
+            {
+                stopped = true;
+                return;
+            }
+
             ScoreControllerPatch.EnsurePatched();
             SwingRatingPatches.Clear();
             Active = this;
@@ -149,7 +165,7 @@ namespace JumpDrillMod.Gameplay
                 pauseController.didResumeEvent += OnResume;
             }
 
-            Plugin.Log?.Info("recording " + setupData.beatmapLevel?.songName);
+            Plugin.LogDebug("recording " + setupData.beatmapLevel?.songName);
         }
 
         public void Dispose()
@@ -258,7 +274,11 @@ namespace JumpDrillMod.Gameplay
 
         // ───────── ノーツ ─────────
 
+#if JUMPDRILL_BS139
+        private void OnNoteWasAdded(NoteData data, BeatmapObjectSpawnMovementData.NoteSpawnData spawn)
+#else
         private void OnNoteWasAdded(NoteData data, NoteSpawnData spawn)
+#endif
         {
             if (stopped) return;
 
@@ -395,12 +415,20 @@ namespace JumpDrillMod.Gameplay
             if (stopped) return;
             stopped = true;
 
+            // 曲の途中で差し込みが落ちた。そこから先のノーツが欠けているか、振りの評価が
+            // 頭打ちの値になっているので、正しい記録として残さない
+            if (PatchGuard.Failed)
+            {
+                Plugin.Log?.Warn("replay not saved: recording stopped partway because of an earlier error");
+                return;
+            }
+
             try
             {
                 replay.Notes.RemoveAll(undecided.Contains);
                 if (replay.Notes.Count == 0)
                 {
-                    Plugin.Log?.Info("replay not saved: no notes were recorded (" + results.levelEndAction + ")");
+                    Plugin.LogDebug("replay not saved: no notes were recorded (" + results.levelEndAction + ")");
                     return;
                 }
 
@@ -436,7 +464,7 @@ namespace JumpDrillMod.Gameplay
                 if (File.Exists(path)) File.Delete(path);
                 File.Move(temp, path);
 
-                Plugin.Log?.Info("replay saved: " + Path.GetFileName(path));
+                Plugin.LogDebug("replay saved: " + Path.GetFileName(path));
 
                 LastSavedPath = path;
                 Task.Factory.StartNew(() => Saved?.Invoke(path), System.Threading.CancellationToken.None,
