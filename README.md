@@ -10,8 +10,8 @@ PCから使う **アプリ（JumpDrill）** と、BeatSaberで使う **MOD（Jum
 どちらも同じドリルを作り、同じ記録(リプレイデータ)を使用するため、片方だけでも使用可能です。  
 （GUI版からMODのインストールをできる機能があります）
 
-・MOD版  
-<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/c10b201e-631d-4c43-a3e0-d6e4b6581259" />
+・GUI版／MOD版  
+<img width="43%" height="43%" alt="image" src="https://github.com/user-attachments/assets/74de161b-243b-4bcc-a3b7-b472fc4fa04a" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/e5c5cafe-dd5a-4d33-be29-ade6ed330d4d" />
 
 ## ダウンロードとインストール
 
@@ -85,9 +85,10 @@ PCから使う **アプリ（JumpDrill）** と、BeatSaberで使う **MOD（Jum
 
 ### Jump Drill 画面
 * GUI版 ／ MOD版  
-<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/80963af7-e6a1-445b-a780-773598ce1af1" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/ac20cd32-a853-4661-8e93-016dd72db876" />
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/80963af7-e6a1-445b-a780-773598ce1af1" /><img width="43%" height="43%" alt="image" src="https://github.com/user-attachments/assets/3a839233-a586-4102-8aee-317438934526" />
 
-メインメニューの **JumpDrill** ボタンで開きます。
+メインメニューの **JumpDrill** ボタンで開きます。(MODS/SETTINGSからも開けます)  
+<img width="30%" height="30%" alt="image" src="https://github.com/user-attachments/assets/b3ae64f4-3482-4ffc-a25b-34bead281da0" />
 
 - **Drill**：112 本のドリルのメダルと Lv を一覧で表示します。ドリルを選んで **Play** を押すと練習モードで始まります。まだ作っていないドリルは、そのドリルだけを作ってから始まります
 - **Other**：自分で作ったドリルを選べます
@@ -173,12 +174,14 @@ Lv はメダルのポイント（🥉1 🥈2 🥇3）の合計で、最大 336 �
 
 MOD版は Jump Drill 画面の GENERATE ALL ボタンで 112 本をまとめて作れます。GENERATE ボタンでは選択したドリルだけを作れます。  
 選択したドリルは PLAY ボタンからプレイできます。まだ作っていないドリルは、作ってから始まります。  
+### メダル画面  
 ・GUI版／MOD版  
-<img width="35%" height="35%" alt="image" src="https://github.com/user-attachments/assets/ebb1ab26-98b5-493b-924e-bd281169b7a4" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/b7663832-8ef8-483a-af04-45ac718c9edd" />
+<img width="30%" height="30%" alt="image" src="https://github.com/user-attachments/assets/a8ace871-37a5-43a8-bb5f-d39b11f2425f" /><img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/6fa51bf1-8809-407d-8929-4ff9b28f59fb" />
+
 
 ## スコアの見方
 ・GUI版／MOD版  
-<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/7a5f01ab-7708-454f-8bf0-0eb21c625288" /><img width="35%" height="35%" alt="image" src="https://github.com/user-attachments/assets/365c1fb6-1ac1-49f6-8841-b732b8c68ade" />
+<img width="65%" height="65%" alt="image" src="https://github.com/user-attachments/assets/7a5f01ab-7708-454f-8bf0-0eb21c625288" /><img width="35%" height="35%" alt="image" src="https://github.com/user-attachments/assets/365c1fb6-1ac1-49f6-8841-b732b8c68ade" />
 
 BeatLeader / LocalLeaderboard / JumpDrillMod が保存したリプレイ（`.bsor`）を読み込み、譜面ごとに記録を表示します。
 同じプレイが複数の MOD に保存されている場合は、1 件として数えます。
