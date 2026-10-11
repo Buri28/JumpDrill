@@ -128,8 +128,21 @@ namespace JumpDrillMod.Services
             var hash = info?.GetType().GetField("hash")?.GetValue(info) as string;
             if (string.IsNullOrEmpty(hash)) return true;
 
-            // WIP の譜面は hash の後ろに " WIP" が付いていて、SongCore もその形の ID で持っている
-            return SongCore.Loader.GetLevelByHash(hash!) != null;
+            // levelID は "custom_level_" + hash。WIP なら後ろに " WIP"、同じ譜面が2か所にあれば
+            // "_<フォルダ名>" が付き、どちらも hash に入っている。大文字にはしない（フォルダ名が変わる）
+            string levelId = "custom_level_" + hash;
+            if (SongCore.Loader.GetLevelById(levelId) != null) return true;
+
+            // GetLevelById は CustomWIPLevels と CachedWIPLevels の曲を持っていないので、並びから探す
+            return HasLevel(SongCore.Loader.CustomWIPLevels.Values, levelId)
+                || HasLevel(SongCore.Loader.CachedWIPLevels.Values, levelId)
+                || HasLevel(SongCore.Loader.CustomLevels.Values, levelId)
+                || SongCore.Loader.SeparateSongFolders.Any(f => HasLevel(f.Levels.Values, levelId));
+        }
+
+        private static bool HasLevel(System.Collections.Generic.IEnumerable<BeatmapLevel> levels, string levelId)
+        {
+            return levels.Any(l => string.Equals(l?.levelID, levelId, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>

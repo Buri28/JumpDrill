@@ -289,7 +289,7 @@ namespace JumpDrillMod.UI
         [UIValue("duration")]
         public float Duration
         {
-            get => Config?.DurationSeconds ?? 30f;
+            get => Config?.DurationSeconds ?? 10f;
             set { if (Config != null) Config.DurationSeconds = value; }
         }
 
