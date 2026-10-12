@@ -9,7 +9,7 @@ namespace JumpDrill.Generation
     {
         public ClashException()
             : base(Lang.T(
-                "左右の手の通り道が重なるので、手がぶつかります（クラッシュ配置）。配置を変えるか、手の並べ方を変えてください。",
+                "左右の手の通り道が重なるので、手がぶつかります（クラッシュ配置）。遷移か配置を変えてください。",
                 "The paths of both hands overlap and the hands would hit each other. Change the layout or the hand pattern."))
         {
         }

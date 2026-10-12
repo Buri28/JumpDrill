@@ -281,6 +281,8 @@ namespace JumpDrillMod.UI.Medals
 
             // カスタムステージでは、生成のボタンの代わりに組み替えのボタンを出す
             AppendEditRow(sb);
+            // Other とカスタムでは、ドリルそのものを消すボタン
+            AppendDrillRow(sb);
 
             sb.Append("</vertical>");
 
@@ -591,6 +593,7 @@ namespace JumpDrillMod.UI.Medals
             // 生成は指定を持っている Standard だけ。カスタムでは組み替えのボタンを出す
             if (generateRow != null) generateRow.SetActive(mode == ViewMode.Standard);
             if (editRow != null) editRow.SetActive(custom);
+            if (drillRow != null) drillRow.SetActive(list);
 
             Fill();
         }

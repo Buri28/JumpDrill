@@ -108,6 +108,40 @@ namespace JumpDrillMod.Services
             }, UnityMainThreadTaskScheduler.Default);
         }
 
+        /// <summary>
+        /// ドリルの譜面のフォルダを消して、曲一覧を読み直させる。<paramref name="onDone"/> はメインスレッドで呼ばれる。
+        /// 記録（リプレイ）は消さない。ごみ箱には送らずそのまま消す（GUI と同じ）。
+        /// </summary>
+        internal void Delete(IReadOnlyList<string> folders, Action<bool, string> onDone)
+        {
+            if (IsRunning)
+            {
+                onDone(false, "Generating drills. Try again when it is done.");
+                return;
+            }
+
+            int failed = 0;
+            foreach (var folder in folders)
+            {
+                try { System.IO.Directory.Delete(folder, true); }
+                catch (Exception e)
+                {
+                    failed++;
+                    Plugin.Log?.Error($"could not delete {folder}: {e.Message}");
+                }
+            }
+
+            // 消した譜面は差分の読み込みでは外れないので、全部読み直す
+            IsRunning = true;
+            refresher.Refresh(ok =>
+            {
+                IsRunning = false;
+                onDone(failed == 0 && ok, failed > 0
+                    ? "Some maps could not be deleted. See the log."
+                    : ok ? "The drill was deleted. Records are kept." : "Deleted, but the song list did not reload. Restart the game.");
+            }, fullRefresh: true);
+        }
+
         private static void OnMainThread(Action action)
         {
             Task.Factory.StartNew(action, System.Threading.CancellationToken.None,

@@ -12,6 +12,7 @@ namespace JumpDrill.Model
     /// <code>
     ///   [Q7K3M] Drill R8b L5a axis 300 BPM 30s
     ///   [Q7K3M] Drill R8b L5a axis 300 BPM 30s x3      セットを繰り返すとき
+    ///   [Q7K3M] Drill R8b L5a axis sync 300 BPM 30s    両手同時（片手ずつ以外の配置は印が付く）
     ///   [Q7K3M] Drill R3b L2a axis tower 300 BPM 30s    タワー
     ///   [Q7K3M] Drill R3b L2a axis alt-trip 300 BPM 30s 往復ごとに交互
     ///   [Q7K3M] Drill R3b L2a axis flick25 300 BPM 30s  フリック 25%
@@ -79,13 +80,14 @@ namespace JumpDrill.Model
 
             var ci = CultureInfo.InvariantCulture;
             // タワーは別のドリルなので名前（と ID）を分ける。
-            // 往復ごとに交互も叩き方が別物なので名前を分ける。ほかの並べ方は昔から名前に入れていない。
+            // 両手の配置（同時・交互・往復ごとに交互）は叩き方が別物なので名前を分ける。
+            // 片手ずつは名前に入れない（標準のステージの名前と ID、今までの記録をそのまま保つ）。
             // フリックも叩き方が違うので名前を分ける（flick25 のように割合を添える）。
             string body = explicitBody ?? string.Format(ci, "{0} {1}{2}{3}{4}",
                 string.Join(" ", options.Sequences.Select(s => s.ToString()).ToArray()),
                 DirectionWord(options.Direction),
                 options.Tower ? TowerWord : "",
-                options.HandPattern == HandPattern.AlternateRoundTrip ? AltTripWord : "",
+                PatternWord(options),
                 options.FlickPercent > 0 ? string.Format(ci, " {0}{1:0.#}", FlickPrefix, options.FlickPercent) : "");
 
             // 速さは 1 桁だけ小数を残す。整数に丸めると 171ms が 175 BPM = 171.4ms に戻り、
@@ -271,14 +273,19 @@ namespace JumpDrill.Model
         /// <summary>
         /// 譜面名から読んだ方向（遷移を詰めたもの、<c>R8bL5a</c>）。読めなければ空文字。
         /// カスタムステージの1行に同じ方向のドリルだけを並べるのに使う。
-        /// タワーは振り方が違うので別の方向として扱う（<c>R3b tower</c>）。
+        /// 切る方向（axis 以外）・タワー・配置・フリックも振り方が違うので別の方向として扱う
+        /// （<c>R3b dot tower</c>）。axis は印なし（今までの行をそのまま保つ）。
+        /// 切る方向は短く書く（perp / perp-outer / dot / explicit）。行名に出るので長いと切れる。
         /// </summary>
         public static string DirectionOf(string songName)
         {
             string direction = string.Concat(ParseSequences(songName).Select(s => s.ToString()));
             if (direction.Length == 0) return direction;
+            foreach (var pair in CutWords)
+                if (HasWord(songName, pair[0])) { direction += " " + pair[1]; break; }
             if (IsTower(songName)) direction += TowerWord;
-            if (HasWord(songName, AltTripWord.Trim())) direction += AltTripWord;
+            foreach (var word in PatternWords)
+                if (HasWord(songName, word.Trim())) direction += word;
             string flick = FlickWord(songName);
             if (flick != null) direction += " " + flick;
             return direction;
@@ -286,7 +293,7 @@ namespace JumpDrill.Model
 
         /// <summary>
         /// 行名（<see cref="DirectionOf"/> の形、<c>R3bL2a tower flick25</c>）を、方向と後ろの印に分ける。
-        /// 印は tower・alt-trip・flick〈数字〉だけ。ほかの語（ユーザーが付けた「My jumps」など）は分けずに名前のまま返す。
+        /// 印は切る方向（perp・perp-outer・dot・explicit）・tower・sync・alt・alt-trip・flick〈数字〉だけ。ほかの語（ユーザーが付けた「My jumps」など）は分けずに名前のまま返す。
         /// </summary>
         public static void SplitTags(string rowName, out string name, out string tags)
         {
@@ -304,7 +311,11 @@ namespace JumpDrill.Model
 
         private static bool IsTagWord(string word)
         {
-            if (word == TowerWord.Trim() || word == AltTripWord.Trim()) return true;
+            if (word == TowerWord.Trim()) return true;
+            foreach (var pair in CutWords)
+                if (word == pair[1]) return true;
+            foreach (var pattern in PatternWords)
+                if (word == pattern.Trim()) return true;
             if (!word.StartsWith(FlickPrefix, StringComparison.Ordinal) || word.Length == FlickPrefix.Length) return false;
 
             double percent;
@@ -327,11 +338,43 @@ namespace JumpDrill.Model
             return null;
         }
 
+        /// <summary>譜面名の切る方向の語と、行名に出す短い印。axis は印なし。</summary>
+        private static readonly string[][] CutWords =
+        {
+            new[] { "perpendicular", "perp" },
+            new[] { "perpendicular-outer", "perp-outer" },
+            new[] { "dot", "dot" },
+            new[] { "explicit", "explicit" },
+        };
+
         /// <summary>名前の向きの後ろに入るタワーの印。</summary>
         private const string TowerWord = " tower";
 
         /// <summary>往復ごとに交互（<see cref="HandPattern.AlternateRoundTrip"/>）の印。タワーの印の後ろに入る。</summary>
         private const string AltTripWord = " alt-trip";
+
+        /// <summary>同時（<see cref="HandPattern.Sync"/>）の印。</summary>
+        private const string SyncWord = " sync";
+
+        /// <summary>1ステップごとの交互（<see cref="HandPattern.Alternate"/>）の印。</summary>
+        private const string AltWord = " alt";
+
+        private static readonly string[] PatternWords = { SyncWord, AltWord, AltTripWord };
+
+        /// <summary>
+        /// 名前に書く配置の印。片手ずつと、手が1つだけのとき（配置が効かない）は書かない。
+        /// </summary>
+        private static string PatternWord(DrillOptions options)
+        {
+            if (options.Sequences.Count < 2) return "";
+            switch (options.HandPattern)
+            {
+                case HandPattern.Sync: return SyncWord;
+                case HandPattern.Alternate: return AltWord;
+                case HandPattern.AlternateRoundTrip: return AltTripWord;
+                default: return "";
+            }
+        }
 
         /// <summary>
         /// タワーのドリルか。名前の <c>BPM</c> より前に <c>tower</c> の語があるかで見る。

@@ -78,6 +78,75 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("</horizontal>");
         }
 
+        /// <summary>
+        /// Other とカスタムステージで、選んだドリルの譜面そのものを消すボタン。2回押す。
+        /// 組み替えのボタンの段には入りきらないので、段を分ける。
+        /// </summary>
+        private static void AppendDrillRow(StringBuilder sb)
+        {
+            sb.Append("<horizontal id='drill-row' active='false' pref-height='6' spacing='1'>");
+            Button(sb, "Delete drill", "drill-delete", 24,
+                "Delete the map of the selected drill. Press twice. Records are kept. It is also removed from custom stages.");
+            sb.Append("</horizontal>");
+        }
+
+        [UIObject("drill-row")] private GameObject? drillRow = null;
+
+        /// <summary>選んだドリルの譜面を消す。どのカスタムステージからも外す。</summary>
+        [UIAction("drill-delete")]
+        public void DeleteDrill()
+        {
+            if (launcher == null || drillSet == null) return;
+
+            // 選んでいるマスの曲名。カスタムでは行と列で、Other では ID で選んでいる
+            string? songName = null;
+            if (mode == ViewMode.Custom)
+            {
+                var row = SelectedRow();
+                if (row != null && HasSelectedCell(row)) songName = row.Drills[selectedColumn];
+            }
+            else if (selectedId != null)
+            {
+                songName = ListRows.SelectMany(r => r.Cells).FirstOrDefault(c => c.Id == selectedId)?.SongName;
+            }
+
+            string? id = songName == null ? null : DrillNaming.ExtractId(songName);
+            if (songName == null || id == null)
+            {
+                SetStatus("Pick a drill first.");
+                return;
+            }
+
+            if (deleteArmed != "drill:" + id)
+            {
+                deleteArmed = "drill:" + id;
+                SetStatus("Press Delete drill again to delete the map of " + DisplayName(songName) + ". Records are kept.");
+                return;
+            }
+            deleteArmed = null;
+
+            var folders = launcher.FoldersOf(id);
+            if (!bookBroken)
+            {
+                bool changed = false;
+                foreach (var stage in book.Stages)
+                    foreach (var row in stage.Rows)
+                        changed |= row.Drills.RemoveAll(d => d == songName) > 0;
+                if (changed) SaveBook();
+            }
+
+            selectedColumn = -1;
+            selectedId = null;
+            SetStatus("Deleting the drill...");
+            drillSet.Delete(folders, (ok, message) =>
+            {
+                SetStatus(message);
+                LoadOthers();
+                EvaluateOthers();
+                Fill();
+            });
+        }
+
         private static void Button(StringBuilder sb, string text, string action, int width, string hint)
         {
             sb.Append("<button text='").Append(text).Append("' on-click='").Append(action)

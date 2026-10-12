@@ -323,9 +323,9 @@ namespace JumpDrill.Tests
             flick.FlickPercent = 25;
 
             string name = DrillNaming.Compose(flick);
-            Assert.Contains(" axis flick25 ", name);
+            Assert.Contains(" axis sync flick25 ", name);
             Assert.NotEqual(DrillNaming.ExtractId(DrillNaming.Compose(plain)), DrillNaming.ExtractId(name));
-            Assert.Equal("R3bL2a flick25", DrillNaming.DirectionOf(name));
+            Assert.Equal("R3bL2a sync flick25", DrillNaming.DirectionOf(name));
 
             flick.HandPattern = HandPattern.Alternate;
             Assert.Throws<InvalidOperationException>(() => DrillGenerator.Generate(flick));
@@ -338,12 +338,25 @@ namespace JumpDrill.Tests
         [InlineData("My jumps", "My jumps", "")]
         [InlineData("My tower", "My", "tower")]
         [InlineData("flick fast", "flick fast", "")]
+        [InlineData("R8bL5a perp-outer tower sync", "R8bL5a", "perp-outer tower sync")]
         public void Row_names_split_only_known_tags(string row, string name, string tags)
         {
             string n, t;
             DrillNaming.SplitTags(row, out n, out t);
             Assert.Equal(name, n);
             Assert.Equal(tags, t);
+        }
+
+        [Theory]
+        [InlineData(DirectionMode.Axis, "R8bL5a sync")]
+        [InlineData(DirectionMode.Perpendicular, "R8bL5a perp sync")]
+        [InlineData(DirectionMode.PerpendicularOuter, "R8bL5a perp-outer sync")]
+        [InlineData(DirectionMode.Dot, "R8bL5a dot sync")]
+        public void Cut_directions_get_their_own_rows(DirectionMode mode, string row)
+        {
+            var options = Options("R8b, L5a");
+            options.Direction = mode;
+            Assert.Equal(row, DrillNaming.DirectionOf(DrillNaming.Compose(options)));
         }
 
         [Fact]

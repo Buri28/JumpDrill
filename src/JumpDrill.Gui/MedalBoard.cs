@@ -76,8 +76,17 @@ namespace JumpDrill.Gui
         /// <summary>「+」のマスが押された。<see cref="Hit.Row"/> が行の数と同じなら新しい行。</summary>
         public event EventHandler<Hit> AddClicked;
 
-        /// <summary>編集できる表で、マスか行の名前が右クリックされた。</summary>
+        /// <summary>編集できる表で、マスか行の名前が右クリックされた。<see cref="CellMenus"/> ならマスは編集できなくても出す。</summary>
         public event EventHandler<Hit> MenuRequested;
+
+        /// <summary>編集できない表（その他）でも、マスの右クリックでメニューを出すか。ドリルの削除に使う。</summary>
+        public bool CellMenus { get; set; }
+
+        /// <summary>当たったマス。マスでなければ null。</summary>
+        public MedalCell CellOf(Hit hit)
+        {
+            return hit.Kind == HitKind.Cell ? CellAt(hit.Row, hit.Column) : null;
+        }
 
         private int Scaled(int value)
         {
@@ -396,7 +405,8 @@ namespace JumpDrill.Gui
             base.OnMouseUp(e);
 
             var hit = HitAt(e.Location);
-            if (e.Button == MouseButtons.Right && _editable && (hit.Kind == HitKind.Cell || hit.Kind == HitKind.RowLabel))
+            if (e.Button == MouseButtons.Right &&
+                ((_editable && hit.Kind == HitKind.RowLabel) || ((_editable || CellMenus) && hit.Kind == HitKind.Cell)))
                 MenuRequested?.Invoke(this, hit);
         }
 

@@ -318,6 +318,31 @@ namespace JumpDrillMod.Services
             return found;
         }
 
+        /// <summary>
+        /// その ID の譜面のフォルダを、読み込まれている場所すべてから集める（同じドリルが複数の場所にあることがある）。
+        /// ドリルの削除で使う。
+        /// </summary>
+        internal List<string> FoldersOf(string drillId)
+        {
+            var folders = new List<string>();
+
+            void Add(IEnumerable<KeyValuePair<string, BeatmapLevel>>? levels)
+            {
+                if (levels == null) return;
+                foreach (var entry in levels)
+                {
+                    if (entry.Value == null || DrillNaming.ExtractId(entry.Value.songName) != drillId) continue;
+                    if (!folders.Any(f => SamePath(f, entry.Key))) folders.Add(entry.Key);
+                }
+            }
+
+            foreach (var separate in SongCore.Loader.SeparateSongFolders ?? new List<SongCore.Data.SeparateSongFolder>())
+                Add(separate.Levels);
+            Add(SongCore.Loader.CustomWIPLevels);
+            Add(SongCore.Loader.CustomLevels);
+            return folders;
+        }
+
         /// <summary>ID から譜面と、それが入っているパックを引く。無ければ null。</summary>
         private DrillLevel? Resolve(string drillId)
         {

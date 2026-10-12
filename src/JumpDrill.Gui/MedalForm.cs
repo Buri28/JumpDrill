@@ -402,9 +402,24 @@ namespace JumpDrill.Gui
                     CustomStage.MaxRows, CustomStage.MaxDrillsPerRow, skipped);
         }
 
-        /// <summary>表の右クリックのメニュー。カスタムステージのときだけ出す。</summary>
+        /// <summary>
+        /// 表の右クリックのメニュー。カスタムステージでは組み替えとドリルの削除、その他ではドリルの削除だけ。
+        /// </summary>
         private void ShowBoardMenu(MedalBoard.Hit hit)
         {
+            if (IsOther)
+            {
+                var cell = _board.CellOf(hit);
+                if (cell == null || string.IsNullOrEmpty(cell.SongName)) return;
+
+                var other = new ContextMenuStrip();
+                Theme.Apply(other);
+                other.Closed += (s, e) => BeginInvoke((Action)other.Dispose);
+                other.Items.Add(Lang.T("ドリルを削除...", "Delete drill..."), null, (s, e) => DeleteDrill(cell.SongName));
+                other.Show(Cursor.Position);
+                return;
+            }
+
             var stage = CurrentStage;
             if (stage == null || _bookBroken || hit.Row >= stage.Rows.Count) return;
 
@@ -434,6 +449,11 @@ namespace JumpDrill.Gui
                 AddItem(menu, Lang.T("右へ移動", "Move right"), c < row.Drills.Count - 1, () => { Swap(row.Drills, c, c + 1); return true; }, () => _board.Select(r, c + 1));
                 menu.Items.Add(new ToolStripSeparator());
                 AddItem(menu, Lang.T("ステージから外す", "Remove from stage"), true, () => { row.Drills.RemoveAt(c); _board.ClearSelection(); return true; });
+                string songName = c < row.Drills.Count ? row.Drills[c] : null;
+                menu.Items.Add(new ToolStripMenuItem(Lang.T("ドリルを削除...", "Delete drill..."), null, (s, e) => DeleteDrill(songName))
+                {
+                    Enabled = !string.IsNullOrEmpty(songName),
+                });
             }
             else
             {
@@ -463,6 +483,77 @@ namespace JumpDrill.Gui
             }
 
             menu.Show(Cursor.Position);
+        }
+
+        /// <summary>
+        /// ドリル（譜面のフォルダ）を消す。同じ曲名の譜面が置き場所ごとにあれば、全部消す。
+        /// 記録（リプレイ）は残す。どのカスタムステージからも外す（消した譜面のマスを残しても叩けない）。
+        /// ごみ箱には送らず、そのまま消す（リプレイの削除と同じ）。
+        /// </summary>
+        private void DeleteDrill(string songName)
+        {
+            if (string.IsNullOrEmpty(songName)) return;
+
+            List<DrillLibrary.DrillLevel> copies;
+            try
+            {
+                copies = (_findDrills == null ? new List<DrillLibrary.DrillLevel>() : _findDrills())
+                    .Where(d => string.Equals(d.SongName, songName, StringComparison.Ordinal))
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            bool inStages = _book.Stages.Any(st => st.Rows.Any(r => r.Drills.Contains(songName)));
+            if (copies.Count == 0 && !inStages)
+            {
+                MessageBox.Show(this, Lang.T("このドリルの譜面が見つかりませんでした。", "The map of this drill was not found."),
+                    "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var message = new System.Text.StringBuilder();
+            message.AppendLine(string.Format(CultureInfo.CurrentCulture,
+                Lang.T("ドリル「{0}」を削除しますか？", "Delete the drill \"{0}\"?"), DrillNaming.StripId(songName)));
+            message.AppendLine();
+            if (copies.Count > 0)
+            {
+                message.AppendLine(Lang.T("次の譜面のフォルダを消します（元に戻せません）:", "These map folders are deleted (cannot be undone):"));
+                foreach (var copy in copies) message.AppendLine("  " + copy.Path);
+            }
+            if (inStages) message.AppendLine(Lang.T("カスタムステージからも外します。", "It is also removed from custom stages."));
+            message.Append(Lang.T("記録（リプレイ）は残ります。", "Records (replays) are kept."));
+
+            if (MessageBox.Show(this, message.ToString(), "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+
+            var failed = new List<string>();
+            foreach (var copy in copies)
+            {
+                try { System.IO.Directory.Delete(copy.Path, true); }
+                catch (Exception ex) { failed.Add(copy.Path + "  " + ex.Message); }
+            }
+
+            if (inStages && !_bookBroken)
+            {
+                foreach (var stage in _book.Stages)
+                    foreach (var row in stage.Rows)
+                        row.Drills.RemoveAll(d => d == songName);
+                SaveStages();
+            }
+
+            _otherNames = null;
+            _board.ClearSelection();
+            ShowStage();
+
+            _status.Text = failed.Count == 0
+                ? string.Format(CultureInfo.CurrentCulture, Lang.T("ドリル「{0}」を削除しました。", "Deleted the drill \"{0}\"."), DrillNaming.StripId(songName))
+                : Lang.T("消せなかった譜面があります。", "Some maps could not be deleted.");
+            if (failed.Count > 0)
+                MessageBox.Show(this, string.Join(Environment.NewLine, failed), "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         /// <summary>
@@ -502,6 +593,7 @@ namespace JumpDrill.Gui
                 : stage == null ? DrillSetMedals.Evaluate(_best)
                 : DrillSetMedals.Evaluate(stage, _best);
             ShowRows(rows, editable: stage != null && !_bookBroken);
+            _board.CellMenus = other;
 
             // 生成は指定を持っている標準だけ。その他・カスタムは作ったドリルを並べたもの
             bool standard = !other && stage == null;

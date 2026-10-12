@@ -110,7 +110,7 @@ namespace JumpDrill.Model
                 throw new InvalidOperationException(Lang.T("フリックは 0〜50 %。", "Flick must be 0-50 %."));
             if (FlickPercent > 0 && HandPattern == HandPattern.Alternate)
                 throw new InvalidOperationException(Lang.T(
-                    "フリックは 1ステップごとの交互（alt）では使えません。往復が続かないためです。",
+                    "フリックは配置が 1ステップごとに交互（alt）のときは使えません。往復が続かないためです。",
                     "Flick cannot be used with alternate (no back-to-back round trip)."));
             if (FlickPercent > 0)
                 foreach (var seq in Sequences)

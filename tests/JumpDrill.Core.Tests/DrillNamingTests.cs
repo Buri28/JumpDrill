@@ -1,4 +1,5 @@
-﻿using JumpDrill.Model;
+﻿using System.Linq;
+using JumpDrill.Model;
 using JumpDrill.Parsing;
 using JumpDrill.Replays;
 using Xunit;
@@ -33,8 +34,25 @@ namespace JumpDrill.Core.Tests
         {
             string name = DrillNaming.Compose(Options("R:8>b,L:5>a", 100));
 
-            Assert.Equal("Drill R8b L5a axis 300 BPM 30s", DrillNaming.StripId(name));
+            Assert.Equal("Drill R8b L5a axis sync 300 BPM 30s", DrillNaming.StripId(name));
             Assert.Equal(DrillNaming.IdLength, DrillNaming.ExtractId(name).Length);
+        }
+
+        [Fact]
+        public void Each_hand_pattern_is_a_separate_drill_but_split_keeps_its_old_name()
+        {
+            // 片手ずつ（標準のステージ）は印なし。名前と ID は今までと同じ。
+            Assert.Equal("Drill R8b L5a axis 300 BPM 30s",
+                DrillNaming.StripId(DrillNaming.Compose(Options("R8b, L5a", 100, HandPattern.Split))));
+
+            var ids = new[] { HandPattern.Split, HandPattern.Sync, HandPattern.Alternate, HandPattern.AlternateRoundTrip }
+                .Select(p => DrillNaming.ExtractId(DrillNaming.Compose(Options("R8b, L5a", 100, p))))
+                .ToList();
+            Assert.Equal(ids.Count, ids.Distinct().Count());
+
+            // 手が1つだけなら配置は効かないので印も付けない。
+            Assert.Equal("Drill R8b axis 300 BPM 30s",
+                DrillNaming.StripId(DrillNaming.Compose(Options("R8b", 100, HandPattern.Sync))));
         }
 
         [Fact]
@@ -101,7 +119,7 @@ namespace JumpDrill.Core.Tests
             // 両手交互は自分の番が2つおき。片手から見れば 200ms＝150 BPM。
             var alt = Options("R:8>b,L:5>a", 100, HandPattern.Alternate);
             Assert.Equal(200.0, DrillNaming.HandIntervalMs(alt));
-            Assert.Equal("Drill R8b L5a axis 150 BPM 30s", DrillNaming.StripId(DrillNaming.Compose(alt)));
+            Assert.Equal("Drill R8b L5a axis alt 150 BPM 30s", DrillNaming.StripId(DrillNaming.Compose(alt)));
         }
 
         [Fact]

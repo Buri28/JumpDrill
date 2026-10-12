@@ -9,7 +9,7 @@ namespace JumpDrill.Generation
     {
         public TowerOverlapException()
             : base(Lang.T(
-                "タワーにすると両手のノーツが同じマスに重なるので作れません。配置を変えるか、手の並べ方を片手ずつにしてください。",
+                "タワーにすると両手のノーツが同じマスに重なるので作れません。遷移を変えるか、配置を片手ずつにしてください。",
                 "With tower, notes of both hands land on the same cell. Change the layout, or use split."))
         {
         }

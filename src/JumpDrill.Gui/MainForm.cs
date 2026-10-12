@@ -74,7 +74,7 @@ namespace JumpDrill.Gui
         private static readonly string[] DirectionArgs = { "axis", "perp", "perp-outer", "dot", "explicit" };
         private readonly ComboBox _hands = Combo(Lang.T("split  片手ずつ（右で1本→左で1本）", "split  one hand at a time (right, then left)"), Lang.T("sync   両手同時", "sync   both hands together"), Lang.T("alt    1ステップごとに交互", "alt    alternate every step"), Lang.T("alt-trip  往復ごとに交互", "alt-trip  alternate every round trip"));
 
-        /// <summary>手の並べ方のプルダウンの並び。ジャンプ練習で普通に使う片手ずつを先頭にする。</summary>
+        /// <summary>配置のプルダウンの並び。ジャンプ練習で普通に使う片手ずつを先頭にする。</summary>
         private static readonly HandPattern[] HandsOrder =
         {
             HandPattern.Split, HandPattern.Sync, HandPattern.Alternate, HandPattern.AlternateRoundTrip,
@@ -485,7 +485,7 @@ namespace JumpDrill.Gui
                 Group(Lang.T("切る方向 / 手", "Direction / hands"), Rows(
                     Row(Lang.T("切る方向", "Cut direction"), _direction),
                     Row(Lang.T("タワー", "Tower"), _tower),
-                    Row(Lang.T("手の並べ方", "Hand pattern"), _hands),
+                    Row(Lang.T("配置", "Hand pattern"), _hands),
                     Row(Lang.T("セットの順番", "Set order"), _order),
                     Row(Lang.T("セット数", "Sets"), _sets))),
                 Group(Lang.T("クリック音（音源に焼き込む）", "Click (baked into the audio)"), Rows(
