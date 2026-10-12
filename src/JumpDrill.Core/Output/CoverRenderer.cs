@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using JumpDrill.Model;
 
 namespace JumpDrill.Output
@@ -16,10 +17,11 @@ namespace JumpDrill.Output
         public static byte[] Render(DrillMap map, int size = DefaultSize)
         {
             if (map == null) throw new ArgumentNullException(nameof(map));
-            return Render(map.Options.Sequences, size);
+            return Render(map.Options.Sequences, size, map.Options.Tower);
         }
 
-        public static byte[] Render(IReadOnlyList<HandSequence> sequences, int size = DefaultSize)
+        /// <param name="tower">タワーのドリル。線を太くし、点の間のノーツがあるマスにも ☐ を描く。</param>
+        public static byte[] Render(IReadOnlyList<HandSequence> sequences, int size = DefaultSize, bool tower = false)
         {
             var canvas = new PixelCanvas(size, size);
             canvas.Fill(0x14, 0x16, 0x1A);
@@ -52,13 +54,18 @@ namespace JumpDrill.Output
                 {
                     var from = Center(seq.StepAt(i).Position, originX, originY, cellW, cellH);
                     var to = Center(seq.StepAt(i + 1).Position, originX, originY, cellW, cellH);
-                    canvas.Line(from.Item1, from.Item2, to.Item1, to.Item2,
-                        (byte)(r / 2 + 0x20), (byte)(g / 2 + 0x20), (byte)(b / 2 + 0x20));
+                    byte lr = (byte)(r / 2 + 0x20), lg = (byte)(g / 2 + 0x20), lb = (byte)(b / 2 + 0x20);
+                    // タワーは ☐ と同じ色の太めの線にする。暗い 1px の線だと普通のドリルと見分けが付かない。
+                    if (tower)
+                        canvas.LineAA(from.Item1, from.Item2, to.Item1, to.Item2, r, g, b, size * 6.0 / DefaultSize);   // 128px の絵で 6px
+                    else
+                        canvas.Line(from.Item1, from.Item2, to.Item1, to.Item2, lr, lg, lb);
                 }
 
-                foreach (var step in seq.Steps)
+                var cells = tower ? Generation.Tower.NoteCells(seq) : seq.Steps.Select(st => st.Position).ToList();
+                foreach (var cell in cells)
                 {
-                    var c = Center(step.Position, originX, originY, cellW, cellH);
+                    var c = Center(cell, originX, originY, cellW, cellH);
                     int s = Math.Min(cellW, cellH) / 3;
                     canvas.Rect(c.Item1 - s, c.Item2 - s, s * 2, s * 2, r, g, b, true);
                 }

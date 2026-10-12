@@ -65,7 +65,8 @@ namespace JumpDrill.Replays
                     counted.Add(name, counts);
                 }
 
-                if (counts.Total > 0) SwingAnalyzer.ApplyMapNotes(score, counts.Left, counts.Right);
+                if (counts.Total > 0)
+                    SwingAnalyzer.ApplyMapNotes(score, counts.Left, counts.Right, counts.SwingLeft, counts.SwingRight);
             }
         }
 

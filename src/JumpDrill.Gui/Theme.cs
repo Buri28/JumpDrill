@@ -83,6 +83,27 @@ namespace JumpDrill.Gui
             foreach (Control child in root.Controls) ApplyTo(child);
         }
 
+        /// <summary>右クリックやボタンから出すメニューを暗色にする。既定のままだと白い箱が出る。</summary>
+        public static void Apply(ToolStripDropDown menu)
+        {
+            menu.BackColor = Surface;
+            menu.ForeColor = Text;
+            menu.Renderer = new ToolStripProfessionalRenderer(new MenuColors()) { RoundedEdges = false };
+        }
+
+        private sealed class MenuColors : ProfessionalColorTable
+        {
+            public override Color ToolStripDropDownBackground => Surface;
+            public override Color ImageMarginGradientBegin => Surface;
+            public override Color ImageMarginGradientMiddle => Surface;
+            public override Color ImageMarginGradientEnd => Surface;
+            public override Color MenuBorder => Line;
+            public override Color MenuItemBorder => Selection;
+            public override Color MenuItemSelected => Selection;
+            public override Color SeparatorDark => Line;
+            public override Color SeparatorLight => Line;
+        }
+
         private static void ApplyTo(Control control)
         {
             // 仕切りの帯は色を残す（掴める所が見えなくなる）。面の方は地の色に戻す。
@@ -341,6 +362,20 @@ namespace JumpDrill.Gui
 
                 int textLeft = label.Left - 2;
                 bounds = new Rectangle(textLeft, e.Bounds.Top, Math.Max(0, e.Bounds.Right - textLeft), e.Bounds.Height);
+            }
+
+            // 絵のある表は、先頭の列に絵も描く。塗りつぶしたままだと選んだ行だけ絵が消える
+            if (e.ColumnIndex == 0 && !list.CheckBoxes && list.SmallImageList != null)
+            {
+                var images = list.SmallImageList;
+                int index = e.Item.ImageIndex >= 0 ? e.Item.ImageIndex
+                    : (e.Item.ImageKey.Length > 0 ? images.Images.IndexOfKey(e.Item.ImageKey) : -1);
+                Rectangle icon = e.Item.GetBounds(ItemBoundsPortion.Icon);
+                if (index >= 0)
+                    e.Graphics.DrawImage(images.Images[index], icon.Left, icon.Top + (icon.Height - images.ImageSize.Height) / 2);
+
+                Rectangle label = e.Item.GetBounds(ItemBoundsPortion.Label);
+                bounds = new Rectangle(label.Left, e.Bounds.Top, Math.Max(0, e.Bounds.Right - label.Left), e.Bounds.Height);
             }
 
             TextRenderer.DrawText(e.Graphics, e.SubItem.Text, e.SubItem.Font ?? list.Font,

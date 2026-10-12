@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -11,6 +12,9 @@ namespace JumpDrill.Model
     /// <code>
     ///   [Q7K3M] Drill R8b L5a axis 300 BPM 30s
     ///   [Q7K3M] Drill R8b L5a axis 300 BPM 30s x3      セットを繰り返すとき
+    ///   [Q7K3M] Drill R3b L2a axis tower 300 BPM 30s    タワー
+    ///   [Q7K3M] Drill R3b L2a axis alt-trip 300 BPM 30s 往復ごとに交互
+    ///   [Q7K3M] Drill R3b L2a axis flick25 300 BPM 30s  フリック 25%
     ///   {R8bL5a 300} [Q7K3M] Drill R8b L5a axis 300 BPM 10s   一括生成の1本
     /// </code>
     ///
@@ -74,9 +78,15 @@ namespace JumpDrill.Model
             if (options == null) throw new ArgumentNullException(nameof(options));
 
             var ci = CultureInfo.InvariantCulture;
-            string body = explicitBody ?? string.Format(ci, "{0} {1}",
+            // タワーは別のドリルなので名前（と ID）を分ける。
+            // 往復ごとに交互も叩き方が別物なので名前を分ける。ほかの並べ方は昔から名前に入れていない。
+            // フリックも叩き方が違うので名前を分ける（flick25 のように割合を添える）。
+            string body = explicitBody ?? string.Format(ci, "{0} {1}{2}{3}{4}",
                 string.Join(" ", options.Sequences.Select(s => s.ToString()).ToArray()),
-                options.Direction.ToString().ToLowerInvariant());
+                DirectionWord(options.Direction),
+                options.Tower ? TowerWord : "",
+                options.HandPattern == HandPattern.AlternateRoundTrip ? AltTripWord : "",
+                options.FlickPercent > 0 ? string.Format(ci, " {0}{1:0.#}", FlickPrefix, options.FlickPercent) : "");
 
             // 速さは 1 桁だけ小数を残す。整数に丸めると 171ms が 175 BPM = 171.4ms に戻り、
             // 「片手 171 ms」と出したいところが 171.4 ms になる。
@@ -86,6 +96,16 @@ namespace JumpDrill.Model
             return string.Format(ci, "[{0}] {1}{2} {3} {4}",
                 MakeId(body, HandIntervalMs(options), options.DurationSeconds, options.Sets),
                 Prefix, body, speed, length);
+        }
+
+        /// <summary>
+        /// 名前に書く切る方向。既存のものは enum の名前の小文字のまま（変えると ID が変わる）。
+        /// </summary>
+        private static string DirectionWord(DirectionMode mode)
+        {
+            return mode == DirectionMode.PerpendicularOuter
+                ? "perpendicular-outer"
+                : mode.ToString().ToLowerInvariant();
         }
 
         /// <summary>尺の表記。セットが1組だけなら回数は書かない。</summary>
@@ -205,6 +225,106 @@ namespace JumpDrill.Model
         {
             if (ExtractId(songName) == null) return songName;
             return songName.Substring(AfterSetTag(songName) + IdLength + 2).TrimStart();
+        }
+
+        /// <summary>
+        /// 譜面名に書いた片手の速さ（<c>300 BPM</c> の 300）。書いていなければ null。
+        /// カスタムステージのように、生成の指定を持たずに名前だけで並べるときに使う。
+        /// </summary>
+        public static double? ParseBpm(string songName)
+        {
+            if (string.IsNullOrEmpty(songName)) return null;
+
+            var words = StripId(songName).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 1; i < words.Length; i++)
+            {
+                double bpm;
+                if (words[i] == "BPM" &&
+                    double.TryParse(words[i - 1], NumberStyles.Float, CultureInfo.InvariantCulture, out bpm))
+                    return bpm;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 譜面名に書いた遷移（<c>Drill R8b L5a axis …</c> の R8b と L5a）。
+        /// 読めなければ空。<c>--name</c> で名前を変えた譜面は読めない。
+        /// </summary>
+        public static List<HandSequence> ParseSequences(string songName)
+        {
+            var result = new List<HandSequence>();
+            if (string.IsNullOrEmpty(songName)) return result;
+
+            string body = StripId(songName).Trim();
+            if (body.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
+                body = body.Substring(Prefix.Length);
+
+            foreach (var word in body.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                try { result.Add(JumpDrill.Parsing.SequenceParser.ParseOne(word)); }
+                catch (FormatException) { break; }
+                catch (ArgumentException) { break; }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// 譜面名から読んだ方向（遷移を詰めたもの、<c>R8bL5a</c>）。読めなければ空文字。
+        /// カスタムステージの1行に同じ方向のドリルだけを並べるのに使う。
+        /// タワーは振り方が違うので別の方向として扱う（<c>R3b tower</c>）。
+        /// </summary>
+        public static string DirectionOf(string songName)
+        {
+            string direction = string.Concat(ParseSequences(songName).Select(s => s.ToString()));
+            if (direction.Length == 0) return direction;
+            if (IsTower(songName)) direction += TowerWord;
+            if (HasWord(songName, AltTripWord.Trim())) direction += AltTripWord;
+            string flick = FlickWord(songName);
+            if (flick != null) direction += " " + flick;
+            return direction;
+        }
+
+        /// <summary>フリックの印の頭。後ろに割合が付く（<c>flick25</c>）。</summary>
+        private const string FlickPrefix = "flick";
+
+        /// <summary>名前の <c>BPM</c> より前にあるフリックの印（<c>flick25</c>）。無ければ null。</summary>
+        private static string FlickWord(string songName)
+        {
+            if (string.IsNullOrEmpty(songName)) return null;
+
+            foreach (var word in StripId(songName).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (word == "BPM") return null;
+                if (word.StartsWith(FlickPrefix, StringComparison.Ordinal) && word.Length > FlickPrefix.Length) return word;
+            }
+            return null;
+        }
+
+        /// <summary>名前の向きの後ろに入るタワーの印。</summary>
+        private const string TowerWord = " tower";
+
+        /// <summary>往復ごとに交互（<see cref="HandPattern.AlternateRoundTrip"/>）の印。タワーの印の後ろに入る。</summary>
+        private const string AltTripWord = " alt-trip";
+
+        /// <summary>
+        /// タワーのドリルか。名前の <c>BPM</c> より前に <c>tower</c> の語があるかで見る。
+        /// </summary>
+        public static bool IsTower(string songName)
+        {
+            return HasWord(songName, TowerWord.Trim());
+        }
+
+        /// <summary>名前の <c>BPM</c> より前にその語があるか。</summary>
+        private static bool HasWord(string songName, string target)
+        {
+            if (string.IsNullOrEmpty(songName)) return false;
+
+            foreach (var word in StripId(songName).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (word == "BPM") return false;
+                if (word == target) return true;
+            }
+            return false;
         }
 
         /// <summary>

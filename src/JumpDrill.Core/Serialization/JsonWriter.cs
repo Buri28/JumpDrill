@@ -15,11 +15,16 @@ namespace JumpDrill.Serialization
         private readonly StringBuilder _sb = new StringBuilder();
         private readonly Stack<bool> _hasMembers = new Stack<bool>();
         private readonly bool _indent;
+        private readonly bool _asciiOnly;
         private int _depth;
 
-        public JsonWriter(bool indent = true)
+        /// <param name="asciiOnly">
+        /// ASCII 以外を \u で書くか。人が開いて直す設定ファイルでは false にして、日本語をそのまま書く。
+        /// </param>
+        public JsonWriter(bool indent = true, bool asciiOnly = true)
         {
             _indent = indent;
+            _asciiOnly = asciiOnly;
         }
 
         public JsonWriter StartObject() { Separator(); _sb.Append('{'); Push(); return this; }
@@ -118,7 +123,7 @@ namespace JumpDrill.Serialization
                     case '\r': _sb.Append("\\r"); break;
                     case '\t': _sb.Append("\\t"); break;
                     default:
-                        if (c < 0x20 || c > 0x7e)
+                        if (c < 0x20 || (_asciiOnly && c > 0x7e))
                             _sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
                         else
                             _sb.Append(c);

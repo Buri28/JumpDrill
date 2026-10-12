@@ -114,6 +114,8 @@ namespace JumpDrill.Replays
         public static byte[] Render(Replay replay, Options options)
         {
             options = options ?? new Options();
+            // タワーは端の点だけのジャンプとして描く（採点と同じ）。
+            replay = TowerReplay.Collapse(replay);
 
             var canvas = Draw(replay, options);
             return canvas == null ? null : PngWriter.Encode(canvas.Pixels, options.Width, options.Height);
@@ -128,6 +130,7 @@ namespace JumpDrill.Replays
         public static byte[] RenderBoth(Replay replay, Options options)
         {
             options = options ?? new Options();
+            replay = TowerReplay.Collapse(replay);
 
             const int Divider = 4;
             int half = (options.Width - Divider) / 2;

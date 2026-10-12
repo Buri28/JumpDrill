@@ -31,10 +31,11 @@ namespace JumpDrillMod.UI
         private bool buttonRegistered;
 
         internal MenuUiRegistrar(DrillGenerationService generator, SongRefreshService refresher, DrillPackLocator pack,
-            DrillSetGenerationService drillSet, Medals.DrillSetScreen drillSetScreen)
+            DrillSetGenerationService drillSet, Medals.DrillSetScreen drillSetScreen, ReplayCleanupService cleanup,
+            IconService icons)
         {
             this.pack = pack;
-            tab = new JumpDrillTabController(generator, refresher, drillSet, drillSetScreen);
+            tab = new JumpDrillTabController(generator, refresher, drillSet, drillSetScreen, cleanup, icons);
             drillSetButton = new MenuButton("JumpDrill",
                 "Jump drills: medals, records and play",
                 () => drillSetScreen.Open());

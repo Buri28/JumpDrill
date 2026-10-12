@@ -59,9 +59,12 @@
            置いた点をもう一度押すと外し、2点あるところへ別の点を置くと置き直す。
            記号は JumpDrill.Core の GridPosition と同じ並び。
            ボタンは縦 7 に対して横 10。横に広いと格子の形に見えず、どのマスか読み取りにくい。
-           下の段は点ごとの「矢印をまっすぐ」（文字はその点の記法 4 / 4s）と、全部消す -->
+           下の段は点ごとの「矢印をまっすぐ」（文字はその点の記法 4 / 4s）と、全部消す。
+           格子の右は GUI のグリッドと同じ絵（線と ●）。反転した手とタワーの間のマスも出る -->
       <tab tags='jd-tabs' tab-name='Transition'>
         <vertical spacing='1' pad='1' child-expand-height='false' child-align='UpperCenter'>
+          <horizontal spacing='3' pad='0'>
+          <vertical spacing='1' pad='0' child-expand-height='false'>
           <horizontal spacing='1' pad='0'>
             <button id='cell-button-1' text='1' on-click='cell-1' pref-width='10' pref-height='7'/>
             <button id='cell-button-2' text='2' on-click='cell-2' pref-width='10' pref-height='7'/>
@@ -79,6 +82,9 @@
             <button id='cell-button-10' text='a' on-click='cell-10' pref-width='10' pref-height='7'/>
             <button id='cell-button-11' text='b' on-click='cell-11' pref-width='10' pref-height='7'/>
             <button id='cell-button-12' text='c' on-click='cell-12' pref-width='10' pref-height='7'/>
+          </horizontal>
+          </vertical>
+          <image id='grid-preview' src='#EmptySprite' preserve-aspect='true' pref-width='30' pref-height='23'/>
           </horizontal>
           <horizontal spacing='1' pad='0'>
             <text text='Straighten' font-size='3.5' align='Right' pref-width='16'/>
@@ -111,13 +117,18 @@
                         value='pattern'
                         options='pattern-options'
                         apply-on-change='true'
-                        hover-hint='How the two hands interleave. Split runs one hand at a time and is what jump practice usually wants. Only used with Mirror.'/>
+                        hover-hint='How the two hands interleave. Split runs one hand at a time and is what jump practice usually wants. Alternate switches hands every note, Alt Round Trip after each round trip. Only used with Mirror.'/>
 
           <list-setting text='Cut Direction'
                         value='direction'
                         options='direction-options'
                         apply-on-change='true'
-                        hover-hint='Axis follows the transition vector (back and forth along one line). Perpendicular crosses it. Dot removes the arrow.'/>
+                        hover-hint='Axis follows the transition vector (back and forth along one line). Perp crosses it. Joining the arrows in order draws a circle: Inner turns its top inward, Outer turns it outward. Dot removes the arrow.'/>
+
+          <toggle-setting text='Tower'
+                          value='tower'
+                          apply-on-change='true'
+                          hover-hint='Fill the cells between the two points with notes of the same direction when they are in a straight line. Adjacent points become a stack.'/>
 
         </vertical>
       </tab>
@@ -156,6 +167,13 @@
                              integer-only='true'
                              min='1' max='10' increment='1'
                              hover-hint='How many times the whole thing repeats.'/>
+
+          <increment-setting text='Flick (%)'
+                             value='flick'
+                             apply-on-change='true'
+                             integer-only='true'
+                             min='0' max='50' increment='5'
+                             hover-hint='Shortens the gap from each note to its return by this share of the interval, and lengthens the gap to the next pair by the same amount. 0 is off. Not for Alternate.'/>
         </vertical>
       </tab>
 
@@ -173,6 +191,38 @@
                              integer-only='true'
                              min='0' max='16' increment='1'
                              hover-hint='Clicks before the first note.'/>
+        </vertical>
+      </tab>
+
+      <!-- リプレイの整理。ドリルごとに順位の上位 N 件を残す（N は 10 以上、既定 20）。
+           Delete now は2回押す（1回目で何件・何 MB 消えるかを出す）。
+           自動削除は叩いたドリルだけを整理し、叩いたばかりの記録は次に叩くまで残す -->
+      <tab tags='jd-tabs' tab-name='Replays'>
+        <vertical spacing='0.5' pad='1' pref-width='104' child-expand-height='false' child-align='UpperCenter'>
+          <horizontal pref-height='5'>
+            <text id='replay-usage' text='' font-size='3' align='Left'/>
+          </horizontal>
+
+          <increment-setting text='Keep top'
+                             value='replay-keep'
+                             apply-on-change='true'
+                             integer-only='true'
+                             min='10' max='9999' increment='5'
+                             hover-hint='How many records to keep for each drill, from the top rank.'/>
+
+          <toggle-setting text='Auto delete'
+                          value='replay-auto'
+                          apply-on-change='true'
+                          hover-hint='After each play, delete the records of that drill below the top. The play you just made is kept until you play that drill again.'/>
+
+          <horizontal pref-height='7' spacing='2'>
+            <button text='Delete now' on-click='replay-delete' pref-width='30' pref-height='7'
+                    hover-hint='Delete the records below the top for every drill. Press twice. This cannot be undone.'/>
+          </horizontal>
+
+          <horizontal pref-height='8'>
+            <text id='replay-note' text='' font-size='2.8' align='Left' word-wrapping='true' pref-width='100'/>
+          </horizontal>
         </vertical>
       </tab>
 

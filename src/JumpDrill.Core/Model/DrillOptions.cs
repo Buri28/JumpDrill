@@ -27,6 +27,24 @@ namespace JumpDrill.Model
         public HandPattern HandPattern { get; set; } = HandPattern.Sync;
 
         /// <summary>
+        /// タワー。縦・横・斜めの一直線のジャンプで、2点の間のマスも
+        /// 同じ時刻・同じ向きのノーツで埋める。隣り合う2点ならスタックになる
+        /// （<see cref="JumpDrill.Generation.Tower"/>）。
+        /// </summary>
+        public bool Tower { get; set; }
+
+        /// <summary>
+        /// フリック (%)。0 なら無し。往復の「行き → 戻り」の間をノーツ間隔のこの割合だけ狭め、
+        /// 「戻り → 次の行き」をその分だけ広げる。平均の間隔（速さ）は変わらない。
+        /// 200ms・25% なら 行き→戻り 150ms、戻り→行き 250ms。
+        /// 1ステップごとの交互（alt）では往復が続かないので使えない。2点の遷移だけ。
+        /// </summary>
+        public double FlickPercent { get; set; }
+
+        /// <summary>フリックの上限 (%)。これより狭めると戻りが行きにほぼ重なる。</summary>
+        public const double MaxFlickPercent = 50.0;
+
+        /// <summary>
         /// 時間軸の基準にするだけの BPM。ノーツ間隔とは独立で、
         /// _time は ms から実数拍に換算して書く（量子化しない）。
         /// </summary>
@@ -88,6 +106,17 @@ namespace JumpDrill.Model
                 throw new InvalidOperationException(Lang.T("カウントイン数は 0 以上。", "Count-in must be 0 or more."));
             if (Sets < 1)
                 throw new InvalidOperationException(Lang.T("セット数は 1 以上。", "Sets must be 1 or more."));
+            if (FlickPercent < 0 || FlickPercent > MaxFlickPercent)
+                throw new InvalidOperationException(Lang.T("フリックは 0〜50 %。", "Flick must be 0-50 %."));
+            if (FlickPercent > 0 && HandPattern == HandPattern.Alternate)
+                throw new InvalidOperationException(Lang.T(
+                    "フリックは 1ステップごとの交互（alt）では使えません。往復が続かないためです。",
+                    "Flick cannot be used with alternate (no back-to-back round trip)."));
+            if (FlickPercent > 0)
+                foreach (var seq in Sequences)
+                    if (seq.Length != 2)
+                        throw new InvalidOperationException(Lang.T(
+                            "フリックは2点の遷移でだけ使えます。", "Flick works only with two-point sequences."));
 
             int specified = 0;
             if (JumpDistance.HasValue) specified++;

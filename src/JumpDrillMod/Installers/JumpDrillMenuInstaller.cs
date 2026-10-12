@@ -17,6 +17,7 @@ namespace JumpDrillMod.Installers
         {
             Container.BindInterfacesAndSelfTo<DrillPackLocator>().AsSingle();
             Container.BindInterfacesAndSelfTo<ReplayScoreReader>().AsSingle();
+            Container.BindInterfacesAndSelfTo<ReplayCleanupService>().AsSingle();
             Container.BindInterfacesAndSelfTo<DiagramService>().AsSingle();
             Container.BindInterfacesAndSelfTo<DrillGenerationService>().AsSingle();
             Container.BindInterfacesAndSelfTo<SongRefreshService>().AsSingle();

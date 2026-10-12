@@ -17,7 +17,7 @@ namespace JumpDrill.Cli
     {
         private static readonly HashSet<string> KnownOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "seq","interval","div","sec","dir","hands","mirror","order","sets",
+            "seq","interval","div","sec","dir","tower","flick","hands","mirror","order","sets",
             "njs","jd","rt","offset","bpm",
             "click","count-in","tail","lead-in","gap",
             "name","out","install","register-pack","zip","wav","quality","rate",
@@ -226,6 +226,8 @@ namespace JumpDrill.Cli
             options.DurationSeconds = cmd.GetDouble("sec") ?? options.DurationSeconds;
             options.Direction = ParseDirectionMode(cmd.GetString(new[] { "dir" }));
             options.HandPattern = ParseHandPattern(cmd.GetString(new[] { "hands" }));
+            options.Tower = cmd.Has("tower");
+            options.FlickPercent = cmd.GetDouble("flick") ?? 0.0;
             options.Bpm = cmd.GetDouble("bpm") ?? options.Bpm;
             options.Njs = cmd.GetDouble("njs") ?? options.Njs;
             options.JumpDistance = cmd.GetDouble("jd");
@@ -252,6 +254,8 @@ namespace JumpDrill.Cli
                 NotesPerBeat = source.NotesPerBeat,
                 Direction = source.Direction,
                 HandPattern = source.HandPattern,
+                Tower = source.Tower,
+                FlickPercent = source.FlickPercent,
                 Bpm = source.Bpm,
                 Njs = source.Njs,
                 JumpDistance = source.JumpDistance,
@@ -351,7 +355,8 @@ namespace JumpDrill.Cli
                 case "perp": case "perpendicular": case "2": case "lv2": return DirectionMode.Perpendicular;
                 case "dot": case "3": case "lv3": return DirectionMode.Dot;
                 case "explicit": case "exp": return DirectionMode.Explicit;
-                default: throw new FormatException("--dir は axis / perp / dot / explicit です。");
+                case "perp-outer": case "perpendicular-outer": return DirectionMode.PerpendicularOuter;
+                default: throw new FormatException("--dir は axis / perp / perp-outer / dot / explicit です。");
             }
         }
 
@@ -362,8 +367,9 @@ namespace JumpDrill.Cli
             {
                 case "sync": case "both": case "same": return HandPattern.Sync;
                 case "alt": case "alternate": return HandPattern.Alternate;
+                case "alt-trip": case "alt2": return HandPattern.AlternateRoundTrip;
                 case "split": case "seq": case "serial": case "sequential": case "solo": return HandPattern.Split;
-                default: throw new FormatException("--hands は sync / alt / split です。");
+                default: throw new FormatException("--hands は sync / alt / alt-trip / split です。");
             }
         }
 
@@ -408,8 +414,20 @@ namespace JumpDrill.Cli
                      s は短い形でも > の形でも書ける（""R:4>bs""）
   --dir <mode>       axis  配置ベクトルと一致（既定・一直線の往復）
                      perp  配置ベクトルに垂直（移動軸と振り軸が直交）
+                           内回り。切る順に矢印をつなぐと手は円を描き、上側が内側へ回る
+                           （右手 3b なら b ▶、3 ◀）
+                     perp-outer  垂直の外回り。perp と回る向きが逆（右手 3b なら b ◀、3 ▶）
                      dot   ドット（方向の制約なし）
                      explicit  記法内の @ 指定を使う
+  --tower            一直線のジャンプで2点の間のマスも同じ向きのノーツで埋める
+                       R3b    b で 3 7 b がすべて ▼、戻りの 3 で ▲
+                       R14    1 2 3 4 の横4つ
+                       R37    隣り合う2点はスタックになる
+                     4→b のように一直線でない遷移はそのまま
+  --flick <%>        フリック。往復の行き→戻りの間をノーツ間隔のこの割合だけ狭め、
+                     戻り→次の行きをその分広げる（0〜50、既定 0 = 無し）
+                       200ms で 25 なら 行き→戻り 150ms、戻り→行き 250ms
+                     alt では使えない。2点の遷移だけ
   --mirror           片手指定を左右反転して反対の手にも同じ形を組む
   --hands <mode>     sync   両手同時（既定）
                      split  片手ずつ。右で1本叩いてから左で1本叩く。
@@ -417,6 +435,8 @@ namespace JumpDrill.Cli
                             このとき --sec は「手あたりの秒数」になる
                      alt    1ステップごとに交互。同じ配置を続けて往復しないので
                             ジャンプ練習にはならない
+                     alt-trip  往復ごとに交互。右で行きと戻りを叩いてから左で同じく
+                     --tower で両手が同じマスに重なる配置は、sync・alt・alt-trip では作れない
   --order <rl|lr>    split でどちらの手から始めるか。rl = 右→左 / lr = 左→右
                      省略すると --seq に書いた順（--mirror では元の手が先）
   --sets <n>         セットの繰り返し回数。既定 1

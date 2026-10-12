@@ -105,6 +105,9 @@
       <!-- 曲選択の枠から Jump Drill 画面を開く。Jump Drill 画面の右の枠に出しているときは出さない -->
       <button id='drill-set-button' text='Drill' on-click='open-drill-set' pref-width='20' pref-height='5'
               hover-hint='Open the Jump Drill screen.'/>
+      <!-- 選んでいる記録を消す。元に戻せないので2回押す（1回目で何を消すかを出す） -->
+      <button id='delete-button' text='Delete' on-click='delete-record' pref-width='16' pref-height='5'
+              hover-hint='Delete the selected record. Press twice. This cannot be undone.'/>
 
     </horizontal>
 

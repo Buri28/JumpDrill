@@ -79,8 +79,8 @@ namespace JumpDrill.Core.Tests
             var slanted = DirectionAt("R:4>b", 1, DirectionMode.Perpendicular);
             var straight = DirectionAt("R4bs", 1, DirectionMode.Perpendicular);
 
-            Assert.Equal(CutDirection.UpLeft, slanted);
-            Assert.Equal(CutDirection.Left, straight);
+            Assert.Equal(CutDirection.DownRight, slanted);
+            Assert.Equal(CutDirection.Right, straight);
         }
 
         [Fact]

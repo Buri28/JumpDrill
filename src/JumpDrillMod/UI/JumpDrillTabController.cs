@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using BeatSaberMarkupLanguage.Attributes;
+using HMUI;
+using JumpDrill.Parsing;
 using JumpDrillMod.Services;
 using TMPro;
 using UnityEngine.UI;
@@ -17,7 +19,7 @@ namespace JumpDrillMod.UI
     /// ルートを PreferredSize の vertical にしない
     /// （Mods タブは全MODで1枚のパネルを共有していて、他MODのタブまで崩れる）。
     /// </remarks>
-    internal class JumpDrillTabController
+    internal partial class JumpDrillTabController
     {
         internal const string TabName = "JumpDrill";
         internal const string Resource = "JumpDrillMod.Resources.JumpDrillTab.bsml";
@@ -26,6 +28,7 @@ namespace JumpDrillMod.UI
         private readonly SongRefreshService refresher;
         private readonly DrillSetGenerationService drillSet;
         private readonly Medals.DrillSetScreen drillSetScreen;
+        private readonly IconService icons;
         private readonly SequenceEditor editor = new SequenceEditor();
 
         /// <summary>
@@ -35,8 +38,11 @@ namespace JumpDrillMod.UI
         private bool keepConfigSequence;
 
         internal JumpDrillTabController(DrillGenerationService generator, SongRefreshService refresher,
-            DrillSetGenerationService drillSet, Medals.DrillSetScreen drillSetScreen)
+            DrillSetGenerationService drillSet, Medals.DrillSetScreen drillSetScreen, ReplayCleanupService cleanup,
+            IconService icons)
         {
+            this.cleanup = cleanup;
+            this.icons = icons;
             this.generator = generator;
             this.refresher = refresher;
             this.drillSet = drillSet;
@@ -54,6 +60,10 @@ namespace JumpDrillMod.UI
 
         [UIComponent("status")]
         private TextMeshProUGUI? status = null;
+
+        /// <summary>格子の右の絵。GUI のグリッドと同じく線と ● で、反転した手とタワーの間のマスも描く。</summary>
+        [UIComponent("grid-preview")]
+        private ImageView? gridPreview = null;
 
         // マスのボタン。置いた点を GUI と同じく手の色と順番で見せるために、文字を書き換える
         [UIComponent("cell-button-1")] private Button? cellButton1 = null;
@@ -82,7 +92,16 @@ namespace JumpDrillMod.UI
         {
             RefreshSequenceText();
             SetStatus(string.Empty);
+            RefreshReplayUsage();
+
+            // 叩いたり消したりで容量が変わったら出し直す。組み直されても二重に登録しない
+            if (usageSubscribed) return;
+            usageSubscribed = true;
+            ReplayCleanupService.Changed += RefreshReplayUsage;
+            Gameplay.DrillReplayRecorder.Saved += _ => RefreshReplayUsage();
         }
+
+        private bool usageSubscribed;
 
         // ───────── 遷移（グリッド） ─────────
         //
@@ -165,17 +184,29 @@ namespace JumpDrillMod.UI
 
             string color = editor.Hand == JumpDrill.Model.Hand.Left ? LeftColor : RightColor;
             var steps = keepConfigSequence ? new List<JumpDrill.Model.SequenceStep>() : new List<JumpDrill.Model.SequenceStep>(editor.Steps);
+            bool tower = Config?.Tower ?? false;
+
+            // タワーでは点の間のマスにもノーツが並ぶので、そこも手の色にする（GUI の ●）
+            var towerCells = new List<JumpDrill.Model.GridPosition>();
+            if (tower && steps.Count >= 2)
+                towerCells = JumpDrill.Generation.Tower.NoteCells(new JumpDrill.Model.HandSequence(editor.Hand, steps));
 
             for (int i = 0; i < buttons.Length; i++)
             {
                 char token = SequenceEditor.Tokens[i];
                 int order = steps.FindIndex(s => s.Position.ToToken() == token);
+                bool filled = towerCells.Exists(p => p.ToToken() == token);
 
-                // 置いた点は手の色で、何番目かを添える（GUI の丸の中の数字）
-                SetLabel(buttons[i], order < 0
-                    ? token.ToString()
-                    : "<color=" + color + ">" + token + "<size=70%> " + (order + 1) + "</size></color>");
+                // 置いた点は手の色で、何番目かを添える（GUI の丸の中の数字）。
+                // タワーの間のマスは手の色だけ（GUI の番号なしの ●）
+                string label;
+                if (order >= 0) label = "<color=" + color + ">" + token + "<size=70%> " + (order + 1) + "</size></color>";
+                else if (filled) label = "<color=" + color + ">" + token + "</color>";
+                else label = token.ToString();
+                SetLabel(buttons[i], label);
             }
+
+            RefreshPreview(steps, tower);
 
             var toggles = new[] { straight1, straight2 };
             for (int i = 0; i < toggles.Length; i++)
@@ -187,6 +218,27 @@ namespace JumpDrillMod.UI
                 toggle.gameObject.SetActive(shown);
                 if (shown) SetLabel(toggle, steps[i].ToString());
             }
+        }
+
+        /// <summary>格子の右の絵を今の状態で描き直す。2点そろうまでは出さない。</summary>
+        private void RefreshPreview(List<JumpDrill.Model.SequenceStep> steps, bool tower)
+        {
+            if (gridPreview == null) return;
+
+            UnityEngine.Sprite? sprite = null;
+            if (steps.Count >= 2)
+            {
+                var sequences = new List<JumpDrill.Model.HandSequence> { new JumpDrill.Model.HandSequence(editor.Hand, steps) };
+                if (Config?.Mirror ?? true)
+                {
+                    var other = editor.Hand == JumpDrill.Model.Hand.Right ? JumpDrill.Model.Hand.Left : JumpDrill.Model.Hand.Right;
+                    sequences.Add(SequenceParser.Mirror(sequences[0], other));
+                }
+                sprite = icons.For(sequences, tower);
+            }
+
+            gridPreview.gameObject.SetActive(sprite != null);
+            if (sprite != null) gridPreview.sprite = sprite;
         }
 
         private static void SetLabel(Button? button, string text)
@@ -229,34 +281,83 @@ namespace JumpDrillMod.UI
         public bool Mirror
         {
             get => Config?.Mirror ?? true;
-            set { if (Config != null) Config.Mirror = value; }
+            set
+            {
+                if (Config != null) Config.Mirror = value;
+                RefreshGrid();
+            }
         }
 
         [UIValue("pattern-options")]
-        public List<object> PatternOptions { get; } = new List<object> { "Split", "Alternate", "Sync" };
+        public List<object> PatternOptions { get; } = new List<object> { "Split", "Sync", "Alternate", "Alt Round Trip" };
+
+        /// <summary>画面の文字と設定の値（JumpDrill.Core の <c>HandPattern</c> の名前）が違うもの。</summary>
+        private const string RoundTripLabel = "Alt Round Trip";
 
         /// <summary>両手のときの噛み合わせ。反転しない（片手だけ）なら効かない。</summary>
         [UIValue("pattern")]
         public string Pattern
         {
-            get => Config?.HandPattern ?? "Split";
-            set { if (Config != null) Config.HandPattern = value; }
+            get
+            {
+                string value = Config?.HandPattern ?? "Split";
+                return value == "AlternateRoundTrip" ? RoundTripLabel : value;
+            }
+            set
+            {
+                if (Config != null) Config.HandPattern = value == RoundTripLabel ? "AlternateRoundTrip" : value;
+            }
+        }
+
+        /// <summary>一直線のジャンプで2点の間も埋める（CLI の --tower）。</summary>
+        [UIValue("tower")]
+        public bool Tower
+        {
+            get => Config?.Tower ?? false;
+            set
+            {
+                if (Config != null) Config.Tower = value;
+                RefreshGrid();
+            }
         }
 
         // ───────── 切る方向 ─────────
 
+        /// <summary>
+        /// 画面の文字と設定の値（JumpDrill.Core の <c>DirectionMode</c> の名前）。
+        /// 垂直は内回り・外回りと書く方が分かるので、画面の文字だけ変える。
+        /// </summary>
+        private static readonly string[][] DirectionNames =
+        {
+            new[] { "Axis", "Axis" },
+            new[] { "Perp Inner", "Perpendicular" },
+            new[] { "Perp Outer", "PerpendicularOuter" },
+            new[] { "Dot", "Dot" },
+        };
+
         [UIValue("direction-options")]
-        public List<object> DirectionOptions { get; } = new List<object> { "Axis", "Perpendicular", "Dot" };
+        public List<object> DirectionOptions { get; } = new List<object> { "Axis", "Perp Inner", "Perp Outer", "Dot" };
 
         /// <summary>
-        /// 軸に沿う / 垂直 / ドット。記法で1点ずつ明示する Explicit は
+        /// 軸に沿う / 垂直（内回り・外回り） / ドット。記法で1点ずつ明示する Explicit は
         /// グリッドからは組めないので、ここには出さない。
         /// </summary>
         [UIValue("direction")]
         public string Direction
         {
-            get => Config?.Direction ?? "Axis";
-            set { if (Config != null) Config.Direction = value; }
+            get
+            {
+                string value = Config?.Direction ?? "Axis";
+                foreach (var pair in DirectionNames)
+                    if (string.Equals(pair[1], value, StringComparison.OrdinalIgnoreCase)) return pair[0];
+                return "Axis";
+            }
+            set
+            {
+                if (Config == null) return;
+                foreach (var pair in DirectionNames)
+                    if (pair[0] == value) Config.Direction = pair[1];
+            }
         }
 
         // ───────── 時間軸 ─────────
@@ -298,6 +399,14 @@ namespace JumpDrillMod.UI
         {
             get => Config?.Sets ?? 1;
             set { if (Config != null) Config.Sets = value; }
+        }
+
+        /// <summary>フリック (%)。往復の行き→戻りを狭め、戻り→次の行きを広げる。</summary>
+        [UIValue("flick")]
+        public int Flick
+        {
+            get => Config?.FlickPercent ?? 0;
+            set { if (Config != null) Config.FlickPercent = value; }
         }
 
         // ───────── クリック ─────────

@@ -58,6 +58,22 @@ namespace JumpDrill.Gui
             }
         }
 
+        private bool _tower;
+
+        /// <summary>
+        /// タワーで作るか。線を太くし、点の間のノーツがあるマスにも ●（番号なし）を出す。
+        /// </summary>
+        public bool Tower
+        {
+            get { return _tower; }
+            set
+            {
+                if (_tower == value) return;
+                _tower = value;
+                Invalidate();
+            }
+        }
+
         public event EventHandler SelectionChanged;
 
         private List<SequenceStep> ListFor(Hand hand)
@@ -297,6 +313,7 @@ namespace JumpDrill.Gui
 
             float markerRadius = cell * 0.22f;
             float lineWidth = Math.Max(1.5f, cell * 0.045f);
+            if (_tower) lineWidth *= (float)JumpDrill.Output.SequenceIcon.TowerWidthFactor;
 
             using (var pen = new Pen(Color.FromArgb(active ? 0xC0 : 0x50, baseColor), lineWidth))
             using (var fill = new SolidBrush(color))
@@ -315,6 +332,18 @@ namespace JumpDrill.Gui
                         var from = CellCenter(list[i % list.Count].Position, area);
                         var to = CellCenter(list[(i + 1) % list.Count].Position, area);
                         g.DrawLine(pen, from, to);
+                    }
+                }
+
+                // タワーでは点の間のマスにもノーツが並ぶ。
+                if (_tower && list.Count >= 2)
+                {
+                    var steps = new HandSequence(hand, list);
+                    foreach (var p in JumpDrill.Generation.Tower.NoteCells(steps))
+                    {
+                        if (IndexOf(list, p) >= 0) continue;
+                        var c = CellCenter(p, area);
+                        g.FillEllipse(fill, c.X - markerRadius, c.Y - markerRadius, markerRadius * 2, markerRadius * 2);
                     }
                 }
 

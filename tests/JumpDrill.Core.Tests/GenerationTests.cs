@@ -160,6 +160,177 @@ namespace JumpDrill.Tests
             }
         }
 
+        [Theory]
+        [InlineData("R:3>b")]
+        [InlineData("R:8>b")]
+        [InlineData("R:1>4")]
+        [InlineData("R:4>b")]
+        public void Perpendicular_mode_swings_back_and_forth(string spec)
+        {
+            // 同じ向きが続くと DD になる。2点の往復なら1本ごとに逆向き。
+            var options = Options(spec);
+            options.Direction = DirectionMode.Perpendicular;
+
+            var notes = DrillGenerator.Generate(options).Notes;
+            for (int i = 1; i < notes.Count; i++)
+            {
+                int ax, ay, bx, by;
+                notes[i - 1].Direction.ToVector(out ax, out ay);
+                notes[i].Direction.ToVector(out bx, out by);
+                Assert.Equal(-ax, bx);
+                Assert.Equal(-ay, by);
+            }
+        }
+
+        [Fact]
+        public void Perpendicular_mode_is_mirrored_between_hands()
+        {
+            // R3b と L2a は左右反転した配置。矢印も左右反転になる（右手 ▶ のとき左手 ◀）。
+            var options = Options("R3b, L2a");
+            options.Direction = DirectionMode.Perpendicular;
+
+            var notes = DrillGenerator.Generate(options).Notes;
+            foreach (var step in notes.GroupBy(n => n.StepIndex))
+            {
+                int rx, ry, lx, ly;
+                step.Single(n => n.Hand == Hand.Right).Direction.ToVector(out rx, out ry);
+                step.Single(n => n.Hand == Hand.Left).Direction.ToVector(out lx, out ly);
+                Assert.Equal(-rx, lx);
+                Assert.Equal(ry, ly);
+            }
+            Assert.Equal(CutDirection.Right, notes.First(n => n.Hand == Hand.Right).Direction);
+            Assert.Equal(CutDirection.Left, notes.First(n => n.Hand == Hand.Left).Direction);
+        }
+
+        [Fact]
+        public void Perpendicular_outer_turns_the_other_way()
+        {
+            var options = Options("R3b, L2a");
+            options.Direction = DirectionMode.PerpendicularOuter;
+
+            // 最初は下へ跳ぶ。内回り（perp）なら右手 ▶・左手 ◀、外回りはその逆。
+            var notes = DrillGenerator.Generate(options).Notes;
+            Assert.Equal(CutDirection.Left, notes.First(n => n.Hand == Hand.Right).Direction);
+            Assert.Equal(CutDirection.Right, notes.First(n => n.Hand == Hand.Left).Direction);
+
+            Assert.Equal(CutDirection.Right, notes.Where(n => n.Hand == Hand.Right).ElementAt(1).Direction);
+
+            Assert.Contains(" perpendicular-outer ", DrillNaming.Compose(options));
+        }
+
+        [Fact]
+        public void Perpendicular_turns_inward_on_horizontal_jumps_too()
+        {
+            // 横の 1>4（右手）。内回りは右端で ▲、左端で ▼（反時計回り）。
+            var options = Options("R14");
+            options.Direction = DirectionMode.Perpendicular;
+
+            var notes = DrillGenerator.Generate(options).Notes;
+            Assert.Equal(CutDirection.Up, notes[0].Direction);
+            Assert.Equal(CutDirection.Down, notes[1].Direction);
+        }
+
+        [Fact]
+        public void Round_trip_alternation_plays_a_whole_lap_per_hand()
+        {
+            // 右 b → 右 3 → 左 a → 左 2 → 右 b …
+            var options = Options("R3b, L2a");
+            options.HandPattern = HandPattern.AlternateRoundTrip;
+
+            var notes = DrillGenerator.Generate(options).Notes;
+            string played = string.Concat(notes.Take(8).Select(n => (n.Hand == Hand.Right ? "R" : "L") + n.Position.ToToken()));
+            Assert.Equal("RbR3LaL2RbR3LaL2", played);
+            Assert.All(notes.GroupBy(n => n.StepIndex), g => Assert.Single(g));
+        }
+
+        [Fact]
+        public void Round_trip_alternation_is_a_separate_drill()
+        {
+            var sync = Options("R3b, L2a");
+            var trip = Options("R3b, L2a");
+            trip.HandPattern = HandPattern.AlternateRoundTrip;
+            trip.Tower = true;
+
+            string name = DrillNaming.Compose(trip);
+            Assert.Contains(" axis tower alt-trip ", name);
+            Assert.NotEqual(DrillNaming.ExtractId(DrillNaming.Compose(sync)), DrillNaming.ExtractId(name));
+            Assert.Equal("R3bL2a tower alt-trip", DrillNaming.DirectionOf(name));
+            Assert.True(DrillNaming.IsTower(name));
+        }
+
+        [Theory]
+        [InlineData("Rca, L9b", HandPattern.Alternate)]       // 下の段を両手が行き来する
+        [InlineData("Rca, L9b", HandPattern.AlternateRoundTrip)]
+        [InlineData("Rca, L9b", HandPattern.Sync)]
+        [InlineData("R3b, L37", HandPattern.Alternate)]       // 縦の列で重なる
+        [InlineData("R1b, L16", HandPattern.Alternate)]       // 斜めの線で重なる
+        [InlineData("R1b, L49", HandPattern.Sync)]            // 同時は斜めに交わるだけでもぶつかる
+        [InlineData("R4b, L6b", HandPattern.Sync)]            // 同時は端で触れるだけでもぶつかる
+        public void Hands_on_the_same_line_clash(string spec, HandPattern pattern)
+        {
+            var options = Options(spec);
+            options.HandPattern = pattern;
+            Assert.Throws<ClashException>(() => DrillGenerator.Generate(options));
+        }
+
+        [Theory]
+        [InlineData("R1b, L49", HandPattern.Alternate)]       // 斜めに交わるだけ（X）
+        [InlineData("R3b, L2a", HandPattern.Alternate)]       // 隣の列
+        [InlineData("Rca, L9b", HandPattern.Split)]           // 片手ずつは間が空く
+        [InlineData("Rbc, La9", HandPattern.Alternate)]       // 同じ段でも重ならない
+        [InlineData("R8b, L5a", HandPattern.Sync)]
+        public void Hands_that_do_not_share_a_line_are_fine(string spec, HandPattern pattern)
+        {
+            var options = Options(spec);
+            options.HandPattern = pattern;
+            Assert.NotEmpty(DrillGenerator.Generate(options).Notes);
+        }
+
+        [Theory]
+        [InlineData(HandPattern.Sync)]
+        [InlineData(HandPattern.Split)]
+        [InlineData(HandPattern.AlternateRoundTrip)]
+        public void Flick_shortens_the_return_and_lengthens_the_rest(HandPattern pattern)
+        {
+            // 200ms・25%：行き→戻り 150ms、戻り→次の行き 250ms。
+            var options = Options("R3b, L2a");
+            options.HandPattern = pattern;
+            options.IntervalMs = 200;
+            options.FlickPercent = 25;
+
+            var map = DrillGenerator.Generate(options);
+            var steps = map.Notes.GroupBy(n => n.StepIndex).OrderBy(g => g.Key).Select(g => g.First()).Take(5).ToList();
+
+            Assert.Equal(150.0, (steps[1].TimeSeconds - steps[0].TimeSeconds) * 1000.0, 3);
+            Assert.Equal(250.0, (steps[2].TimeSeconds - steps[1].TimeSeconds) * 1000.0, 3);
+            Assert.Equal(150.0, (steps[3].TimeSeconds - steps[2].TimeSeconds) * 1000.0, 3);
+
+            // 行きは b（▼）、戻りは 3（▲）。
+            var right = map.Notes.Where(n => n.Hand == Hand.Right).ToList();
+            Assert.Equal('b', right[0].Position.ToToken());
+            Assert.Equal('3', right[1].Position.ToToken());
+
+            // クリックはノーツと同じ時刻（ブロックの間のカウントインは除く）。
+            foreach (var click in map.Clicks.Where(c => c.TimeSeconds >= steps[0].TimeSeconds - 1e-9 && c.TimeSeconds <= steps[4].TimeSeconds + 1e-9))
+                Assert.Contains(map.Notes, n => Math.Abs(n.TimeSeconds - click.TimeSeconds) < 1e-9);
+        }
+
+        [Fact]
+        public void Flick_is_a_separate_drill_and_not_for_alternate()
+        {
+            var plain = Options("R3b, L2a");
+            var flick = Options("R3b, L2a");
+            flick.FlickPercent = 25;
+
+            string name = DrillNaming.Compose(flick);
+            Assert.Contains(" axis flick25 ", name);
+            Assert.NotEqual(DrillNaming.ExtractId(DrillNaming.Compose(plain)), DrillNaming.ExtractId(name));
+            Assert.Equal("R3bL2a flick25", DrillNaming.DirectionOf(name));
+
+            flick.HandPattern = HandPattern.Alternate;
+            Assert.Throws<InvalidOperationException>(() => DrillGenerator.Generate(flick));
+        }
+
         [Fact]
         public void Explicit_directions_from_the_spec_win()
         {

@@ -59,11 +59,48 @@ namespace JumpDrill.Gui
         /// </summary>
         private const double NotesPerBeat = 2.0;
         private readonly NumericUpDown _seconds = Spin(1, 600, 10, 0);
-        private readonly ComboBox _direction = Combo(Lang.T("axis  配置ベクトルと一致", "axis  along the jump"), Lang.T("perp  垂直", "perp  perpendicular"), Lang.T("dot  ドット", "dot  dot notes"), Lang.T("explicit  記法内の @ 指定", "explicit  @ in the sequence"));
-        private readonly ComboBox _hands = Combo(Lang.T("sync   両手同時", "sync   both hands together"), Lang.T("split  片手ずつ（右で1本→左で1本）", "split  one hand at a time (right, then left)"), Lang.T("alt    1ステップごとに交互", "alt    alternate every step"));
+        private readonly ComboBox _direction = Combo(Lang.T("axis  配置ベクトルと一致", "axis  along the jump"), Lang.T("perp  垂直・内回り", "perp  perpendicular, inner turn"), Lang.T("perp-outer  垂直・外回り", "perp-outer  perpendicular, outer turn"), Lang.T("dot  ドット", "dot  dot notes"), Lang.T("explicit  記法内の @ 指定", "explicit  @ in the sequence"));
+
+        /// <summary>
+        /// 切る方向のプルダウンの並び。垂直の2つを隣に並べるため、enum の順とは違う。
+        /// 設定には enum の値を残す（以前は位置を残していて、その頃は位置と値が同じだった）。
+        /// </summary>
+        private static readonly DirectionMode[] DirectionOrder =
+        {
+            DirectionMode.Axis, DirectionMode.Perpendicular, DirectionMode.PerpendicularOuter, DirectionMode.Dot, DirectionMode.Explicit,
+        };
+
+        /// <summary><see cref="DirectionOrder"/> と同じ並びの CLI の --dir の値。</summary>
+        private static readonly string[] DirectionArgs = { "axis", "perp", "perp-outer", "dot", "explicit" };
+        private readonly ComboBox _hands = Combo(Lang.T("split  片手ずつ（右で1本→左で1本）", "split  one hand at a time (right, then left)"), Lang.T("sync   両手同時", "sync   both hands together"), Lang.T("alt    1ステップごとに交互", "alt    alternate every step"), Lang.T("alt-trip  往復ごとに交互", "alt-trip  alternate every round trip"));
+
+        /// <summary>手の並べ方のプルダウンの並び。ジャンプ練習で普通に使う片手ずつを先頭にする。</summary>
+        private static readonly HandPattern[] HandsOrder =
+        {
+            HandPattern.Split, HandPattern.Sync, HandPattern.Alternate, HandPattern.AlternateRoundTrip,
+        };
+
+        /// <summary><see cref="HandsOrder"/> と同じ並びの CLI の --hands の値。sync は既定なので書かない。</summary>
+        private static readonly string[] HandsArgs = { "split", null, "alt", "alt-trip" };
+
+        /// <summary>
+        /// 設定に残す番号。並べ替える前のプルダウンの位置（sync, split, alt, alt-trip）のまま残し、
+        /// 前の設定ファイルをそのまま読めるようにする。
+        /// </summary>
+        private static readonly HandPattern[] HandsSettingCodes =
+        {
+            HandPattern.Sync, HandPattern.Split, HandPattern.Alternate, HandPattern.AlternateRoundTrip,
+        };
+
+        private HandPattern SelectedHandPattern
+        {
+            get { return HandsOrder[Math.Max(0, _hands.SelectedIndex)]; }
+        }
+        private readonly CheckBox _tower = new CheckBox { Text = Lang.T("一直線のジャンプの間もノーツで埋める", "Fill the cells between straight jumps"), AutoSize = true };
         private readonly CheckBox _mirror = new CheckBox { Text = Lang.T("左右反転して反対の手にも同じ形を組む", "Mirror the pattern onto the other hand"), AutoSize = true };
         private readonly ComboBox _order = Combo(Lang.T("右 → 左", "Right → Left"), Lang.T("左 → 右", "Left → Right"));
         private readonly NumericUpDown _sets = Spin(1, 50, 1, 0);
+        private readonly NumericUpDown _flick = Spin(0, (decimal)DrillOptions.MaxFlickPercent, 0, 0);
 
         private readonly NumericUpDown _njs = Spin(1, 40, 16, 1);
         private readonly ComboBox _jumpMode = Combo(Lang.T("既定 (オフセット 0)", "Default (offset 0)"), Lang.T("ジャンプ距離 (m)", "Jump distance (m)"), Lang.T("反応時間 (ms)", "Reaction time (ms)"), Lang.T("オフセット (拍)", "Offset (beats)"));
@@ -209,7 +246,7 @@ namespace JumpDrill.Gui
                 combo.DropDownWidth = combo.Width;
             }
 
-            foreach (var spin in new[] { _interval, _seconds, _sets, _njs, _jumpValue, _countIn, _tail })
+            foreach (var spin in new[] { _interval, _seconds, _sets, _flick, _njs, _jumpValue, _countIn, _tail })
                 spin.Width = Px(80);
 
             _browse.Width = Px(28);
@@ -443,9 +480,11 @@ namespace JumpDrill.Gui
             var left = Stack(
                 Group(Lang.T("時間", "Timing"), Rows(
                     Row(Lang.T("BPM (1拍に2ノーツ)", "BPM (2 notes per beat)"), _interval),
-                    Row(Lang.T("尺 (秒)", "Length (s)"), _seconds))),
+                    Row(Lang.T("尺 (秒)", "Length (s)"), _seconds),
+                    Row(Lang.T("フリック (%)", "Flick (%)"), _flick))),
                 Group(Lang.T("切る方向 / 手", "Direction / hands"), Rows(
                     Row(Lang.T("切る方向", "Cut direction"), _direction),
+                    Row(Lang.T("タワー", "Tower"), _tower),
                     Row(Lang.T("手の並べ方", "Hand pattern"), _hands),
                     Row(Lang.T("セットの順番", "Set order"), _order),
                     Row(Lang.T("セット数", "Sets"), _sets))),
@@ -764,7 +803,7 @@ namespace JumpDrill.Gui
 
             _order.SelectedIndexChanged += (s, e) => RefreshPreview();
 
-            foreach (var c in new Control[] { _interval, _sets, _seconds, _njs, _jumpValue, _countIn, _tail })
+            foreach (var c in new Control[] { _interval, _sets, _flick, _seconds, _njs, _jumpValue, _countIn, _tail })
                 ((NumericUpDown)c).ValueChanged += (s, e) => RefreshPreview();
 
             foreach (var c in new[] { _direction, _click })
@@ -772,6 +811,7 @@ namespace JumpDrill.Gui
 
             _hands.SelectedIndexChanged += (s, e) => { ApplyHandPattern(); RefreshPreview(); };
             _mirror.CheckedChanged += (s, e) => ApplyHandPattern();
+            _tower.CheckedChanged += (s, e) => { _picker.Tower = _tower.Checked; RefreshPreview(); };
 
             _jumpMode.SelectedIndexChanged += (s, e) =>
             {
@@ -823,7 +863,7 @@ namespace JumpDrill.Gui
         /// <summary>順番は手が2つあるときだけ意味がある。</summary>
         private void ApplyHandPattern()
         {
-            bool split = _hands.SelectedIndex == 1;
+            bool split = SelectedHandPattern == HandPattern.Split;
             bool twoHands = _mirror.Checked || _seqText.Text.Contains(",");
             _order.Enabled = split && twoHands;
         }
@@ -1002,8 +1042,10 @@ namespace JumpDrill.Gui
                 DurationSeconds = (double)_seconds.Value,
                 NotesPerBeat = NotesPerBeat,
                 Sets = (int)_sets.Value,
-                Direction = (DirectionMode)_direction.SelectedIndex,
-                HandPattern = HandPatternFromIndex(_hands.SelectedIndex),
+                FlickPercent = (double)_flick.Value,
+                Direction = DirectionOrder[_direction.SelectedIndex],
+                HandPattern = SelectedHandPattern,
+                Tower = _tower.Checked,
                 // 譜面の基準 BPM にも指定した BPM をそのまま使う。
                 // 別の値にすると曲一覧の BPM が指定と食い違い、
                 // ノーツも拍の上に乗らない（1/2 固定なら半拍ごとにきれいに並ぶ）。
@@ -1024,12 +1066,6 @@ namespace JumpDrill.Gui
             return options;
         }
 
-        private static HandPattern HandPatternFromIndex(int index)
-        {
-            if (index == 1) return HandPattern.Split;
-            if (index == 2) return HandPattern.Alternate;
-            return HandPattern.Sync;
-        }
 
         private void RefreshPreview()
         {
@@ -1065,13 +1101,14 @@ namespace JumpDrill.Gui
 
             sb.AppendFormat(ci, " --sec {0:0}", _seconds.Value);
 
-            string[] dirNames = { "axis", "perp", "dot", "explicit" };
-            if (_direction.SelectedIndex != 0) sb.Append(" --dir ").Append(dirNames[_direction.SelectedIndex]);
-            if (_hands.SelectedIndex == 1) sb.Append(" --hands split");
-            else if (_hands.SelectedIndex == 2) sb.Append(" --hands alt");
+            if (_direction.SelectedIndex != 0) sb.Append(" --dir ").Append(DirectionArgs[_direction.SelectedIndex]);
+            if (_tower.Checked) sb.Append(" --tower");
+            string hands = HandsArgs[_hands.SelectedIndex];
+            if (hands != null) sb.Append(" --hands ").Append(hands);
             if (_mirror.Checked) sb.Append(" --mirror");
             if (_order.Enabled) sb.Append(_order.SelectedIndex == 1 ? " --order lr" : " --order rl");
             if (_sets.Value != 1m) sb.AppendFormat(ci, " --sets {0:0}", _sets.Value);
+            if (_flick.Value != 0m) sb.AppendFormat(ci, " --flick {0:0}", _flick.Value);
 
             if (_njs.Value != 16m) sb.AppendFormat(ci, " --njs {0:0.##}", _njs.Value);
             if (_jumpMode.SelectedIndex == 1) sb.AppendFormat(ci, " --jd {0:0.##}", _jumpValue.Value);
@@ -1105,11 +1142,16 @@ namespace JumpDrill.Gui
                 _interval.Value = LoadIntervalBpm();
                 _seconds.Value = _settings.GetDecimal("seconds", 10, _seconds.Minimum, _seconds.Maximum);
 
-                _direction.SelectedIndex = _settings.GetInt("direction", 0, 0, _direction.Items.Count - 1);
-                _hands.SelectedIndex = _settings.GetInt("hands", 0, 0, _hands.Items.Count - 1);
+                int mode = _settings.GetInt("direction", 0, 0, (int)DirectionMode.PerpendicularOuter);
+                _direction.SelectedIndex = Math.Max(0, Array.IndexOf(DirectionOrder, (DirectionMode)mode));
+                var pattern = HandsSettingCodes[_settings.GetInt("hands", 0, 0, HandsSettingCodes.Length - 1)];
+                _hands.SelectedIndex = Array.IndexOf(HandsOrder, pattern);
                 _order.SelectedIndex = _settings.GetInt("order", 0, 0, _order.Items.Count - 1);
                 _sets.Value = _settings.GetDecimal("sets", 1, _sets.Minimum, _sets.Maximum);
+                _flick.Value = _settings.GetDecimal("flick", 0, _flick.Minimum, _flick.Maximum);
                 _mirror.Checked = _settings.GetBool("mirror", false);
+                _tower.Checked = _settings.GetBool("tower", false);
+                _picker.Tower = _tower.Checked;
 
                 _njs.Value = _settings.GetDecimal("njs", 16, _njs.Minimum, _njs.Maximum);
                 _jumpMode.SelectedIndex = _settings.GetInt("jump.mode", 0, 0, _jumpMode.Items.Count - 1);
@@ -1196,11 +1238,13 @@ namespace JumpDrill.Gui
             _settings.Set("interval", _interval.Value);
             _settings.Set("seconds", _seconds.Value);
 
-            _settings.Set("direction", _direction.SelectedIndex);
-            _settings.Set("hands", _hands.SelectedIndex);
+            _settings.Set("direction", (int)DirectionOrder[_direction.SelectedIndex]);
+            _settings.Set("hands", Array.IndexOf(HandsSettingCodes, SelectedHandPattern));
             _settings.Set("order", _order.SelectedIndex);
             _settings.Set("sets", _sets.Value);
+            _settings.Set("flick", _flick.Value);
             _settings.Set("mirror", _mirror.Checked);
+            _settings.Set("tower", _tower.Checked);
 
             _settings.Set("njs", _njs.Value);
             _settings.Set("jump.mode", _jumpMode.SelectedIndex);
@@ -1619,7 +1663,8 @@ namespace JumpDrill.Gui
                 return;
             }
 
-            var form = new MedalForm(CurrentWorkspace().Root, _settings, PreviewByName, OpenScoreboard, FollowScoreboard, GenerateSetAsync);
+            var form = new MedalForm(CurrentWorkspace().Root, _settings, PreviewByName, OpenScoreboard, FollowScoreboard, GenerateSetAsync,
+                () => DrillLibrary.Find(CurrentWorkspace().Root, _outDir.Text.Trim(), _lastOutputFolder));
             form.FormClosed += (s, e) => _medalForm = null;
             _medalForm = form;
             form.Show(this);

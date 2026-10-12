@@ -25,9 +25,16 @@ namespace JumpDrill.Output
         private const int Margin = 2;
 
         /// <summary>
+        /// タワーの線の太さの倍率。隣り合う2点のスタックは間のマスが無く ● だけでは見分けられないので、
+        /// 線の太さでも分かるようにする。GUI の絵もこの値を使う。
+        /// </summary>
+        public const double TowerWidthFactor = 2.5;
+
+        /// <summary>
         /// PNG のバイト列。大きさは格子1マスの画素数で決まる（幅 4 マス × 高さ 3 マス + 余白）。
         /// </summary>
-        public static byte[] Render(IReadOnlyList<HandSequence> sequences, int cell = 16)
+        /// <param name="tower">タワーのドリル。線を太くし、点の間のノーツがあるマスにも ● を描く。</param>
+        public static byte[] Render(IReadOnlyList<HandSequence> sequences, int cell = 16, bool tower = false)
         {
             if (sequences == null) throw new ArgumentNullException(nameof(sequences));
             if (cell < 4) cell = 4;
@@ -65,6 +72,7 @@ namespace JumpDrill.Output
                 }).ToList();
 
                 double thickness = Math.Max(1.5, cell / 8.0);
+                if (tower) thickness *= TowerWidthFactor;
 
                 if (points.Count == 2)
                 {
@@ -80,6 +88,15 @@ namespace JumpDrill.Output
                         var b = points[(i + 1) % points.Count];
                         canvas.LineAA(a[0], a[1], b[0], b[1], color[0], color[1], color[2], thickness);
                     }
+                }
+
+                if (tower)
+                {
+                    points = Generation.Tower.NoteCells(sequence).Select(p => new[]
+                    {
+                        Margin + (p.LineIndex + 0.5) * cell,
+                        Margin + (GridPosition.Rows - 1 - p.LineLayer + 0.5) * cell + shift,
+                    }).ToList();
                 }
 
                 double radius = cell * 0.28;
@@ -101,30 +118,7 @@ namespace JumpDrill.Output
         /// </remarks>
         public static List<HandSequence> SequencesFromName(string songName)
         {
-            var result = new List<HandSequence>();
-            if (string.IsNullOrEmpty(songName)) return result;
-
-            string body = DrillNaming.StripId(songName).Trim();
-            if (body.StartsWith(DrillNaming.Prefix, StringComparison.OrdinalIgnoreCase))
-                body = body.Substring(DrillNaming.Prefix.Length);
-
-            foreach (var word in body.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                try
-                {
-                    result.Add(Parsing.SequenceParser.ParseOne(word));
-                }
-                catch (FormatException)
-                {
-                    break;
-                }
-                catch (ArgumentException)
-                {
-                    break;
-                }
-            }
-
-            return result;
+            return DrillNaming.ParseSequences(songName);
         }
     }
 }

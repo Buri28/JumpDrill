@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace JumpDrill.Output
@@ -19,6 +20,15 @@ namespace JumpDrill.Output
         {
             public int Left;
             public int Right;
+
+            /// <summary>
+            /// 左手の振りの数。同じ手・同じ時刻のノーツ（タワー・スタック）を1つと数えたもの。
+            /// 普通のドリルでは <see cref="Left"/> と同じ。
+            /// </summary>
+            public int SwingLeft;
+
+            /// <summary>右手の振りの数。</summary>
+            public int SwingRight;
 
             public int Total { get { return Left + Right; } }
 
@@ -49,6 +59,7 @@ namespace JumpDrill.Output
         ///
         /// <c>_events</c> にも <c>_type</c> があるので、<b><c>_notes</c> の配列の中だけ</b>を見る。
         /// 爆弾（<c>_type</c> 3）は振る相手ではないので数えない。
+        /// 振りの数は <c>_time</c> と <c>_type</c> が同じものを1つにまとめて数える。
         /// </summary>
         public static bool TryCountText(string text, out Counts counts)
         {
@@ -68,20 +79,43 @@ namespace JumpDrill.Output
 
             string notes = text.Substring(open + 1, close - open - 1);
 
-            const string TypeKey = "\"_type\"";
+            var swings = new HashSet<string>(StringComparer.Ordinal);
 
-            for (int i = notes.IndexOf(TypeKey, StringComparison.Ordinal); i >= 0;
-                 i = notes.IndexOf(TypeKey, i + TypeKey.Length, StringComparison.Ordinal))
+            // ノーツ1つは { … } 1つ。入れ子は無い。
+            for (int start = notes.IndexOf('{'); start >= 0; start = notes.IndexOf('{', start + 1))
             {
-                int at = i + TypeKey.Length;
-                while (at < notes.Length && (notes[at] == ' ' || notes[at] == ':')) at++;
-                if (at >= notes.Length) break;
+                int end = notes.IndexOf('}', start + 1);
+                if (end < 0) break;
+                string note = notes.Substring(start + 1, end - start - 1);
 
-                if (notes[at] == '0') counts.Left++;
-                else if (notes[at] == '1') counts.Right++;
+                string type = ValueOf(note, "\"_type\"");
+                if (type != "0" && type != "1") continue;
+
+                if (type == "0") counts.Left++;
+                else counts.Right++;
+
+                if (swings.Add(type + "|" + ValueOf(note, "\"_time\"")))
+                {
+                    if (type == "0") counts.SwingLeft++;
+                    else counts.SwingRight++;
+                }
             }
 
             return counts.Total > 0;
+        }
+
+        /// <summary>1ノーツの中の、キーに続く値の字面。無ければ空。</summary>
+        private static string ValueOf(string note, string key)
+        {
+            int i = note.IndexOf(key, StringComparison.Ordinal);
+            if (i < 0) return "";
+
+            int at = i + key.Length;
+            while (at < note.Length && (note[at] == ' ' || note[at] == ':')) at++;
+
+            int end = at;
+            while (end < note.Length && note[end] != ',' && note[end] != '}' && !char.IsWhiteSpace(note[end])) end++;
+            return note.Substring(at, end - at);
         }
 
         /// <summary>難易度ファイルを探す。JumpDrill が書くのは1つだけ。</summary>

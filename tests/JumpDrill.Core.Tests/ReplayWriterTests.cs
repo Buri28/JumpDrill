@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using JumpDrill.Replays;
 using Xunit;
 
@@ -208,6 +209,39 @@ namespace JumpDrill.Tests
 
             // 近い方（1 秒差）だけが同じプレイ
             Assert.Equal(new[] { files[0], files[1] }, ReplayLibrary.RemoveDuplicates(files));
+        }
+
+        [Fact]
+        public void Deleting_a_play_finds_its_copies_in_every_replay_folder()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "jumpdrill-replays-" + System.Guid.NewGuid().ToString("N"));
+            try
+            {
+                string Make(string mod, string name)
+                {
+                    string dir = Path.Combine(root, "UserData", mod, "Replays");
+                    Directory.CreateDirectory(dir);
+                    string path = Path.Combine(dir, name);
+                    File.WriteAllBytes(path, new byte[0]);
+                    return path;
+                }
+
+                string bl = Make("BeatLeader", "7656-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706284.bsor");
+                string ll = Make("LocalLeaderboard", "7656-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706284_639243006966333586.bsor");
+                string own = Make("JumpDrillMod", "JumpDrill-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706285.bsor");
+                // 別のプレイ（すぐにやり直したもの・別の譜面）は巻き込まない
+                Make("JumpDrillMod", "JumpDrill-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706287.bsor");
+                Make("BeatLeader", "7656-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788709999.bsor");
+                Make("BeatLeader", "7656-practice-[AAAAA] Drill L_1_a-ExpertPlus-Standard-DEF WIP-1788706284.bsor");
+
+                var same = ReplayLibrary.SamePlayFiles(bl);
+
+                Assert.Equal(new[] { bl, ll, own }.OrderBy(p => p), same.OrderBy(p => p));
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
         }
 
         [Fact]

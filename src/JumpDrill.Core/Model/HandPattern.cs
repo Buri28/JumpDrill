@@ -16,5 +16,12 @@ namespace JumpDrill.Model
         /// この形のときは尺の指定が「手あたりの秒数」になる。
         /// </summary>
         Split,
+
+        /// <summary>
+        /// 往復ごとに交互。1つ目の手で循環を1周（2点なら行きと戻り）叩いてから次の手に移る。
+        /// <c>R3b, L2a</c> なら 右 b → 右 3 → 左 a → 左 2 → 右 b …。
+        /// 値は末尾に足す（GUI は選択肢の位置をそのまま設定に残している）。
+        /// </summary>
+        AlternateRoundTrip,
     }
 }

@@ -50,8 +50,14 @@ namespace JumpDrillMod
         /// <summary>セットの繰り返し回数。</summary>
         public virtual int Sets { get; set; } = 1;
 
+        /// <summary>フリック (%)。0 で無し（CLI の <c>--flick</c>）。</summary>
+        public virtual int FlickPercent { get; set; }
+
         /// <summary>切る方向の指定。JumpDrill.Core の <c>DirectionMode</c> の名前をそのまま入れる。</summary>
         public virtual string Direction { get; set; } = "Axis";
+
+        /// <summary>一直線のジャンプで2点の間も埋める（CLI の <c>--tower</c>）。</summary>
+        public virtual bool Tower { get; set; }
 
         /// <summary>
         /// 複数手のときの噛み合わせ。JumpDrill.Core の <c>HandPattern</c> の名前をそのまま入れる。
@@ -86,6 +92,20 @@ namespace JumpDrillMod
         /// 叩くたびに切り替え直さなくて済むように残しておく。
         /// </summary>
         public virtual bool LeaderboardNewestFirst { get; set; } = false;
+
+        /// <summary>
+        /// Jump Drill 画面で最後に見ていたステージ。空は Standard、<c>other</c> は Other、
+        /// <c>custom:名前</c> はカスタムステージ（中身は GUI と同じ stages.json）。
+        /// </summary>
+        public virtual string MedalStage { get; set; } = string.Empty;
+
+        /// <summary>リプレイの整理で、ドリルごとに残す記録の数（順位の上位）。10 以上。</summary>
+        public virtual int ReplayKeep { get; set; } = 20;
+
+        /// <summary>
+        /// ドリルを叩くたびに、そのドリルの上位 <see cref="ReplayKeep"/> 件より下の記録を消すか。既定はしない。
+        /// </summary>
+        public virtual bool ReplayAutoDelete { get; set; } = false;
 
         /// <summary>
         /// 生成のたびに同じ譜面フォルダを上書きするか。

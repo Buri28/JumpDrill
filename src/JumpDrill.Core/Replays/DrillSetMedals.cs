@@ -17,7 +17,14 @@ namespace JumpDrill.Replays
     /// <summary>1本ぶんの成績。</summary>
     public sealed class MedalCell
     {
+        /// <summary>標準のステージの1本。カスタムステージでは null。</summary>
         public DrillSetEntry Entry { get; internal set; }
+
+        /// <summary>曲名。</summary>
+        public string SongName { get; internal set; }
+
+        /// <summary>片手の速さ（BPM 1/2）。カスタムステージで曲名から読めなければ null。</summary>
+        public double? Bpm { get; internal set; }
 
         /// <summary>譜面の ID。記録はこれで引く。</summary>
         public string Id { get; internal set; }
@@ -31,14 +38,23 @@ namespace JumpDrill.Replays
     /// <summary>1方向ぶんの成績。</summary>
     public sealed class MedalRow
     {
-        /// <summary>方向の名前（<c>R3bL2a</c>）。</summary>
+        /// <summary>行の名前。標準のステージでは方向（<c>R3bL2a</c>）。</summary>
         public string Direction { get; internal set; }
+
+        /// <summary>行頭に絵で出す遷移。読めなければ空。</summary>
+        public IReadOnlyList<HandSequence> Sequences { get; internal set; }
+
+        /// <summary>タワーのドリルの行か。絵の点の間のマスにも ● を描く。</summary>
+        public bool Tower { get; internal set; }
 
         /// <summary>Stage の並び（<see cref="DrillSet.Entries"/> と同じ順）。</summary>
         public List<MedalCell> Cells { get; internal set; }
 
         /// <summary>この方向の Lv。メダルのポイントの合計。</summary>
         public int Level { get { return Cells.Sum(c => DrillSetMedals.Points(c.Medal)); } }
+
+        /// <summary>この行の Lv の上限。全部 🥇 のとき。</summary>
+        public int MaxLevel { get { return Cells.Count * DrillSetMedals.Points(Medal.Gold); } }
     }
 
     /// <summary>
@@ -121,30 +137,68 @@ namespace JumpDrill.Replays
             var rows = new List<MedalRow>();
             foreach (var direction in DrillSet.Directions)
             {
-                var cells = new List<MedalCell>();
-                string name = null;
-
-                foreach (var entry in DrillSet.Entries(direction))
+                var entries = DrillSet.Entries(direction);
+                var cells = entries.Select(entry =>
                 {
-                    name = entry.Direction;
-                    string id = DrillNaming.ExtractId(entry.Options.Name);
+                    var cell = Cell(entry.Options.Name, bestById);
+                    cell.Entry = entry;
+                    cell.Bpm = entry.Bpm;
+                    return cell;
+                }).ToList();
 
-                    double percent;
-                    bool played = bestById.TryGetValue(id, out percent);
-
-                    cells.Add(new MedalCell
-                    {
-                        Entry = entry,
-                        Id = id,
-                        BestPercent = played ? percent : (double?)null,
-                        Medal = played ? MedalOf(percent) : Medal.None,
-                    });
-                }
-
-                rows.Add(new MedalRow { Direction = name, Cells = cells });
+                rows.Add(new MedalRow
+                {
+                    Direction = entries[0].Direction,
+                    Sequences = entries[0].Options.Sequences,
+                    Cells = cells,
+                });
             }
 
             return rows;
+        }
+
+        /// <summary>
+        /// カスタムステージの成績。並びはステージに書いたとおり。
+        /// 速さと行頭の絵は曲名から読む（生成の指定は持っていない）。
+        /// </summary>
+        public static List<MedalRow> Evaluate(CustomStage stage, IDictionary<string, double> bestById)
+        {
+            if (stage == null) throw new ArgumentNullException(nameof(stage));
+            if (bestById == null) throw new ArgumentNullException(nameof(bestById));
+
+            return stage.Rows.Select(row =>
+            {
+                var cells = row.Drills.Select(name =>
+                {
+                    var cell = Cell(name, bestById);
+                    cell.Bpm = DrillNaming.ParseBpm(name);
+                    return cell;
+                }).ToList();
+
+                return new MedalRow
+                {
+                    Direction = row.Name,
+                    Sequences = row.Drills.Count > 0 ? DrillNaming.ParseSequences(row.Drills[0]) : new List<HandSequence>(),
+                    Tower = row.Drills.Count > 0 && DrillNaming.IsTower(row.Drills[0]),
+                    Cells = cells,
+                };
+            }).ToList();
+        }
+
+        private static MedalCell Cell(string songName, IDictionary<string, double> bestById)
+        {
+            string id = DrillNaming.ExtractId(songName);
+
+            double percent = 0;
+            bool played = id != null && bestById.TryGetValue(id, out percent);
+
+            return new MedalCell
+            {
+                SongName = songName,
+                Id = id,
+                BestPercent = played ? percent : (double?)null,
+                Medal = played ? MedalOf(percent) : Medal.None,
+            };
         }
     }
 }

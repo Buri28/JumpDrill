@@ -21,8 +21,10 @@ using UnityEngine.UI;
 namespace JumpDrillMod.UI.Medals
 {
     /// <summary>
-    /// ドリルを選んで叩く画面。<b>Drill</b> はドリルセット（14方向 × 8段）のメダルと Lv、
-    /// <b>Other</b> はドリルセット以外のドリル譜面の一覧。
+    /// ドリルを選んで叩く画面。上のプルダウンでステージを切り替える。
+    /// <b>Standard</b> はドリルセット（14方向 × 8段）のメダルと Lv、
+    /// <b>Other</b> はどのステージにも入っていないドリル、<b>CUSTOM…</b> は自分で並べたカスタムステージ
+    /// （組み替えは MedalViewController.Custom.cs / Picker.cs）。
     /// </summary>
     /// <remarks>
     /// Drill は GUI の「メダル」画面と同じもの。メダルと Lv の決め方は JumpDrill.Core の <c>DrillSetMedals</c>
@@ -38,7 +40,7 @@ namespace JumpDrillMod.UI.Medals
     /// マークアップは手で書かずにコードで組む（Drill だけで 112 マス）。押したものは
     /// BSML のタグで拾う。<c>on-click</c> は引数を取れず、マスごとにアクションを並べることになるため。
     /// </remarks>
-    internal class MedalViewController : BSMLViewController
+    internal partial class MedalViewController : BSMLViewController
     {
         private ReplayScoreReader? reader;
         private LevelLauncher? launcher;
@@ -55,24 +57,17 @@ namespace JumpDrillMod.UI.Medals
         /// <summary>ID ごとのベスト再現精度 %。Other の数字もここから引く。</summary>
         private Dictionary<string, double> bestById = new Dictionary<string, double>();
 
-        /// <summary>Other に出すドリル。名前順。</summary>
-        private List<OtherDrill> others = new List<OtherDrill>();
+        /// <summary>Other に出せるドリルの曲名（読み込まれている譜面のうち、ドリルセット以外も含む全部）。</summary>
+        private List<string> otherNames = new List<string>();
 
-        private sealed class OtherDrill
-        {
-            public string Id = string.Empty;
-
-            /// <summary>画面に出す名前。ID と頭の "Drill " を落としたもの。</summary>
-            public string Name = string.Empty;
-
-            public List<HandSequence> Sequences = new List<HandSequence>();
-        }
+        /// <summary>
+        /// Other の表。方向ごとに遅い順に 8 本ずつ、超えた分は同じ方向の次の行へ
+        /// （JumpDrill.Core の <c>CustomStage.Other</c>、GUI のメダル画面の「その他」と同じ）。
+        /// </summary>
+        private List<MedalRow> otherRows = new List<MedalRow>();
 
         /// <summary>選んでいるドリルの ID。Drill と Other で共通。</summary>
         private string? selectedId;
-
-        /// <summary>Other を出しているか。</summary>
-        private bool showOther;
 
         /// <summary>Other の何ページ目か。</summary>
         private int otherPage;
@@ -85,7 +80,8 @@ namespace JumpDrillMod.UI.Medals
         private readonly Dictionary<string, ClickableText> cells = new Dictionary<string, ClickableText>();
         private readonly List<TextMeshProUGUI?> rowLabels = new List<TextMeshProUGUI?>();
         private readonly List<ImageView?> rowIcons = new List<ImageView?>();
-        private readonly List<ClickableText?> otherTexts = new List<ClickableText?>();
+        private readonly Dictionary<string, ClickableText> otherCells = new Dictionary<string, ClickableText>();
+        private readonly List<ClickableText?> otherLabels = new List<ClickableText?>();
         private readonly List<ImageView?> otherIcons = new List<ImageView?>();
 
         [UIParams] private readonly BSMLParserParams? parserParams = null;
@@ -95,7 +91,6 @@ namespace JumpDrillMod.UI.Medals
         [UIComponent("detail")] private TextMeshProUGUI? detail = null;
         [UIComponent("status")] private TextMeshProUGUI? status = null;
         [UIComponent("other-page")] private TextMeshProUGUI? otherPageText = null;
-        [UIComponent("view-button")] private Button? viewButton = null;
 
         [UIObject("set-view")] private GameObject? setView = null;
         [UIObject("other-view")] private GameObject? otherView = null;
@@ -138,6 +133,9 @@ namespace JumpDrillMod.UI.Medals
             this.drillSet = drillSet;
             this.onPlay = onPlay;
             this.onSelect = onSelect;
+
+            // プルダウンの中身は組み上げるときに読むので、その前にステージを読んでおく
+            LoadBook();
         }
 
         public override string Content => BuildMarkup();
@@ -165,19 +163,24 @@ namespace JumpDrillMod.UI.Medals
               .Append("' spacing='0.3' pad='2' child-expand-height='false' child-align='UpperCenter'>");
 
             // 総合と切り替え
-            sb.Append("<horizontal pref-height='6' spacing='3'>");
+            sb.Append("<horizontal pref-height='6' spacing='2'>");
             sb.Append("<text id='total' text='' font-size='4.5' align='Left'/>");
             sb.Append("<text id='count' text='' font-size='3.2' align='Left' color='#8899AA'/>");
-            sb.Append("<button id='view-button' text='Other' on-click='toggle-view' pref-width='18' pref-height='6'");
-            sb.Append(" hover-hint='Switch between the 112 drills (with medals) and the other drills you made.'/>");
-            sb.Append("<button text='Rescan' on-click='rescan' pref-width='20' pref-height='6'");
+            // ステージの切り替え（Standard / Other / カスタムステージ）と、カスタムステージの追加
+            sb.Append("<dropdown-list-setting id='stage-dropdown' text='' value='stage' options='stage-options'");
+            sb.Append(" apply-on-change='true' bind-value='true' on-change='stage-changed' pref-width='30' pref-height='6'");
+            sb.Append(" hover-hint='Standard: the 112 drills. Other: drills not in any stage. CUSTOM: stages you made.'/>");
+            sb.Append("<button text='New' on-click='stage-new' pref-width='12' pref-height='6'");
+            sb.Append(" hover-hint='Make a new custom stage. You can rename it later.'/>");
+            sb.Append("<button text='Rescan' on-click='rescan' pref-width='17' pref-height='6'");
             sb.Append(" hover-hint='Read the replays again.'/>");
             sb.Append("</horizontal>");
 
             // ───── Drill ─────
             sb.Append("<vertical id='set-view' spacing='0.3' child-expand-height='false'>");
 
-            OpenRow(sb, 4);
+            // 見出しの段。Other・カスタムの見出しの段（ボタンが乗る）と高さを揃える
+            OpenRow(sb, HeaderRowHeight);
             Box(sb, LabelWidth, "MiddleLeft", "<text text='' font-size='2.6'/>");
             for (int c = 0; c < Stages; c++)
             {
@@ -208,28 +211,41 @@ namespace JumpDrillMod.UI.Medals
 
             sb.Append("</vertical>");
 
-            // ───── Other ─────
+            // ───── Other / カスタムステージ ─────
+            // Drill と同じ形の表（方向ごとに遅い順に8マス、超えた分は同じ方向の次の行）。
+            // 見出しの段の番号の代わりに、Other では件数とページ送り、カスタムではステージの名前の変更と削除を置く
+            // （高さを Drill と揃えるため）。マスの BPM は方向ごとに違うので、選んだときに下の内訳に出す。
+            // カスタムでは行頭を押すと行を選び、「+」でドリルを足す
             sb.Append("<vertical id='other-view' active='false' spacing='0.3' child-expand-height='false'>");
 
-            OpenRow(sb, 4);
+            OpenRow(sb, HeaderRowHeight);
             sb.Append("<text id='other-page' text='' font-size='2.6' align='Left' color='#8899AA' pref-width='")
-              .Append(TableWidth - 20).Append("'/>");
-            sb.Append("<button text='▲' on-click='other-up' pref-width='9' pref-height='4'/>");
-            sb.Append("<button text='▼' on-click='other-down' pref-width='9' pref-height='4'/>");
+              .Append(TableWidth - 40).Append("'/>");
+            sb.Append("<horizontal id='page-buttons' pref-width='40' spacing='1' child-expand-width='false' child-align='MiddleRight'>");
+            sb.Append("<button text='▲' on-click='other-up' pref-width='9' pref-height='5'/>");
+            sb.Append("<button text='▼' on-click='other-down' pref-width='9' pref-height='5'/>");
+            sb.Append("</horizontal>");
+            sb.Append("<horizontal id='stage-buttons' active='false' pref-width='40' spacing='1' child-expand-width='false' child-align='MiddleRight'>");
+            sb.Append("<button text='Rename' on-click='stage-rename' pref-width='18' pref-height='5' hover-hint='Rename this stage.'/>");
+            sb.Append("<button text='Delete' on-click='stage-delete' pref-width='18' pref-height='5'");
+            sb.Append(" hover-hint='Delete this stage. Press twice. Maps and records are kept.'/>");
+            sb.Append("</horizontal>");
             sb.Append("</horizontal>");
 
             for (int r = 0; r < OtherRows; r++)
             {
                 OpenRow(sb, 4.2);
-                // 広げるのは文字だけ。行全体を広げると絵の入れ物まで幅を分け合い、
-                // 絵（縦横比を保つので小さいまま）の右に大きな空きができる。
-                // 文字は幅固定の入れ物に1つだけ入れてその中で広げ、行の端まで押せるようにする
-                var text = new StringBuilder();
-                Box(text, TableWidth - IconWidth - 1, "MiddleLeft",
-                    "<clickable-text tags='other-" + r + "' text='' font-size='3' align='Left'/>",
-                    fill: true);
+                Box(sb, LabelWidth, "MiddleLeft",
+                    Icon("other-icon-" + r) +
+                    "<clickable-text tags='orow-" + r + "' text='' font-size='2.8' align='Left'/>");
 
-                Box(sb, TableWidth, "MiddleLeft", Icon("other-icon-" + r) + text);
+                for (int c = 0; c < Stages; c++)
+                {
+                    Box(sb, CellWidth, "MiddleCenter",
+                        "<clickable-text tags='oc-" + r + "-" + c + "' text='' font-size='3' align='Center'/>",
+                        fill: true);
+                }
+
                 sb.Append("</horizontal>");
             }
 
@@ -251,7 +267,7 @@ namespace JumpDrillMod.UI.Medals
 
             // 一番下に生成のボタン。叩くつもりで開いて譜面が無いと分かったとき、この画面を離れずに作れるように。
             // 上書きはボタンを分けずにチェックで切り替える（ボタンが4つだと横に収まらない）
-            sb.Append("<horizontal pref-height='6' spacing='2'>");
+            sb.Append("<horizontal id='generate-row' pref-height='6' spacing='2'>");
             sb.Append("<button text='Generate' on-click='generate-selected' pref-width='24' pref-height='6'");
             sb.Append(" hover-hint='Generate the selected drill.'/>");
             sb.Append("<button text='Generate all' on-click='generate-all' pref-width='28' pref-height='6'");
@@ -263,7 +279,15 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("</horizontal>");
             sb.Append("</horizontal>");
 
+            // カスタムステージでは、生成のボタンの代わりに組み替えのボタンを出す
+            AppendEditRow(sb);
+
             sb.Append("</vertical>");
+
+            // 別窓（ルート直下に置く）。ドリルの選択と、名前を入れるキーボード
+            AppendPicker(sb);
+            sb.Append("<modal-keyboard id='keyboard' value='keyboard-text' on-enter='keyboard-enter' clear-on-open='false'");
+            sb.Append(" show-event='show-keyboard' hide-event='hide-keyboard'/>");
 
             sb.Append("</bg>");
             return sb.ToString();
@@ -282,6 +306,12 @@ namespace JumpDrillMod.UI.Medals
         }
 
         /// <summary>表の1行を開く。子は広げず、決めた幅のまま左から並べる。</summary>
+        /// <summary>
+        /// 表の見出しの段の高さ。Other・カスタムではここにボタン（▲▼・Rename・Delete）が乗るので、
+        /// ボタンの文字が潰れない高さにする。Drill の見出しの段も同じ高さにして、表の位置を揃える。
+        /// </summary>
+        private const double HeaderRowHeight = 5;
+
         private static void OpenRow(StringBuilder sb, double height)
         {
             sb.Append("<horizontal pref-height='").Append(height.ToString(CultureInfo.InvariantCulture))
@@ -318,7 +348,8 @@ namespace JumpDrillMod.UI.Medals
             cells.Clear();
             rowLabels.Clear();
             rowIcons.Clear();
-            otherTexts.Clear();
+            otherCells.Clear();
+            otherLabels.Clear();
             otherIcons.Clear();
 
             for (int r = 0; r < DrillSet.Directions.Count; r++)
@@ -329,7 +360,7 @@ namespace JumpDrillMod.UI.Medals
                 var icon = Tagged<ImageView>("icon-" + r);
                 rowIcons.Add(icon);
                 if (icon != null && icons != null && r < rows.Count)
-                    SetSprite(icon, icons.For(rows[r].Cells[0].Entry.Options.Sequences));
+                    SetSprite(icon, icons.For(rows[r].Cells[0].Entry.Options.Sequences, rows[r].Cells[0].Entry.Options.Tower));
 
                 for (int c = 0; c < Stages; c++)
                 {
@@ -344,13 +375,24 @@ namespace JumpDrillMod.UI.Medals
 
             for (int r = 0; r < OtherRows; r++)
             {
-                var text = Tagged<ClickableText>("other-" + r);
-                otherTexts.Add(text);
+                var label = Tagged<ClickableText>("orow-" + r);
+                otherLabels.Add(label);
                 otherIcons.Add(Tagged<ImageView>("other-icon-" + r));
+                int labelRow = r;
+                if (label != null) label.OnClickEvent += _ => PickLabel(labelRow);
 
-                int row = r;
-                if (text != null) text.OnClickEvent += _ => PickOther(row);
+                for (int c = 0; c < Stages; c++)
+                {
+                    var text = Tagged<ClickableText>("oc-" + r + "-" + c);
+                    if (text == null) continue;
+
+                    int row = r, column = c;
+                    text.OnClickEvent += _ => PickOther(row, column);
+                    otherCells[Key(r, c)] = text;
+                }
             }
+
+            PostParseCustom();
 
             ApplyView();
             Rescan();
@@ -369,6 +411,17 @@ namespace JumpDrillMod.UI.Medals
         }
 
         private static string Key(int row, int column) => row + "-" + column;
+
+        /// <summary>
+        /// 行名の「方向 + 印（tower・alt-trip・flick25）」の印を、色と大きさを変えて方向と見分けが付くようにする。
+        /// </summary>
+        private static string RowName(string? direction)
+        {
+            string name = direction ?? string.Empty;
+            int space = name.IndexOf(' ');
+            if (space <= 0) return name;
+            return name.Substring(0, space) + " <color=#E0B060><size=75%>" + name.Substring(space + 1).Trim() + "</size></color>";
+        }
 
         // ───────── 操作 ─────────
 
@@ -415,6 +468,9 @@ namespace JumpDrillMod.UI.Medals
                     {
                         bestById = task.Result;
                         rows = DrillSetMedals.Evaluate(bestById);
+
+                        // GUI で組み替えたかもしれないので、ステージも読み直す
+                        LoadBook();
                         LoadOthers();
 
                         // 選んでいた Other のドリルが消えていたら選び直させる
@@ -434,7 +490,8 @@ namespace JumpDrillMod.UI.Medals
         }
 
         /// <summary>
-        /// Other に出すドリルを集める。読み込まれているドリル譜面から、ドリルセットの ID を除いたもの。
+        /// Other に出すドリルを集める。読み込まれているドリル譜面から、ドリルセットの ID を除いたもの
+        /// （除くのは <c>CustomStage.Other</c> の中でやる）。
         /// </summary>
         /// <remarks>
         /// 一覧の元は<b>読み込まれている譜面</b>（叩けるもの）。記録だけあって譜面を消したものは出さない。
@@ -442,38 +499,50 @@ namespace JumpDrillMod.UI.Medals
         /// </remarks>
         private void LoadOthers()
         {
-            others = new List<OtherDrill>();
-            if (launcher == null) return;
-
-            try
+            otherNames = new List<string>();
+            if (launcher != null)
             {
-                var setIds = new HashSet<string>(
-                    DrillSet.All().Select(e => DrillNaming.ExtractId(e.Options.Name)), StringComparer.Ordinal);
-
-                others = launcher.DrillLevels()
-                    .Where(d => !setIds.Contains(d.Id))
-                    .Select(d => new OtherDrill
-                    {
-                        Id = d.Id,
-                        Name = DisplayName(d.SongName),
-                        Sequences = SequenceIcon.SequencesFromName(d.SongName),
-                    })
-                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log?.Error("could not list the other drills: " + e);
+                try
+                {
+                    otherNames = launcher.DrillLevels().Select(d => d.SongName).ToList();
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log?.Error("could not list the other drills: " + e);
+                }
             }
 
-            int pages = Math.Max(1, (others.Count + OtherRows - 1) / OtherRows);
-            if (otherPage >= pages) otherPage = pages - 1;
+            EvaluateOthers();
         }
+
+        /// <summary>
+        /// Other とカスタムステージの表を今の記録で作り直す。
+        /// Other にはどのカスタムステージにも入っていないものだけを出す。
+        /// </summary>
+        private void EvaluateOthers()
+        {
+            otherRows = DrillSetMedals.Evaluate(CustomStage.Other(otherNames, book.Stages), bestById);
+
+            int pages = Math.Max(1, (otherRows.Count + OtherRows - 1) / OtherRows);
+            if (otherPage >= pages) otherPage = pages - 1;
+
+            var stage = CurrentStage;
+            customRows = stage == null ? new List<MedalRow>() : DrillSetMedals.Evaluate(stage, bestById);
+        }
+
+        private IEnumerable<MedalCell> OtherCells => otherRows.SelectMany(r => r.Cells);
 
         private bool IsListed(string id)
         {
-            return rows.Any(r => r.Cells.Any(c => c.Id == id)) || others.Any(o => o.Id == id);
+            return rows.Any(r => r.Cells.Any(c => c.Id == id)) || OtherCells.Any(c => c.Id == id) ||
+                   customRows.Any(r => r.Cells.Any(c => c.Id == id));
         }
+
+        /// <summary>真ん中の下の表（Other かカスタムステージ）に出している行。</summary>
+        private List<MedalRow> ListRows => mode == ViewMode.Custom ? customRows : otherRows;
+
+        /// <summary>表の何行目から出すか。ページを送るのは Other だけ（カスタムは 14 行まで）。</summary>
+        private int ListOffset => mode == ViewMode.Other ? otherPage * OtherRows : 0;
 
         /// <summary>ID と頭の "Drill " を落とした名前。行が長くなりすぎないように。</summary>
         private static string DisplayName(string songName)
@@ -482,13 +551,6 @@ namespace JumpDrillMod.UI.Medals
             return name.StartsWith(DrillNaming.Prefix, StringComparison.OrdinalIgnoreCase)
                 ? name.Substring(DrillNaming.Prefix.Length)
                 : name;
-        }
-
-        [UIAction("toggle-view")]
-        public void ToggleView()
-        {
-            showOther = !showOther;
-            ApplyView();
         }
 
         [UIAction("other-up")]
@@ -502,23 +564,24 @@ namespace JumpDrillMod.UI.Medals
         [UIAction("other-down")]
         public void OtherDown()
         {
-            if ((otherPage + 1) * OtherRows >= others.Count) return;
+            if ((otherPage + 1) * OtherRows >= otherRows.Count) return;
             otherPage++;
             Fill();
         }
 
         private void ApplyView()
         {
-            if (setView != null) setView.SetActive(!showOther);
-            if (otherView != null) otherView.SetActive(showOther);
+            bool list = mode != ViewMode.Standard;
+            bool custom = mode == ViewMode.Custom;
 
-            // ボタンには<b>押すと切り替わる先</b>を出す。2択なので、いま出ている方は
-            // 画面の中身で分かる。いま出ている方を書くと、押す前に反対だと読めてしまう
-            if (viewButton != null)
-            {
-                var label = viewButton.GetComponentInChildren<TextMeshProUGUI>();
-                if (label != null) label.text = showOther ? "Drill" : "Other";
-            }
+            if (setView != null) setView.SetActive(!list);
+            if (otherView != null) otherView.SetActive(list);
+            if (pageButtons != null) pageButtons.SetActive(!custom);
+            if (stageButtons != null) stageButtons.SetActive(custom);
+
+            // 生成は指定を持っている Standard だけ。カスタムでは組み替えのボタンを出す
+            if (generateRow != null) generateRow.SetActive(mode == ViewMode.Standard);
+            if (editRow != null) editRow.SetActive(custom);
 
             Fill();
         }
@@ -532,14 +595,46 @@ namespace JumpDrillMod.UI.Medals
             onSelect?.Invoke(selectedId);
         }
 
-        private void PickOther(int row)
+        /// <summary>下の表のマス。カスタムでは行の右端の「+」でドリルを足す。</summary>
+        private void PickOther(int row, int column)
         {
-            int index = otherPage * OtherRows + row;
-            if (index >= others.Count) return;
+            int index = ListOffset + row;
+            var list = ListRows;
+            DisarmDelete();
 
-            selectedId = others[index].Id;
+            if (mode == ViewMode.Custom && index < list.Count && column == list[index].Cells.Count &&
+                column < CustomStage.MaxDrillsPerRow)
+            {
+                OpenPicker(index);
+                return;
+            }
+
+            if (index >= list.Count || column >= list[index].Cells.Count) return;
+
+            selectedId = list[index].Cells[column].Id;
+            selectedRow = index;
+            selectedColumn = column;
             Fill();
             onSelect?.Invoke(selectedId);
+        }
+
+        /// <summary>下の表の行頭。カスタムでは行を選ぶ。行の続きの「+ Add row」で新しい行を作る。</summary>
+        private void PickLabel(int row)
+        {
+            if (mode != ViewMode.Custom) return;
+            DisarmDelete();
+
+            int index = ListOffset + row;
+            if (index == customRows.Count && index < CustomStage.MaxRows)
+            {
+                OpenPicker(index);
+                return;
+            }
+            if (index >= customRows.Count) return;
+
+            selectedRow = index;
+            selectedColumn = -1;
+            Fill();
         }
 
         /// <summary>
@@ -701,12 +796,14 @@ namespace JumpDrillMod.UI.Medals
         {
             var ci = CultureInfo.InvariantCulture;
 
-            int level = rows.Sum(r => r.Level);
-            int medals = rows.Sum(r => r.Cells.Count(c => c.Medal != Medal.None));
-            int cellsTotal = rows.Sum(r => r.Cells.Count);
+            // 総合は出しているステージのもの（GUI のメダル画面と同じ）
+            var shown = mode == ViewMode.Standard ? rows : ListRows;
+            int level = shown.Sum(r => r.Level);
+            int medals = shown.Sum(r => r.Cells.Count(c => c.Medal != Medal.None));
+            int cellsTotal = shown.Sum(r => r.Cells.Count);
 
             if (total != null)
-                total.text = string.Format(ci, "Total Lv {0} / {1}", level, DrillSetMedals.MaxLevel);
+                total.text = string.Format(ci, "Total Lv {0} / {1}", level, shown.Sum(r => r.MaxLevel));
             if (count != null)
                 count.text = string.Format(ci, "Medals {0} / {1}", medals, cellsTotal);
 
@@ -745,37 +842,77 @@ namespace JumpDrillMod.UI.Medals
         {
             var ci = CultureInfo.InvariantCulture;
 
+            bool custom = mode == ViewMode.Custom;
+            var list = ListRows;
+            int offset = ListOffset;
+
             if (otherPageText != null)
             {
-                otherPageText.text = others.Count == 0
-                    ? "No other drills. Make one with the grid in the Mods tab."
-                    : string.Format(ci, "{0} other drill(s).  {1}-{2}",
-                        others.Count,
-                        otherPage * OtherRows + 1,
-                        Math.Min((otherPage + 1) * OtherRows, others.Count));
+                if (custom)
+                {
+                    otherPageText.text = bookBroken
+                        ? "Could not read the stage file. Editing is off."
+                        : "Tap + to add drills. Tap a row name to pick the row.";
+                }
+                else
+                {
+                    int drills = OtherCells.Count();
+                    int pages = Math.Max(1, (otherRows.Count + OtherRows - 1) / OtherRows);
+                    otherPageText.text = drills == 0
+                        ? "No other drills. Make one with the grid in the Mods tab."
+                        : pages == 1
+                            ? string.Format(ci, "{0} other drill(s).", drills)
+                            : string.Format(ci, "{0} other drill(s).  Page {1}/{2}", drills, otherPage + 1, pages);
+                }
             }
 
-            for (int r = 0; r < otherTexts.Count; r++)
+            bool editable = custom && !bookBroken;
+            for (int r = 0; r < OtherRows; r++)
             {
-                var text = otherTexts[r];
-                var icon = r < otherIcons.Count ? otherIcons[r] : null;
-                int index = otherPage * OtherRows + r;
+                int index = offset + r;
+                var row = index < list.Count ? list[index] : null;
 
-                if (index >= others.Count)
+                var label = r < otherLabels.Count ? otherLabels[r] : null;
+                if (label != null)
                 {
-                    if (text != null) text.text = string.Empty;
-                    if (icon != null) SetSprite(icon, null);
-                    continue;
+                    Color color = custom && index == selectedRow ? Picked : Played;
+                    if (row != null)
+                        label.text = string.Format(ci, "{0}  <color=#8899AA><size=80%>Lv {1}/{2}</size></color>", RowName(row.Direction), row.Level, row.MaxLevel);
+                    else if (editable && index == list.Count && index < CustomStage.MaxRows)
+                    {
+                        label.text = "+ Add row";
+                        color = Empty;
+                    }
+                    else
+                        label.text = string.Empty;
+
+                    label.DefaultColor = color;
+                    label.HighlightColor = Picked;
+                    label.color = color;
                 }
 
-                var drill = others[index];
-                if (icon != null) SetSprite(icon, icons?.For(drill.Sequences));
+                var icon = r < otherIcons.Count ? otherIcons[r] : null;
+                if (icon != null) SetSprite(icon, row == null || row.Sequences.Count == 0 ? null : icons?.For(row.Sequences, row.Tower));
 
-                if (text != null)
+                for (int c = 0; c < Stages; c++)
                 {
-                    double best;
-                    double? percent = bestById.TryGetValue(drill.Id, out best) ? best : (double?)null;
-                    Paint(text, percent, drill.Id == selectedId, center: false, label: drill.Name);
+                    ClickableText text;
+                    if (!otherCells.TryGetValue(Key(r, c), out text)) continue;
+
+                    if (row == null || c >= row.Cells.Count)
+                    {
+                        // カスタムでは行の右端に「+」（満杯なら出さない）
+                        bool add = editable && row != null && c == row.Cells.Count && c < CustomStage.MaxDrillsPerRow;
+                        text.text = add ? "+" : string.Empty;
+                        text.DefaultColor = Empty;
+                        text.HighlightColor = Picked;
+                        text.color = Empty;
+                        continue;
+                    }
+
+                    var cell = row.Cells[c];
+                    bool picked = custom ? index == selectedRow && c == selectedColumn : cell.Id == selectedId;
+                    Paint(text, cell.BestPercent, picked, center: true, label: null);
                 }
             }
         }
@@ -847,10 +984,10 @@ namespace JumpDrillMod.UI.Medals
                 return;
             }
 
-            var other = others.FirstOrDefault(o => o.Id == selectedId);
+            var other = OtherCells.Concat(customRows.SelectMany(r => r.Cells)).FirstOrDefault(c => c.Id == selectedId);
             detail.text = other == null
                 ? string.Empty
-                : string.Format(ci, "{0}   {1}{2}", other.Name, best, medalText);
+                : string.Format(ci, "{0}   {1}{2}", DisplayName(other.SongName), best, medalText);
         }
 
         private static Color MedalColor(Medal medal)

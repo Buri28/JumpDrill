@@ -22,18 +22,19 @@ namespace JumpDrillMod.Services
             new Dictionary<string, Sprite?>(StringComparer.Ordinal);
 
         /// <summary>その遷移の絵。描けなければ null。</summary>
-        internal Sprite? For(IReadOnlyList<HandSequence>? sequences)
+        /// <param name="tower">タワーのドリル。点の間のノーツがあるマスにも ● を描く。</param>
+        internal Sprite? For(IReadOnlyList<HandSequence>? sequences, bool tower = false)
         {
             if (sequences == null || sequences.Count == 0) return null;
 
-            string key = string.Join(" ", sequences.Select(s => s.ToString()).ToArray());
+            string key = string.Join(" ", sequences.Select(s => s.ToString()).ToArray()) + (tower ? " tower" : "");
 
             Sprite? found;
             if (cache.TryGetValue(key, out found)) return found;
 
             try
             {
-                found = SpriteFactory.FromPng(SequenceIcon.Render(sequences, Cell));
+                found = SpriteFactory.FromPng(SequenceIcon.Render(sequences, Cell, tower));
             }
             catch (Exception e)
             {

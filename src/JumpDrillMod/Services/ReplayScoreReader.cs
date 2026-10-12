@@ -100,34 +100,80 @@ namespace JumpDrillMod.Services
             try
             {
                 string token = "[" + drillId + "]";
-
-                // 重複を落とすのは読めたものの中で。先に落とすと、BeatLeader の分が書きかけなどで
-                // 読めなかったときに、同じプレイを残した自分の分まで消えて記録が出ない
-                var scores = new Dictionary<string, DrillScore>(StringComparer.OrdinalIgnoreCase);
-                var readable = new List<string>();   // MOD の並びのまま（RemoveDuplicates は前にあるものを採る）
-                foreach (var file in ListReplayFiles(removeDuplicates: false))
-                {
-                    if (Path.GetFileName(file).IndexOf(token, StringComparison.OrdinalIgnoreCase) < 0) continue;
-
-                    var score = Analyze(file);
-                    if (score == null) continue;
-
-                    scores[file] = score;
-                    readable.Add(file);
-                }
-
-                return ReplayLibrary.RemoveDuplicates(readable)
-                    .Select(file => scores[file])
-                    // 記録として数えるものを先に。自動プレイと速度を変えたものは比べる相手にならない（GUI と同じ）
-                    .OrderBy(s => !s.CountsAsRecord)
-                    .ThenByDescending(s => s.ReproducibilityPercent)
-                    .ThenByDescending(s => s.PlayedAt)
-                    .ToList();
+                return Collect(name => name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0);
             }
             catch (Exception e)
             {
                 Plugin.Log?.Error("could not read the replays: " + e);
                 return new List<DrillScore>();
+            }
+        }
+
+        /// <summary>
+        /// ドリルの記録を全部、ID ごとに <see cref="For"/> と同じ並び（順位の順）で。リプレイの整理に使う。
+        /// </summary>
+        /// <remarks>別スレッドから呼んでよい。先にメインスレッドで <see cref="RefreshLevelFolders"/> を呼んでおくこと。</remarks>
+        internal Dictionary<string, List<DrillScore>> AllByDrill()
+        {
+            var result = new Dictionary<string, List<DrillScore>>(StringComparer.Ordinal);
+            foreach (var score in Collect(name => name.IndexOf(ReplayLibrary.DrillFilter, StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                string? id = DrillNaming.ExtractId(score.SongName);
+                if (id == null) continue;
+
+                List<DrillScore> list;
+                if (!result.TryGetValue(id, out list)) result[id] = list = new List<DrillScore>();
+                list.Add(score);   // 並びは保たれる
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// ファイル名で絞ったリプレイを解析して、重複を落とし、順位の順に並べる。
+        /// </summary>
+        private List<DrillScore> Collect(Func<string, bool> nameFilter)
+        {
+            // 重複を落とすのは読めたものの中で。先に落とすと、BeatLeader の分が書きかけなどで
+            // 読めなかったときに、同じプレイを残した自分の分まで消えて記録が出ない
+            var scores = new Dictionary<string, DrillScore>(StringComparer.OrdinalIgnoreCase);
+            var readable = new List<string>();   // MOD の並びのまま（RemoveDuplicates は前にあるものを採る）
+            foreach (var file in ListReplayFiles(removeDuplicates: false))
+            {
+                if (!nameFilter(Path.GetFileName(file))) continue;
+
+                var score = Analyze(file);
+                if (score == null) continue;
+
+                scores[file] = score;
+                readable.Add(file);
+            }
+
+            return ReplayLibrary.RemoveDuplicates(readable)
+                .Select(file => scores[file])
+                // 記録として数えるものを先に。自動プレイと速度を変えたものは比べる相手にならない（GUI と同じ）
+                .OrderBy(s => !s.CountsAsRecord)
+                .ThenByDescending(s => s.ReproducibilityPercent)
+                .ThenByDescending(s => s.PlayedAt)
+                .ToList();
+        }
+
+        /// <summary>
+        /// ドリルのリプレイが使っている容量。同じプレイの重複（BeatLeader と LocalLeaderboard など）も
+        /// 別のファイルとして数える（ディスクを実際に使っている分）。
+        /// </summary>
+        internal static void Usage(out int files, out long bytes)
+        {
+            files = 0;
+            bytes = 0;
+            foreach (var file in ListReplayFiles(removeDuplicates: false))
+            {
+                if (Path.GetFileName(file).IndexOf(ReplayLibrary.DrillFilter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                try
+                {
+                    bytes += new FileInfo(file).Length;
+                    files++;
+                }
+                catch (IOException) { }
             }
         }
 
@@ -271,7 +317,7 @@ namespace JumpDrillMod.Services
                 MapNotes.Counts counts = default;
                 bool counted = SongCoreFileAccess.Run(() => MapNotes.TryCount(folder, out counts));
                 if (counted && counts.Total > 0)
-                    SwingAnalyzer.ApplyMapNotes(score, counts.Left, counts.Right);
+                    SwingAnalyzer.ApplyMapNotes(score, counts.Left, counts.Right, counts.SwingLeft, counts.SwingRight);
             }
             catch (Exception e)
             {

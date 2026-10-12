@@ -68,6 +68,10 @@ namespace JumpDrill.Gui
         private readonly Button _rescan = new Button { Text = Lang.T("再スキャン", "Rescan"), AutoSize = true, Padding = new Padding(10, 4, 10, 4) };
         private readonly Button _openReplay = new Button { Text = Lang.T("リプレイの場所を開く", "Open replay folder"), AutoSize = true, Padding = new Padding(10, 4, 10, 4), Enabled = false };
         private readonly Button _openZip = new Button { Text = Lang.T("zip を用意して開く", "Prepare zip and open"), AutoSize = true, Padding = new Padding(10, 4, 10, 4), Enabled = false };
+        private readonly Button _delete = new Button { Text = Lang.T("削除", "Delete"), AutoSize = true, Padding = new Padding(10, 4, 10, 4), Enabled = false };
+        private readonly Button _cleanup = new Button { Text = Lang.T("リプレイの整理...", "Clean up replays..."), AutoSize = true, Padding = new Padding(10, 4, 10, 4), Enabled = false };
+        private readonly ToolTip _tips = new ToolTip();
+        private readonly SettingsStore _settings;
         private readonly Button _openBeatLeader = new Button { Text = Lang.T("BeatLeader でリプレイ", "Replay in BeatLeader"), AutoSize = true, Padding = new Padding(10, 4, 10, 4), Enabled = false };
         private LocalFileServer _server;
 
@@ -221,6 +225,7 @@ namespace JumpDrill.Gui
         internal ScoreboardForm(string workspaceRoot, SettingsStore settings, string selectId = null)
         {
             _workspaceRoot = workspaceRoot;
+            _settings = settings;
             _install = new InstallPicker(settings) { Margin = new Padding(3, 4, 8, 3) };
             _initialId = selectId;
 
@@ -253,6 +258,11 @@ namespace JumpDrill.Gui
             _rescan.Click += async (s, e) => await ScanAsync();
             _openReplay.Click += (s, e) => OpenReplayLocation();
             _openZip.Click += (s, e) => OpenZip();
+            _delete.Click += async (s, e) => await DeleteSelectedAsync();
+            _cleanup.Click += async (s, e) => await CleanupAsync();
+            _plays.KeyDown += async (s, e) => { if (e.KeyCode == Keys.Delete) await DeleteSelectedAsync(); };
+            _tips.SetToolTip(_delete, Lang.T("下の一覧で選んだリプレイを削除します。元に戻せません。", "Deletes the replay selected in the list below. This cannot be undone."));
+            _tips.SetToolTip(_cleanup, Lang.T("残す件数を選んで、それ以外のリプレイを削除します。押してもすぐには削除しません。", "Choose how many to keep and delete the rest. Nothing is deleted until you confirm."));
             _openBeatLeader.Click += (s, e) => OpenInBeatLeader();
             _list.DoubleClick += (s, e) => OpenInBeatLeader();
             _plays.SelectedIndexChanged += (s, e) => OnPlayPicked();
@@ -449,6 +459,8 @@ namespace JumpDrill.Gui
             actions.Controls.Add(_openBeatLeader);
             actions.Controls.Add(_openReplay);
             actions.Controls.Add(_openZip);
+            actions.Controls.Add(_delete);
+            actions.Controls.Add(_cleanup);
 
             _hand.Items.AddRange(new object[] { Lang.T("両手", "Both hands"), Lang.T("右手だけ", "Right only"), Lang.T("左手だけ", "Left only") });
             _hand.SelectedIndex = 0;
@@ -630,7 +642,14 @@ namespace JumpDrill.Gui
 
             // ドリル以外は読まない（→ ScanAsync のコメント）。
             string install = InstallPicker.Selected;
-            var scores = await Task.Run(() => DrillRecords.Load(workspace, (path, ex) => failed++, install));
+            int usageFiles = 0;
+            long usageBytes = 0;
+            var scores = await Task.Run(() =>
+            {
+                var loaded = DrillRecords.Load(workspace, (path, ex) => failed++, install);
+                ReplayLibrary.DrillUsage(install, out usageFiles, out usageBytes);
+                return loaded;
+            });
             _scores.AddRange(scores);
 
             GroupByMap();
@@ -645,14 +664,18 @@ namespace JumpDrill.Gui
 
             // 読み方の説明はここには置かない。毎回同じ文言が出続けるだけで、
             // 2度目からは読まない。件数だけ出す。
+            // 容量はファイルの数で数える。同じプレイが BeatLeader・LocalLeaderboard などに重ねて
+            // 保存されていれば、その分も実際にディスクを使っている
             _status.Text = string.Format(CultureInfo.CurrentCulture,
-                Lang.T("{0} 譜面 / {1} 件{2}{3}{4}", "{0} maps / {1} plays{2}{3}{4}"),
+                Lang.T("{0} 譜面 / {1} 件{2}{3}{4}   リプレイ {5} ファイル / {6}", "{0} maps / {1} plays{2}{3}{4}   Replays: {5} files / {6}"),
                 _maps.Count, _scores.Count,
                 bots > 0 ? Lang.T("   (自動プレイ：" + bots + "件)", "   (autoplay: " + bots + ")") : "",
                 speed > 0 ? Lang.T("   (速度変更・記録外：" + speed + "件)", "   (speed changed, not counted: " + speed + ")") : "",
-                failed > 0 ? Lang.T("   読めなかったもの " + failed + " 件", "   unreadable: " + failed) : "");
+                failed > 0 ? Lang.T("   読めなかったもの " + failed + " 件", "   unreadable: " + failed) : "",
+                usageFiles, Megabytes(usageBytes));
 
             _rescan.Enabled = true;
+            UpdateButtons();
 
             if (_reloadPending && !IsDisposed)
             {
@@ -899,6 +922,7 @@ namespace JumpDrill.Gui
         /// <summary>2段目で行を選んだ。軌道と内訳をそのプレイに切り替える。</summary>
         private void OnPlayPicked()
         {
+            UpdateButtons();
             if (_fillingPlays || _plays.SelectedItems.Count == 0) return;
             ShowPlay((ReplayScore)_plays.SelectedItems[0].Tag);
         }
@@ -984,9 +1008,9 @@ namespace JumpDrill.Gui
                 // 再現 /100 × 有効振りに掛かった倍率の合計。振れた本数ぶんの素点なので、ここは残す。
                 AddHand(Lang.T("再現スコア", "Repro score"), score.ReproducibilityScore.ToString("0", ci), left, right, h => h.ReproducibilityScore.ToString("0", ci));
                 // 再現の元になる生の値。行きと帰りが何 m 離れているか。
-                AddHand(Lang.T("往復ずれ m", "Round-trip gap m"), score.RoundTripGap.ToString("0.0000", ci), left, right, h => h.RoundTripGap.ToString("0.0000", ci));
+                AddHand(Lang.T("往復ずれ cm", "Round-trip gap cm"), (score.RoundTripGap * 100.0).ToString("0.00", ci), left, right, h => (h.RoundTripGap * 100.0).ToString("0.00", ci));
 
-                AddSplit(Lang.T("束の幅 m", "Path spread m"), score, left, right, d => d.PathScatter.ToString("0.0000", ci));
+                AddSplit(Lang.T("束の幅 cm", "Path spread cm"), score, left, right, d => (d.PathScatter * 100.0).ToString("0.00", ci));
                 AddSplit(Lang.T("角度 /100", "Angle /100"), score, left, right, d => d.AnglePercent.ToString("0.0", ci));
                 AddSplit(Lang.T("角度ずれ °", "Angle error °"), score, left, right, d => d.AngleErrorMean.ToString("0.0", ci));
                 AddSplit(Lang.T("中心ずれ cm", "Center offset cm"), score, left, right, d => (d.CutDistanceMean * 100.0).ToString("0.0", ci));
@@ -1187,6 +1211,8 @@ namespace JumpDrill.Gui
             _openReplay.Enabled = has;
             _openZip.Enabled = has;
             _openBeatLeader.Enabled = has;
+            _delete.Enabled = _plays.SelectedItems.Count > 0 && _rescan.Enabled;
+            _cleanup.Enabled = _maps.Count > 0 && _rescan.Enabled;
         }
 
         /// <summary>
@@ -1273,6 +1299,229 @@ namespace JumpDrill.Gui
 
             // 左右の向きは横の図にしか無い。
             _sideView.FaceRight = !_faceLeft.Checked;
+        }
+
+        /// <summary>下の一覧で選んだプレイのリプレイを消す。元に戻せないので、何を消すかを出して確かめる。</summary>
+        private async Task DeleteSelectedAsync()
+        {
+            if (!_rescan.Enabled || _plays.SelectedItems.Count == 0) return;
+
+            var score = _plays.SelectedItems[0].Tag as ReplayScore;
+            if (score == null || string.IsNullOrEmpty(score.Replay.Path)) return;
+
+            var copies = ReplayLibrary.SamePlayFiles(score.Replay.Path);
+            if (MessageBox.Show(this,
+                    string.Format(CultureInfo.CurrentCulture,
+                        Lang.T("このリプレイを削除しますか？\r\n\r\n{0}\r\n{1}   再現精度 {2:0.0}%\r\nファイル {3} 個 / {4}\r\n\r\n削除したリプレイは元に戻せません。",
+                               "Delete this replay?\r\n\r\n{0}\r\n{1}   Reproducibility {2:0.0}%\r\n{3} file(s) / {4}\r\n\r\nThis cannot be undone."),
+                        DrillNaming.StripId(score.Replay.Info.SongName ?? ""), WhenText(score), score.ReproducibilityPercent,
+                        copies.Count, Megabytes(copies.Sum(SizeOf))),
+                    "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+
+            await DeleteAsync(copies, 1);
+        }
+
+        /// <summary>
+        /// 譜面ごとに、順位（再現精度 % の高い順）の上位 N 件とベストを残してほかを消す。
+        /// 対象は今の一覧（見ているバージョンのもの）。
+        /// </summary>
+        private async Task CleanupAsync()
+        {
+            if (!_rescan.Enabled || _maps.Count == 0) return;
+
+            // 同じプレイのコピー（BeatLeader・LocalLeaderboard など）も一緒に消すので、先にまとめて探しておく。
+            // 消すと空く容量を確かめる画面に出す
+            Dictionary<string, List<string>> copies;
+            Cursor = Cursors.WaitCursor;
+            try
+            {
+                var paths = _maps.SelectMany(m => m.Plays).Select(p => p.Replay.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();
+                copies = await Task.Run(() => ReplayLibrary.SamePlayGroups(paths));
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+            }
+
+            int keep;
+            bool allMaps;
+            if (!AskCleanup(copies, out keep, out allMaps)) return;
+
+            var targets = PlanCleanup(keep, allMaps);
+            if (targets.Count == 0)
+            {
+                _status.Text = Lang.T("削除するリプレイはありません。", "There are no replays to delete.");
+                return;
+            }
+
+            // 元に戻せないので、もう一度確かめる
+            var files = FilesOf(targets, copies);
+            if (MessageBox.Show(this,
+                    string.Format(CultureInfo.CurrentCulture,
+                        Lang.T("{0}、上位 {1} 件以外の {2} 件のリプレイ（ファイル {3} 個 / {4}）を削除します。\r\n削除したリプレイは元に戻せません。よろしいですか？",
+                               "Delete {2} replay(s) ({3} file(s) / {4}) other than the top {1} for {0}?\r\nThis cannot be undone."),
+                        allMaps ? Lang.T("すべての譜面で", "all maps") : Lang.T("選んでいる譜面で", "the selected map"),
+                        keep, targets.Count, files.Count, Megabytes(files.Sum(SizeOf))),
+                    "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+
+            await DeleteAsync(files, targets.Count);
+        }
+
+        /// <summary>
+        /// 消すプレイ。譜面ごとに、順位の上位 <paramref name="keep"/> 件は残す。
+        /// ベスト（★）はふつう上位に入っているが、自動プレイや速度変更のプレイは順位の上に来ても
+        /// ベストにならないので、それが上位を埋めたときのためにベストも念のため残す。
+        /// </summary>
+        private List<ReplayScore> PlanCleanup(int keep, bool allMaps)
+        {
+            var maps = allMaps ? _maps : (_shownMap == null ? new List<MapEntry>() : new List<MapEntry> { _shownMap });
+            var targets = new List<ReplayScore>();
+
+            foreach (var map in maps)
+            {
+                // 順位は 2段目の「順位」と同じ並び（再現精度 % の高い順）
+                var kept = new HashSet<ReplayScore>(map.Plays.OrderByDescending(p => p.ReproducibilityPercent).Take(keep));
+                if (map.Best != null) kept.Add(map.Best);
+                targets.AddRange(map.Plays.Where(p => !kept.Contains(p)));
+            }
+
+            return targets;
+        }
+
+        private static List<string> FilesOf(IEnumerable<ReplayScore> scores, Dictionary<string, List<string>> copies)
+        {
+            var files = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var score in scores)
+            {
+                List<string> same;
+                if (!copies.TryGetValue(score.Replay.Path ?? "", out same)) same = new List<string> { score.Replay.Path };
+                foreach (var f in same)
+                    if (!string.IsNullOrEmpty(f) && seen.Add(f)) files.Add(f);
+            }
+            return files;
+        }
+
+        /// <summary>整理の指定を聞く。消す件数と空く容量をその場で出す。</summary>
+        private bool AskCleanup(Dictionary<string, List<string>> copies, out int keep, out bool allMaps)
+        {
+            keep = 0;
+            allMaps = false;
+
+            using (var form = new Form
+            {
+                Text = Lang.T("JumpDrill — リプレイの整理", "JumpDrill — Clean up replays"),
+                Icon = AppIcon.Value,
+                Font = Font,
+                AutoScaleMode = AutoScaleMode.Font,
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ShowInTaskbar = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            })
+            {
+                // 残す件数は 10 から選べる。開くたびに 20 から始める（前に減らした値のまま、うっかり多く消さないように）
+                var count = new NumericUpDown { Minimum = 10, Maximum = 9999, Width = 70, Anchor = AnchorStyles.Left };
+                count.Value = 20;
+                var thisMap = new RadioButton { Text = Lang.T("選んでいる譜面だけ", "Selected map only"), AutoSize = true, Enabled = _shownMap != null };
+                var everyMap = new RadioButton { Text = Lang.T("すべての譜面", "All maps"), AutoSize = true };
+                (_shownMap != null ? thisMap : everyMap).Checked = true;
+                var preview = new Label { AutoSize = true, Margin = new Padding(3, 10, 3, 3) };
+                var ok = new Button { Text = Lang.T("削除...", "Delete..."), DialogResult = DialogResult.OK, AutoSize = true, Padding = new Padding(16, 2, 16, 2) };
+
+                Action update = () =>
+                {
+                    var targets = PlanCleanup((int)count.Value, everyMap.Checked);
+                    var files = FilesOf(targets, copies);
+                    preview.Text = string.Format(CultureInfo.CurrentCulture,
+                        Lang.T("削除するリプレイ: {0} 件（ファイル {1} 個 / {2}）\r\n削除したリプレイは元に戻せません。",
+                               "Replays to delete: {0} ({1} file(s) / {2})\r\nThis cannot be undone."),
+                        targets.Count, files.Count, Megabytes(files.Sum(SizeOf)));
+                    ok.Enabled = targets.Count > 0;
+                };
+                count.ValueChanged += (s, e) => update();
+                thisMap.CheckedChanged += (s, e) => update();
+                update();
+
+                var keepRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
+                keepRow.Controls.Add(new Label { Text = Lang.T("譜面ごとに、順位の上位", "For each map, keep the top"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) });
+                keepRow.Controls.Add(count);
+                keepRow.Controls.Add(new Label { Text = Lang.T("件を残します。", "replays."), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) });
+
+                var cancel = new Button { Text = Lang.T("キャンセル", "Cancel"), DialogResult = DialogResult.Cancel, AutoSize = true, Padding = new Padding(16, 2, 16, 2) };
+                var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, Margin = new Padding(0, 10, 0, 0) };
+                buttons.Controls.Add(cancel);
+                buttons.Controls.Add(ok);
+
+                var root = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Padding = new Padding(12), Dock = DockStyle.Fill };
+                root.Controls.Add(keepRow);
+                root.Controls.Add(thisMap);
+                root.Controls.Add(everyMap);
+                root.Controls.Add(preview);
+                root.Controls.Add(buttons);
+                form.Controls.Add(root);
+                form.CancelButton = cancel;
+                Theme.Apply(form);
+
+                if (form.ShowDialog(this) != DialogResult.OK) return false;
+
+                keep = (int)count.Value;
+                allMaps = everyMap.Checked;
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// リプレイのファイルを消して読み直す。同じプレイが別の置き場
+        /// （BeatLeader・LocalLeaderboard・JumpDrillMod）にもあれば、それも渡ってくる。1つでも残ると一覧に戻ってくるため。
+        /// </summary>
+        private async Task DeleteAsync(List<string> files, int plays)
+        {
+            _rescan.Enabled = false;
+            UpdateButtons();
+            _status.Text = Lang.T("削除しています...", "Deleting...");
+
+            int failed = 0;
+            long freed = 0;
+            await Task.Run(() =>
+            {
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        long size = SizeOf(file);
+                        if (File.Exists(file)) File.Delete(file);
+                        freed += size;
+                    }
+                    catch (IOException) { failed++; }
+                    catch (UnauthorizedAccessException) { failed++; }
+                }
+            });
+
+            if (IsDisposed) return;
+            _rescan.Enabled = true;
+            await ScanAsync();
+
+            string result = string.Format(CultureInfo.CurrentCulture,
+                Lang.T("{0} 件のリプレイ（ファイル {1} 個 / {2}）を削除しました。", "Deleted {0} replay(s) ({1} file(s) / {2})."),
+                plays, files.Count - failed, Megabytes(freed));
+            if (failed > 0) result += Lang.T("   削除できなかったファイル: " + failed + " 個", "   Could not delete: " + failed);
+            _status.Text = result + "   " + _status.Text;
+        }
+
+        private static long SizeOf(string file)
+        {
+            try { return new FileInfo(file).Length; }
+            catch (IOException) { return 0; }
+            catch (UnauthorizedAccessException) { return 0; }
+        }
+
+        private static string Megabytes(long bytes)
+        {
+            return string.Format(CultureInfo.CurrentCulture, "{0:0.0} MB", bytes / 1024.0 / 1024.0);
         }
 
         private void OpenReplayLocation()

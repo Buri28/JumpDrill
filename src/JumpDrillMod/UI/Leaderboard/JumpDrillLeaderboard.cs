@@ -47,6 +47,9 @@ namespace JumpDrillMod.UI.Leaderboard
             // 叩き終えて曲選択に戻った時点では、まだリプレイを書いている途中のことがある。
             // 書き終えたら、いま出している譜面の記録を読み直す（いま叩いた記録が選ばれる）
             Gameplay.DrillReplayRecorder.Saved += OnSaved;
+
+            // リプレイを消したら読み直す（この枠の Delete・自動削除・Mods タブの Delete now）
+            ReplayCleanupService.Changed += Reload;
         }
 
         private void OnSaved(string _) => Reload();
@@ -55,6 +58,7 @@ namespace JumpDrillMod.UI.Leaderboard
         internal void Release()
         {
             Gameplay.DrillReplayRecorder.Saved -= OnSaved;
+            ReplayCleanupService.Changed -= Reload;
         }
 
         /// <summary>いま枠に出しているドリル。出していなければ null。</summary>

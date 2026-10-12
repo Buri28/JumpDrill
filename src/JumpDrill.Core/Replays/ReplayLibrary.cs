@@ -191,6 +191,156 @@ namespace JumpDrill.Replays
             return gap <= SamePlaySeconds ? gap : -1;
         }
 
+        /// <summary>
+        /// 同じプレイのリプレイを、その Beat Saber のリプレイ置き場（<see cref="ReplayMods"/>）から全部集める。
+        /// 渡したファイル自身も含む。消すときに使う（1つでも残ると、読み直したときに一覧へ戻ってくる）。
+        /// </summary>
+        /// <remarks>
+        /// 名前が揃うもの（BeatLeader と LocalLeaderboard の組）は全部。開始時刻で揃えるもの
+        /// （JumpDrillMod の分）は、置き場ごとにいちばん近い1件だけ（<see cref="RemoveDuplicates"/> と同じ。
+        /// すぐにやり直した別のプレイを巻き込まない）。
+        /// 置き場が <c>&lt;Beat Saber&gt;\UserData\&lt;MOD&gt;\Replays</c> の形でなければ、渡したファイルだけを返す。
+        /// </remarks>
+        public static List<string> SamePlayFiles(string file)
+        {
+            return SamePlayFiles(new[] { file });
+        }
+
+        /// <summary>
+        /// 複数のプレイについて <see cref="SamePlayFiles(string)"/> をまとめて行う。結果は重複なし。
+        /// 置き場のフォルダは Beat Saber ごとに1回だけ読む（BeatLeader の置き場には普通の曲も含めて数万件ある）。
+        /// </summary>
+        public static List<string> SamePlayFiles(IEnumerable<string> files)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var copies in SamePlayGroups(files).Values)
+                foreach (var f in copies)
+                    if (seen.Add(Path.GetFullPath(f))) result.Add(f);
+            return result;
+        }
+
+        /// <summary>
+        /// 渡したプレイごとに、同じプレイのファイル（自身を含む）を返す。消したときに空く容量を出すのに使う。
+        /// </summary>
+        public static Dictionary<string, List<string>> SamePlayGroups(IEnumerable<string> files)
+        {
+            var groups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            List<string> current = null;
+            Action<string> add = f =>
+            {
+                if (!current.Any(c => string.Equals(Path.GetFullPath(c), Path.GetFullPath(f), StringComparison.OrdinalIgnoreCase)))
+                    current.Add(f);
+            };
+
+            foreach (var group in files.GroupBy(InstallOf, StringComparer.OrdinalIgnoreCase))
+            {
+                if (group.Key.Length == 0)
+                {
+                    foreach (var file in group) groups[file] = new List<string> { file };
+                    continue;
+                }
+
+                // 置き場ごとに、名前の鍵 → ファイル と、譜面 → (ファイル, 開始時刻) を作っておく
+                var byNames = new List<Dictionary<string, List<string>>>();
+                var byMaps = new List<Dictionary<string, List<Tuple<string, long>>>>();
+                foreach (var mod in ReplayMods)
+                {
+                    string[] list;
+                    try { list = Directory.GetFiles(Path.Combine(group.Key, "UserData", mod, "Replays"), "*.bsor"); }
+                    catch (IOException) { continue; }
+                    catch (UnauthorizedAccessException) { continue; }
+
+                    var byName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                    var byMap = new Dictionary<string, List<Tuple<string, long>>>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var f in list)
+                    {
+                        string key = NormalizeName(Path.GetFileNameWithoutExtension(f));
+                        List<string> names;
+                        if (!byName.TryGetValue(key, out names)) byName[key] = names = new List<string>();
+                        names.Add(f);
+
+                        string map;
+                        long started;
+                        if (!TryParsePlay(f, out map, out started)) continue;
+                        List<Tuple<string, long>> plays;
+                        if (!byMap.TryGetValue(map, out plays)) byMap[map] = plays = new List<Tuple<string, long>>();
+                        plays.Add(Tuple.Create(f, started));
+                    }
+                    byNames.Add(byName);
+                    byMaps.Add(byMap);
+                }
+
+                foreach (var file in group)
+                {
+                    if (groups.ContainsKey(file)) continue;
+                    current = new List<string>();
+                    groups[file] = current;
+                    add(file);
+                    string key = NormalizeName(Path.GetFileNameWithoutExtension(file));
+                    string fileMap;
+                    long fileStarted;
+                    bool parsed = TryParsePlay(file, out fileMap, out fileStarted);
+
+                    for (int i = 0; i < byNames.Count; i++)
+                    {
+                        List<string> names;
+                        bool sameName = byNames[i].TryGetValue(key, out names);
+                        if (sameName) foreach (var f in names) add(f);
+
+                        // 名前で揃わない置き場（JumpDrillMod の分）は、開始時刻がいちばん近い1件だけ
+                        List<Tuple<string, long>> plays;
+                        if (sameName || !parsed || !byMaps[i].TryGetValue(fileMap, out plays)) continue;
+
+                        var nearest = plays
+                            .Select(p => Tuple.Create(p.Item1, Math.Abs(p.Item2 - fileStarted)))
+                            .Where(p => p.Item2 <= SamePlaySeconds)
+                            .OrderBy(p => p.Item2)
+                            .FirstOrDefault();
+                        if (nearest != null) add(nearest.Item1);
+                    }
+                }
+            }
+
+            return groups;
+        }
+
+        /// <summary>リプレイの置き場（UserData\&lt;MOD&gt;\Replays）から Beat Saber のフォルダを出す。違う形なら空。</summary>
+        private static string InstallOf(string file)
+        {
+            string replays = Path.GetDirectoryName(file);
+            string mod = replays == null ? null : Path.GetDirectoryName(replays);
+            string userData = mod == null ? null : Path.GetDirectoryName(mod);
+            string install = userData == null ? null : Path.GetDirectoryName(userData);
+            return install != null && string.Equals(Path.GetFileName(userData), "UserData", StringComparison.OrdinalIgnoreCase)
+                ? install : "";
+        }
+
+        /// <summary>
+        /// ドリルのリプレイが使っている容量。置き場ごとの重複（BeatLeader と LocalLeaderboard など）も
+        /// 別のファイルとして数える（ディスクを実際に使っている分）。
+        /// </summary>
+        /// <param name="installRoot">この Beat Saber のものだけ。null なら全部。</param>
+        public static void DrillUsage(string installRoot, out int files, out long bytes)
+        {
+            files = 0;
+            bytes = 0;
+            foreach (var folder in FindReplayFolders(installRoot))
+            {
+                FileInfo[] list;
+                try { list = new DirectoryInfo(folder).GetFiles("*.bsor"); }
+                catch (IOException) { continue; }
+                catch (UnauthorizedAccessException) { continue; }
+
+                foreach (var f in list)
+                {
+                    if (f.Name.IndexOf(DrillFilter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    files++;
+                    bytes += f.Length;
+                }
+            }
+        }
+
         /// <summary>JumpDrillMod が自分で残したリプレイか（置き場のフォルダで見る）。</summary>
         public static bool IsOwnRecording(string file)
         {

@@ -71,12 +71,21 @@ namespace JumpDrillMod.UI.Medals
 
             // 2回目以降に開いたときは、その間に叩いたぶんを読み直す
             if (!firstActivation) view?.Rescan();
+
+            // 右の枠の Delete や自動削除でリプレイが消えたら、表と右の記録を読み直す
+            if (addedToHierarchy) ReplayCleanupService.Changed += OnReplaysChanged;
         }
 
         protected override void DidDeactivate(bool removedFromHierarchy, bool screenSystemDisabling)
         {
-            if (removedFromHierarchy) ReleaseResults();
+            if (removedFromHierarchy)
+            {
+                ReleaseResults();
+                ReplayCleanupService.Changed -= OnReplaysChanged;
+            }
         }
+
+        private void OnReplaysChanged() => view?.Rescan();
 
         protected override void BackButtonWasPressed(ViewController topViewController)
         {

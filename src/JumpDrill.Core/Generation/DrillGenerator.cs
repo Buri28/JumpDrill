@@ -13,6 +13,8 @@ namespace JumpDrill.Generation
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             options.Validate();
+            Clash.Check(options);
+            if (options.Tower) Tower.CheckCrossing(options);
 
             double intervalSec = options.IntervalMs / 1000.0;
             double offset = ResolveOffset(options);
@@ -41,13 +43,15 @@ namespace JumpDrill.Generation
             // 手が1つしかなければブロックも1つ。間を持つ意味がない。
             double gapSec = blockCount > 1 ? ResolveGap(options, clickPeriodSec) : 0.0;
 
+            double flickSec = intervalSec * options.FlickPercent / 100.0;
+
             var notes = new List<DrillNote>();
             double beatsPerSecond = options.Bpm / 60.0;
             foreach (var step in notesByStep)
             {
                 foreach (var n in step)
                 {
-                    double t = StepTime(n.StepIndex, stepsPerBlock, intervalSec, leadIn, gapSec);
+                    double t = StepTime(n.StepIndex, stepsPerBlock, intervalSec, leadIn, gapSec, flickSec);
                     notes.Add(new DrillNote(t, t * beatsPerSecond, n.Position, n.Hand, n.Direction, n.StepIndex));
                 }
             }
@@ -65,8 +69,9 @@ namespace JumpDrill.Generation
                 AddCountIn(clicks, blockStart, clickPeriodSec, options.CountInClicks, previousEnd);
             }
 
+            // クリックもノーツと同じ時刻に鳴らす（フリックの戻りで鳴らすなら前へ寄せる）。
             foreach (var entry in plan)
-                clicks.Add(new ClickEvent(StepTime(entry.StepIndex, stepsPerBlock, intervalSec, leadIn, gapSec), entry.Accent));
+                clicks.Add(new ClickEvent(StepTime(entry.StepIndex, stepsPerBlock, intervalSec, leadIn, gapSec, flickSec), entry.Accent));
 
             clicks.Sort((a, b) => a.TimeSeconds.CompareTo(b.TimeSeconds));
 
@@ -102,6 +107,8 @@ namespace JumpDrill.Generation
             {
                 double t = step * intervalSec;
                 var atStep = new List<DrillNote>();
+                // タワーで増えたノーツは、手ごとの本来のノーツをすべて置いてから足す。
+                var extra = new List<DrillNote>();
 
                 // セットを繰り返しても各ブロックが同じ中身になるよう、
                 // 循環はブロック内の位置で数える。
@@ -112,7 +119,7 @@ namespace JumpDrill.Generation
                 {
                     // ブロック1つにつき手1つ。その手だけが自分の循環を進める。
                     var seq = sequences[block % sequences.Count];
-                    atStep.Add(MakeNote(seq, inBlock, options.Direction, t, step));
+                    AddNotes(atStep, extra, seq, inBlock, options, t, step);
                 }
                 else if (options.HandPattern == HandPattern.Alternate)
                 {
@@ -120,13 +127,24 @@ namespace JumpDrill.Generation
                     // 循環の進み方も handCount ステップに1回。
                     var seq = sequences[inBlock % sequences.Count];
                     int cycleIndex = inBlock / sequences.Count;
-                    atStep.Add(MakeNote(seq, cycleIndex, options.Direction, t, step));
+                    AddNotes(atStep, extra, seq, cycleIndex, options, t, step);
+                }
+                else if (options.HandPattern == HandPattern.AlternateRoundTrip)
+                {
+                    // 手番は循環1周ごと。その手は自分の番のあいだ続けて循環を進める。
+                    int lap = RoundTripLength(sequences);
+                    int turn = inBlock / lap;
+                    var seq = sequences[turn % sequences.Count];
+                    int playIndex = (turn / sequences.Count) * lap + inBlock % lap;
+                    AddNotes(atStep, extra, seq, playIndex, options, t, step);
                 }
                 else
                 {
                     foreach (var seq in sequences)
-                        atStep.Add(MakeNote(seq, inBlock, options.Direction, t, step));
+                        AddNotes(atStep, extra, seq, inBlock, options, t, step);
                 }
+
+                Tower.Merge(atStep, extra);
 
                 byStep.Add(atStep);
             }
@@ -134,8 +152,16 @@ namespace JumpDrill.Generation
             return byStep;
         }
 
+        /// <summary>往復ごとに交互のときの、1回の手番の長さ。いちばん長い手の循環1周。</summary>
+        internal static int RoundTripLength(IReadOnlyList<HandSequence> sequences)
+        {
+            return Math.Max(1, sequences.Max(s => s.Length));
+        }
+
         /// <param name="playIndex">その手が何回目に叩くか。0 始まり。</param>
-        private static DrillNote MakeNote(HandSequence seq, int playIndex, DirectionMode mode, double timeSeconds, int stepIndex)
+        /// <param name="extra">タワーで間を埋めるノーツの置き場。</param>
+        private static void AddNotes(List<DrillNote> atStep, List<DrillNote> extra, HandSequence seq, int playIndex,
+            DrillOptions options, double timeSeconds, int stepIndex)
         {
             // 記法 8>b は「8 から b へ振る」という意味なので、最初に叩くのは b の方。
             // 矢印は入ってくる動きで決まるので、1点目から始めると
@@ -143,16 +169,29 @@ namespace JumpDrill.Generation
             int cycleIndex = playIndex + 1;
 
             var pos = seq.StepAt(cycleIndex).Position;
-            var dir = DirectionResolver.Resolve(seq, cycleIndex, mode);
+            var dir = DirectionResolver.Resolve(seq, cycleIndex, options.Direction);
             // Beat はここでは仮。leadIn を足したあとで確定させる。
-            return new DrillNote(timeSeconds, 0.0, pos, seq.Hand, dir, stepIndex);
+            atStep.Add(new DrillNote(timeSeconds, 0.0, pos, seq.Hand, dir, stepIndex));
+
+            if (!options.Tower) return;
+
+            var cells = Tower.Cells(seq.StepAt(cycleIndex - 1).Position, pos);
+            if (cells == null) return;
+            foreach (var cell in cells)
+                if (cell != pos) extra.Add(new DrillNote(timeSeconds, 0.0, cell, seq.Hand, dir, stepIndex));
         }
 
         /// <summary>ブロック番号ぶんの間を足した実時刻。</summary>
-        private static double StepTime(int stepIndex, int stepsPerBlock, double intervalSec, double leadIn, double gapSec)
+        /// <param name="flickSec">
+        /// フリックで戻りを前へ寄せる秒数。戻りはブロックの中の奇数番目のステップ
+        /// （同時・片手ずつは往復の2つ目、往復ごとに交互は手番の2つ目。どれもブロックの頭から数えて奇数）。
+        /// </param>
+        private static double StepTime(int stepIndex, int stepsPerBlock, double intervalSec, double leadIn, double gapSec,
+            double flickSec = 0.0)
         {
             int block = stepIndex / stepsPerBlock;
-            return leadIn + stepIndex * intervalSec + block * gapSec;
+            double t = leadIn + stepIndex * intervalSec + block * gapSec;
+            return (stepIndex % stepsPerBlock) % 2 == 1 ? t - flickSec : t;
         }
 
         /// <summary>
@@ -218,7 +257,7 @@ namespace JumpDrill.Generation
         private static string DescribeName(DrillOptions options)
         {
             string seq = string.Join(" ", options.Sequences.Select(s => s.ToString()).ToArray());
-            string dir = options.Direction.ToString().ToLowerInvariant();
+            string dir = options.Direction.ToString().ToLowerInvariant() + (options.Tower ? " tower" : "");
             double notesPerBeat = options.NotesPerBeat > 0 ? options.NotesPerBeat : 1.0;
             return string.Format(CultureInfo.InvariantCulture, "{0} {1:0.#}BPM {2}",
                 seq, Tempo.BpmFromIntervalMs(options.IntervalMs, notesPerBeat), dir);

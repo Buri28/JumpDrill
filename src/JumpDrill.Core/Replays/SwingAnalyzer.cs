@@ -326,6 +326,7 @@ namespace JumpDrill.Replays
         /// <summary>
         /// この手のノーツの、コンボ倍率込みの点の合計。
         /// 倍率は両手で1つなので、もう片方の手のミスでもこの手の倍率が下がる。
+        /// タワーでも全ノーツで数える（Acc の分子）。
         /// </summary>
         public long MultipliedScore { get; internal set; }
 
@@ -336,19 +337,32 @@ namespace JumpDrill.Replays
         public int PlayedNotes { get; internal set; }
 
         /// <summary>
+        /// Acc 用の、リプレイに残ったこの手のノーツの倍率込みの満点。
+        /// タワーでも<b>全ノーツ</b>で数える（<see cref="PlayedMaxScore"/> は端の点だけ）。
+        /// </summary>
+        public long AccuracyPlayedMaxScore { get; internal set; }
+
+        /// <summary>Acc 用の、リプレイに残ったこの手のノーツ数。タワーでも全ノーツ。</summary>
+        public int AccuracyPlayedNotes { get; internal set; }
+
+        /// <summary>Acc 用の、この手の譜面ノーツ数。タワーでも全ノーツ。</summary>
+        public int AccuracyNoteCount { get; internal set; }
+
+        /// <summary>
         /// この手の精度 %。全体の精度 % をこの手のノーツだけで出したもの。
         ///
         /// <code>この手の倍率込みの点 / この手の倍率込みの満点 × 100</code>
         ///
         /// 満点は、リプレイに残ったノーツはその時点の満点の倍率、
         /// 残っていないノーツ（途中でやめた後）は ×8 で数える。
+        /// タワーでも間のノーツを含めた全ノーツで出す（ゲームの Acc と同じ数え方）。
         /// </summary>
         public double Accuracy
         {
             get
             {
-                long max = PlayedMaxScore
-                    + (long)NoteScore.Max * NoteScore.MaxMultiplier * Math.Max(NoteCount - PlayedNotes, 0);
+                long max = AccuracyPlayedMaxScore
+                    + (long)NoteScore.Max * NoteScore.MaxMultiplier * Math.Max(AccuracyNoteCount - AccuracyPlayedNotes, 0);
                 return max == 0 ? 0.0 : MultipliedScore * 100.0 / max;
             }
         }
@@ -404,12 +418,25 @@ namespace JumpDrill.Replays
         /// </summary>
         public double Accuracy { get; internal set; }
 
-        /// <summary>ノーツから数え直した、コンボ倍率込みの点の合計（両手）。</summary>
+        /// <summary>ノーツから数え直した、コンボ倍率込みの点の合計（両手）。タワーでも全ノーツ。</summary>
         public long MultipliedScore { get; internal set; }
 
         /// <summary>
-        /// 譜面のノーツ数（両手ぶん）。<b>満点の分母。</b>
+        /// Acc の満点の分母にする譜面のノーツ数（両手ぶん）。
+        /// 普通のドリルでは <see cref="NoteCount"/> と同じ。タワーでは間のノーツも数えるので多くなる。
+        /// </summary>
+        public int AccuracyNoteCount { get { return AccuracyNotesLeft + AccuracyNotesRight; } }
+
+        /// <summary>Acc 用の左手ぶんの譜面ノーツ数。</summary>
+        public int AccuracyNotesLeft { get; internal set; }
+
+        /// <summary>Acc 用の右手ぶんの譜面ノーツ数。</summary>
+        public int AccuracyNotesRight { get; internal set; }
+
+        /// <summary>
+        /// 譜面のノーツ数（両手ぶん）。<b>再現精度の満点の分母。</b>
         /// 譜面が見つからなければリプレイに出たぶん。
+        /// タワーは端の点だけ数える（同じ手・同じ時刻のノーツは1つ）。Acc の分母は <see cref="AccuracyNoteCount"/>。
         /// </summary>
         public int NoteCount { get; internal set; }
 
@@ -538,9 +565,16 @@ namespace JumpDrill.Replays
         {
             if (replay == null) throw new ArgumentNullException(nameof(replay));
 
+            // タワーは端の点だけのジャンプとして採点する。
+            // Acc と Good・Miss の数だけは元の全ノーツで出す（ゲームのリザルトと合わせる）。
+            var original = replay;
+            var full = CountCombo(replay);
+            Dictionary<ReplayNote, ReplayNote> owners;
+            replay = TowerReplay.Collapse(replay, out owners);
+
             var result = new ReplayScore { Replay = replay };
-            result.GoodCount = replay.Notes.Count(n => n.EventType == NoteEventType.Good);
-            result.MissCount = replay.Notes.Count(n => n.EventType == NoteEventType.Miss);
+            result.GoodCount = original.Notes.Count(n => n.EventType == NoteEventType.Good);
+            result.MissCount = original.Notes.Count(n => n.EventType == NoteEventType.Miss);
             result.DurationSeconds = replay.Frames.Count > 0 ? replay.Frames[replay.Frames.Count - 1].Time : 0.0;
             ResolveTempo(replay, result);
 
@@ -548,11 +582,11 @@ namespace JumpDrill.Replays
 
             foreach (var saberType in new[] { 0, 1 })
             {
-                var hand = AnalyzeHand(replay, saberType, combo.Multipliers);
+                var hand = AnalyzeHand(replay, saberType, combo.Multipliers, original, owners);
                 if (hand != null) result.PerHand.Add(hand);
             }
 
-            ApplyCombo(combo, result);
+            ApplyCombo(combo, full, result);
             Combine(result);
             return result;
         }
@@ -583,17 +617,27 @@ namespace JumpDrill.Replays
         /// </summary>
         public static void ApplyMapNotes(ReplayScore score, int leftNotes, int rightNotes)
         {
+            ApplyMapNotes(score, leftNotes, rightNotes, leftNotes, rightNotes);
+        }
+
+        /// <param name="leftSwings">左手の振りの数。タワーは端の点だけ数えたもの（同じ時刻のノーツは1つ）。</param>
+        /// <param name="rightSwings">右手の振りの数。</param>
+        public static void ApplyMapNotes(ReplayScore score, int leftNotes, int rightNotes, int leftSwings, int rightSwings)
+        {
             if (score == null) throw new ArgumentNullException(nameof(score));
 
-            score.MapNotesLeft = Math.Max(leftNotes, 0);
-            score.MapNotesRight = Math.Max(rightNotes, 0);
+            score.MapNotesLeft = Math.Max(leftSwings, 0);
+            score.MapNotesRight = Math.Max(rightSwings, 0);
+            score.AccuracyNotesLeft = Math.Max(leftNotes, 0);
+            score.AccuracyNotesRight = Math.Max(rightNotes, 0);
 
             foreach (var hand in score.PerHand)
             {
-                int notes = score.MapNotesFor(hand.SaberType);
-
                 // 譜面より多く記録されることは無いが、読み違いで縮めては困るので大きい方を採る。
-                hand.NoteCount = Math.Max(notes, hand.PlayedNotes);
+                hand.NoteCount = Math.Max(score.MapNotesFor(hand.SaberType), hand.PlayedNotes);
+
+                int notes = hand.SaberType == 0 ? score.AccuracyNotesLeft : score.AccuracyNotesRight;
+                hand.AccuracyNoteCount = Math.Max(notes, hand.AccuracyPlayedNotes);
             }
 
             Rescale(score);
@@ -611,9 +655,11 @@ namespace JumpDrill.Replays
                 ? score.ReproducibilityScore / (max / NoteScore.Max)
                 : 0.0;
 
+            // Acc はタワーの間のノーツも含めた全ノーツが分母。
+            long accMax = NoteScore.MaxMultipliedScore(score.AccuracyNoteCount);
             int recorded = score.Replay != null ? score.Replay.Info.Score : 0;
             long got = recorded > 0 ? recorded : score.MultipliedScore;
-            score.Accuracy = max > 0 ? got * 100.0 / max : 0.0;
+            score.Accuracy = accMax > 0 ? got * 100.0 / accMax : 0.0;
         }
 
         /// <summary>
@@ -681,26 +727,32 @@ namespace JumpDrill.Replays
             public readonly int[] Played = new int[2];
         }
 
-        private static void ApplyCombo(ComboTally tally, ReplayScore result)
+        /// <param name="tally">採点に使うノーツ（タワーは端の点だけ）で数えたもの。</param>
+        /// <param name="full">全ノーツで数えたもの。Acc に使う。タワーでなければ <paramref name="tally"/> と同じ数になる。</param>
+        private static void ApplyCombo(ComboTally tally, ComboTally full, ReplayScore result)
         {
-            var score = tally.Score;
             var playedMax = tally.PlayedMax;
             var played = tally.Played;
 
-            result.MultipliedScore = score[0] + score[1];
+            result.MultipliedScore = full.Score[0] + full.Score[1];
 
             // 満点の分母の仮の値。手が PerHand に入らなかった（振りが少なすぎた）ときも、
             // その手のノーツを満点に入れる。スコアの方には両手の点が入っているので、
             // 片手ぶんの満点で割ると高く出る。譜面が見つかれば ApplyMapNotes が上書きする。
             result.MapNotesLeft = played[0];
             result.MapNotesRight = played[1];
+            result.AccuracyNotesLeft = full.Played[0];
+            result.AccuracyNotesRight = full.Played[1];
 
             foreach (var hand in result.PerHand)
             {
                 int i = hand.SaberType == 0 ? 0 : 1;
-                hand.MultipliedScore = score[i];
+                hand.MultipliedScore = full.Score[i];
                 hand.PlayedMaxScore = playedMax[i];
                 hand.PlayedNotes = played[i];
+                hand.AccuracyPlayedMaxScore = full.PlayedMax[i];
+                hand.AccuracyPlayedNotes = full.Played[i];
+                hand.AccuracyNoteCount = full.Played[i];
             }
         }
 
@@ -886,7 +938,10 @@ namespace JumpDrill.Replays
             return gaps[gaps.Count / 2];
         }
 
-        private static SwingScore AnalyzeHand(Replay replay, int saberType, Dictionary<ReplayNote, int> multipliers)
+        /// <param name="original">まとめる前のリプレイ。Good・Miss の数はこちらで数える。</param>
+        /// <param name="owners">元のノーツ → 残したノーツ（<see cref="TowerReplay.Collapse(Replay, out Dictionary{ReplayNote, ReplayNote})"/>）。null ならまとめていない。</param>
+        private static SwingScore AnalyzeHand(Replay replay, int saberType, Dictionary<ReplayNote, int> multipliers,
+            Replay original, Dictionary<ReplayNote, ReplayNote> owners)
         {
             var cuts = replay.Notes
                 .Where(n => n.EventType == NoteEventType.Good && n.Cut != null && n.Cut.SaberType == saberType)
@@ -979,15 +1034,26 @@ namespace JumpDrill.Replays
 
             double roundTrip = RoundTripGapOf(groups, lines, spanMean);
 
-            var misses = replay.Notes
+            // Good・Miss はタワーの間のノーツも数える。フォア／バックは属する振りで分ける。
+            Func<ReplayNote, ReplayNote> owner = n =>
+            {
+                ReplayNote kept;
+                return owners != null && owners.TryGetValue(n, out kept) ? kept : n;
+            };
+            var goods = original.Notes
+                .Where(n => n.EventType == NoteEventType.Good && n.Cut != null && n.Cut.SaberType == saberType)
+                .Select(owner)
+                .ToList();
+            var misses = original.Notes
                 .Where(n => n.EventType == NoteEventType.Miss && n.ColorType == saberType)
+                .Select(owner)
                 .ToList();
 
             return new SwingScore
             {
                 SaberType = saberType,
-                Fore = DirectionOf(true, cuts, misses, forehand, groups, groupFore),
-                Back = DirectionOf(false, cuts, misses, forehand, groups, groupFore),
+                Fore = DirectionOf(true, cuts, goods, misses, forehand, groups, groupFore),
+                Back = DirectionOf(false, cuts, goods, misses, forehand, groups, groupFore),
                 SwingCount = spreadWeight,
                 SwingMultiplierSum = multiplierSum,
                 TrajectorySpread = spreadMean,
@@ -997,8 +1063,8 @@ namespace JumpDrill.Replays
                 JumpSpan = spanMean,
                 TimeDeviationMean = deviations.Average(),
                 TimeDeviationSpread = StandardDeviation(deviations),
-                GoodCount = cuts.Count,
-                MissCount = replay.Notes.Count(n => n.EventType == NoteEventType.Miss && n.ColorType == saberType),
+                GoodCount = goods.Count,
+                MissCount = misses.Count,
                 NoteCount = replay.Notes.Count(n => n.EventType != NoteEventType.Bomb && n.ColorType == saberType),
                 CutDistanceMean = cuts.Average(c => (double)c.Cut.CutDistanceToCenter),
                 AngleErrorMean = cuts.Average(c => Math.Abs((double)c.Cut.CutDirDeviation)),
@@ -1050,6 +1116,7 @@ namespace JumpDrill.Replays
         private static DirectionScore DirectionOf(
             bool forehandSide,
             List<ReplayNote> cuts,
+            List<ReplayNote> goods,
             List<ReplayNote> misses,
             Dictionary<ReplayNote, bool> forehand,
             Dictionary<string, List<Vector3[]>> groups,
@@ -1076,7 +1143,7 @@ namespace JumpDrill.Replays
             return new DirectionScore
             {
                 Forehand = forehandSide,
-                GoodCount = side.Count,
+                GoodCount = goods.Count(g => ForehandOf(forehand, g) == forehandSide),
                 MissCount = misses.Count(m => ForehandOf(forehand, m) == forehandSide),
                 SwingCount = weight,
 

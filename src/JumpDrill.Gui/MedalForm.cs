@@ -3,16 +3,22 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using JumpDrill.Model;
+using JumpDrill.Output;
 using JumpDrill.Replays;
 
 namespace JumpDrill.Gui
 {
     /// <summary>
     /// 一括生成のドリルのメダルと Lv。1行が1方向、1マスが1本（速さの Stage）。
+    ///
+    /// 上のプルダウンでステージを切り替える。「標準」は一括生成の 14方向 × 8 Stage で、
+    /// ほかは作ったドリルを自分で並べたカスタムステージ（<see cref="CustomStageBook"/>、stages.json）。
+    /// カスタムステージでは表の「+」でドリルを足し、右クリックで変更・削除・並べ替えをする。
     ///
     /// 記録は成績（ローカルリーダーボード）と同じ読み方で、ID で引く。
     /// 同じ設定を画面から作って叩いた記録もここに入る。
@@ -60,9 +66,54 @@ namespace JumpDrill.Gui
         /// <summary>読んでいる間に見る版が変わった。読み終えたら読み直す。</summary>
         private bool _reloadPending;
 
-        internal MedalForm(string workspaceRoot, SettingsStore settings, Action<IWin32Window, string> openPreview, Action<string> openReplay, Action<string> followReplay,
-            Func<IWin32Window, IReadOnlyList<DrillSetEntry>, bool, Action<string>, Task<bool>> generateSet)
+        /// <summary>見るステージ。先頭が標準、続いてカスタムステージ。</summary>
+        private readonly ComboBox _stagePicker = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 4, 3), Width = 180 };
+        private readonly Button _stageMenuButton = new Button { Text = Lang.T("ステージ ▾", "Stage ▾"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1), Margin = new Padding(0, 3, 16, 3) };
+        private readonly ContextMenuStrip _stageMenu = new ContextMenuStrip();
+        private ToolStripMenuItem _newStage;
+        private ToolStripMenuItem _renameStage;
+        private ToolStripMenuItem _deleteStage;
+
+        private readonly SettingsStore _settings;
+        private readonly string _stagesPath;
+        private CustomStageBook _book = new CustomStageBook();
+
+        /// <summary>stages.json が読めなかった。上書きして中身を失わないよう、編集させない。</summary>
+        private bool _bookBroken;
+
+        /// <summary>作ったドリルの一覧（割り当てのダイアログに出す）。</summary>
+        private readonly Func<List<DrillLibrary.DrillLevel>> _findDrills;
+
+        /// <summary>最後に読んだ記録。ステージを切り替えても読み直さずに済むよう持っておく。</summary>
+        private Dictionary<string, double> _best = new Dictionary<string, double>();
+        private int _failed;
+
+        /// <summary>記録を1度でも読み終えたか。読む前は状態の文にメダル数を出さない。</summary>
+        private bool _loaded;
+
+        private static string StandardName { get { return Lang.T("標準", "Standard"); } }
+        private static string OtherName { get { return Lang.T("その他", "Other"); } }
+
+        /// <summary>選んでいるカスタムステージ。標準・その他なら null。</summary>
+        private CustomStage CurrentStage
         {
+            get { return _stagePicker.SelectedIndex > 1 ? _book.Find((string)_stagePicker.SelectedItem) : null; }
+        }
+
+        /// <summary>その他（標準以外のドリルを方向ごとに並べた表）を出しているか。</summary>
+        private bool IsOther { get { return _stagePicker.SelectedIndex == 1; } }
+
+        /// <summary>その他の表に出すドリルの曲名。再スキャンで探し直す。</summary>
+        private List<string> _otherNames;
+
+        internal MedalForm(string workspaceRoot, SettingsStore settings, Action<IWin32Window, string> openPreview, Action<string> openReplay, Action<string> followReplay,
+            Func<IWin32Window, IReadOnlyList<DrillSetEntry>, bool, Action<string>, Task<bool>> generateSet,
+            Func<List<DrillLibrary.DrillLevel>> findDrills)
+        {
+            _settings = settings;
+            _findDrills = findDrills;
+            // MOD と同じファイル。どちらで作ったステージも両方に出る
+            _stagesPath = CustomStageBook.DefaultPath();
             _generateSet = generateSet;
             _workspaceRoot = workspaceRoot;
             _install = new InstallPicker(settings) { Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 8, 3) };
@@ -85,15 +136,19 @@ namespace JumpDrill.Gui
             top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            top.Controls.Add(_install, 0, 0);
+            var stageBox = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0), Anchor = AnchorStyles.Left };
+            stageBox.Controls.Add(_stagePicker);
+            stageBox.Controls.Add(_stageMenuButton);
+            top.Controls.Add(stageBox, 0, 0);
             top.Controls.Add(_total, 1, 0);
             top.Controls.Add(_replay, 3, 0);
             top.Controls.Add(_preview, 4, 0);
             top.Controls.Add(_rescan, 5, 0);
-            // 状態の文は2段目に出す。1段目は版の欄とボタンで埋まり、並べると切れる。
+            // 状態の文は2段目に出す。1段目はステージの欄とボタンで埋まり、並べると切れる。
             // 生成のボタンは2段目の右。生成の進み具合はこの状態の文に出るので、並べて置く
-            top.Controls.Add(_status, 0, 1);
-            top.SetColumnSpan(_status, 3);
+            top.Controls.Add(_install, 0, 1);
+            top.Controls.Add(_status, 1, 1);
+            top.SetColumnSpan(_status, 2);
             top.Controls.Add(_generate, 3, 1);
             top.Controls.Add(_generateAll, 4, 1);
             top.Controls.Add(_overwrite, 5, 1);
@@ -107,6 +162,7 @@ namespace JumpDrill.Gui
             _top = top;
 
             Theme.Apply(this);
+            BuildStageMenu();
 
             _rescan.Click += async (s, e) => await ScanAsync();
             Shown += async (s, e) => await ScanAsync();
@@ -127,17 +183,15 @@ namespace JumpDrill.Gui
             // スコア画面を開いたままなら、マスを選ぶだけでそちらも切り替わる。
             _board.SelectionChanged += (s, e) =>
             {
+                UpdateButtons();
                 var cell = _board.Selected;
-                _preview.Enabled = cell != null;
-                _generate.Enabled = cell != null && !_generating;
-                _replay.Enabled = cell != null && cell.BestPercent.HasValue;
                 if (_replay.Enabled && _followReplay != null) _followReplay(cell.Id);
             };
             _preview.Click += (s, e) => OpenPreview();
             _generate.Click += async (s, e) =>
             {
                 var cell = _board.Selected;
-                if (cell != null) await Generate(new[] { cell.Entry });
+                if (cell != null && cell.Entry != null) await Generate(new[] { cell.Entry });
             };
             _generateAll.Click += async (s, e) => await Generate(DrillSet.All());
             _tips.SetToolTip(_generate, Lang.T("選んだマスの譜面を出力先に作成します。", "Writes the selected map to the output folder."));
@@ -147,12 +201,322 @@ namespace JumpDrill.Gui
                 "Off: maps that already exist are left as is\r\nOn: they are written again. Records are kept"));
             _replay.Click += (s, e) => OpenReplay();
             _board.CellDoubleClicked += (s, e) => OpenReplay();
+            _board.AddClicked += (s, hit) => AddDrills(hit.Row);
+            _board.MenuRequested += (s, hit) => ShowBoardMenu(hit);
 
             // 表の大きさは方向の数と画面の拡大率で決まるので、決め打ちせず中身に合わせる。
             Load += (s, e) => FitToContent();
 
+            LoadStages();
+            _stagePicker.SelectedIndexChanged += (s, e) =>
+            {
+                if (_stagePicker.SelectedIndex < 0) return;
+                _settings.Set("medalStage", CurrentStage?.Name ?? "");
+                _settings.Set("medalOther", IsOther);
+                if (IsOther) _otherNames = null;   // メイン画面で作った分なども拾い直す
+                _board.ClearSelection();
+                ShowStage();
+                _board.AutoScrollPosition = Point.Empty;
+            };
+
             // 叩く前でも空の表は見せる。どこを埋めればいいかがそのまま次の練習になる。
-            ShowRows(DrillSetMedals.Evaluate(new Dictionary<string, double>()));
+            ShowStage();
+        }
+
+        /// <summary>stages.json を読んでプルダウンを作る。前に見ていたステージを選び直す。</summary>
+        private void LoadStages()
+        {
+            try
+            {
+                _book = CustomStageBook.Load(_stagesPath);
+            }
+            catch (Exception ex)
+            {
+                _book = new CustomStageBook();
+                _bookBroken = true;
+                _status.Text = Lang.T("ステージの設定ファイルを読み込めませんでした: ", "Could not read the stage file: ") + ex.Message;
+            }
+
+            FillStagePicker(_settings.GetString("medalStage", ""), _settings.GetBool("medalOther", false));
+        }
+
+        /// <summary>プルダウンは 標準・その他・カスタムステージの順。</summary>
+        private void FillStagePicker(string select, bool other = false)
+        {
+            _stagePicker.BeginUpdate();
+            _stagePicker.Items.Clear();
+            _stagePicker.Items.Add(StandardName);
+            _stagePicker.Items.Add(OtherName);
+            foreach (var stage in _book.Stages) _stagePicker.Items.Add(stage.Name);
+            _stagePicker.EndUpdate();
+
+            int custom = _book.Stages.FindIndex(st => st.Name == select);
+            _stagePicker.SelectedIndex = other ? 1 : custom >= 0 ? custom + 2 : 0;
+        }
+
+        /// <summary>
+        /// その他の表に出すドリルの曲名。作ったドリルを置き場所から集めたもの。
+        /// 探すのに少し時間がかかるので、その他に切り替えたときと再スキャンのときだけ探し直す。
+        /// </summary>
+        private List<string> OtherNames()
+        {
+            if (_otherNames == null)
+            {
+                try { _otherNames = _findDrills == null ? new List<string>() : _findDrills().Select(d => d.SongName).ToList(); }
+                catch (Exception ex)
+                {
+                    _otherNames = new List<string>();
+                    _status.Text = Lang.T("ドリルを探せませんでした: ", "Could not list the drills: ") + ex.Message;
+                }
+            }
+            return _otherNames;
+        }
+
+        /// <summary>ステージの作成・名前の変更・削除。</summary>
+        private void BuildStageMenu()
+        {
+            Theme.Apply(_stageMenu);
+            _newStage = new ToolStripMenuItem(Lang.T("新しいステージ...", "New stage..."), null, (s, e) => NewStage());
+            _renameStage = new ToolStripMenuItem(Lang.T("名前の変更...", "Rename..."), null, (s, e) => RenameStage());
+            _deleteStage = new ToolStripMenuItem(Lang.T("削除", "Delete"), null, (s, e) => DeleteStage());
+            _stageMenu.Items.Add(_newStage);
+            _stageMenu.Items.Add(_renameStage);
+            _stageMenu.Items.Add(_deleteStage);
+            _stageMenu.Items.Add(new ToolStripSeparator());
+            _stageMenu.Items.Add(Lang.T("設定ファイルの場所を開く", "Open the stage file location"), null, (s, e) => OpenStagesFolder());
+
+            _stageMenu.Opening += (s, e) =>
+            {
+                _newStage.Enabled = !_bookBroken;
+                _renameStage.Enabled = !_bookBroken && CurrentStage != null;
+                _deleteStage.Enabled = !_bookBroken && CurrentStage != null;
+            };
+            _stageMenuButton.Click += (s, e) => _stageMenu.Show(_stageMenuButton, new Point(0, _stageMenuButton.Height));
+        }
+
+        /// <summary>ステージ名に使えなければ理由を返す。</summary>
+        private string CheckStageName(string name, CustomStage self)
+        {
+            if (name == StandardName || name == OtherName || _book.Stages.Any(st => st != self && st.Name == name))
+                return Lang.T("同じ名前のステージがあります。", "A stage with this name already exists.");
+            return null;
+        }
+
+        private void NewStage()
+        {
+            string name = StageDialogs.AskName(this, Lang.T("新しいステージ", "New stage"), "", n => CheckStageName(n, null));
+            if (name == null) return;
+
+            _book.Stages.Add(new CustomStage { Name = name });
+            if (SaveStages()) FillStagePicker(name);
+        }
+
+        private void RenameStage()
+        {
+            var stage = CurrentStage;
+            if (stage == null) return;
+
+            string name = StageDialogs.AskName(this, Lang.T("ステージ名の変更", "Rename stage"), stage.Name, n => CheckStageName(n, stage));
+            if (name == null || name == stage.Name) return;
+
+            stage.Name = name;
+            if (SaveStages()) FillStagePicker(name);
+        }
+
+        private void DeleteStage()
+        {
+            var stage = CurrentStage;
+            if (stage == null) return;
+
+            if (MessageBox.Show(this,
+                    string.Format(CultureInfo.CurrentCulture, Lang.T("ステージ「{0}」を削除しますか？\r\n譜面と記録は削除されません。", "Delete the stage \"{0}\"?\r\nMaps and records are kept."), stage.Name),
+                    "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+
+            _book.Stages.Remove(stage);
+            if (SaveStages()) FillStagePicker("");
+        }
+
+        private void OpenStagesFolder()
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(_stagesPath);
+                Directory.CreateDirectory(dir);
+                string args = File.Exists(_stagesPath) ? "/select,\"" + _stagesPath + "\"" : "\"" + dir + "\"";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", args) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>stages.json に書く。書けなければ知らせて false。</summary>
+        private bool SaveStages()
+        {
+            try
+            {
+                _book.Save(_stagesPath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, Lang.T("ステージを保存できませんでした。", "Could not save the stage.") + Environment.NewLine + ex.Message,
+                    "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 行の方向。1行には同じ方向のドリルだけを並べるので、最初のドリルで決まる。
+        /// 空の行なら null（どの方向でも入れられる）。
+        /// </summary>
+        private static string DirectionOf(CustomStageRow row)
+        {
+            return CustomStage.DirectionOf(row);
+        }
+
+        /// <summary>
+        /// 行にドリルを足す。既にドリルのある行には、その方向のドリルだけを選ばせる。
+        /// <paramref name="row"/> が行の数と同じなら新しい行を作る。違う方向を混ぜて選んだら、
+        /// 方向ごとに行を分ける。行の名前は方向（<c>R8bL5a</c>）、読めなければ連番。
+        /// </summary>
+        private void AddDrills(int row)
+        {
+            var stage = CurrentStage;
+            if (stage == null || _bookBroken || _findDrills == null) return;
+
+            bool newRow = row >= stage.Rows.Count;
+            int room = newRow ? CustomStage.MaxDrillsPerRow : CustomStage.MaxDrillsPerRow - stage.Rows[row].Drills.Count;
+            var picked = StageDialogs.PickDrills(this, _findDrills(), multiple: true, direction: newRow ? null : DirectionOf(stage.Rows[row]),
+                limit: Math.Max(1, room));
+            if (picked == null) return;
+
+            // 表は 14行 × 8 Stage まで。入りきらない分は足さずに知らせる
+            int skipped = stage.AddDrills(row, picked);
+
+            Edited();
+            if (skipped > 0)
+                _status.Text = string.Format(CultureInfo.CurrentCulture,
+                    Lang.T("表は {0} 行 × {1} Stage までです。{2} 本は追加されませんでした。", "A stage holds up to {0} rows × {1} stages. {2} drills were not added."),
+                    CustomStage.MaxRows, CustomStage.MaxDrillsPerRow, skipped);
+        }
+
+        /// <summary>表の右クリックのメニュー。カスタムステージのときだけ出す。</summary>
+        private void ShowBoardMenu(MedalBoard.Hit hit)
+        {
+            var stage = CurrentStage;
+            if (stage == null || _bookBroken || hit.Row >= stage.Rows.Count) return;
+
+            var row = stage.Rows[hit.Row];
+            int r = hit.Row;
+            var menu = new ContextMenuStrip();
+            Theme.Apply(menu);
+            menu.Closed += (s, e) => BeginInvoke((Action)menu.Dispose);
+
+            if (hit.Kind == MedalBoard.HitKind.Cell)
+            {
+                int c = hit.Column;
+                AddItem(menu, Lang.T("ドリルを変更...", "Change drill..."), true, () =>
+                {
+                    // 行に1本しか無ければ方向ごと替えてよい。2本以上なら行の方向に揃える
+                    string direction = row.Drills.Count > 1 ? DirectionOf(row) : null;
+                    var picked = _findDrills == null ? null : StageDialogs.PickDrills(this, _findDrills(), multiple: false, direction: direction);
+                    if (picked == null) return false;
+
+                    // 方向ごと替えたら、方向のままの行の名前も付け替える
+                    string before = DirectionOf(row);
+                    row.Drills[c] = picked[0];
+                    if (row.Name == before) row.Name = DirectionOf(row);
+                    return true;
+                });
+                AddItem(menu, Lang.T("左へ移動", "Move left"), c > 0, () => { Swap(row.Drills, c, c - 1); return true; }, () => _board.Select(r, c - 1));
+                AddItem(menu, Lang.T("右へ移動", "Move right"), c < row.Drills.Count - 1, () => { Swap(row.Drills, c, c + 1); return true; }, () => _board.Select(r, c + 1));
+                menu.Items.Add(new ToolStripSeparator());
+                AddItem(menu, Lang.T("ステージから外す", "Remove from stage"), true, () => { row.Drills.RemoveAt(c); _board.ClearSelection(); return true; });
+            }
+            else
+            {
+                AddItem(menu, Lang.T("行の名前を変更...", "Rename row..."), true, () =>
+                {
+                    string name = StageDialogs.AskName(this, Lang.T("行の名前の変更", "Rename row"), row.Name, null);
+                    if (name == null) return false;
+                    row.Name = name;
+                    return true;
+                });
+                menu.Items.Add(new ToolStripMenuItem(Lang.T("ドリルを追加...", "Add drills..."), null, (s, e) => AddDrills(r))
+                {
+                    Enabled = row.Drills.Count < CustomStage.MaxDrillsPerRow,
+                });
+                AddItem(menu, Lang.T("上へ移動", "Move up"), r > 0, () => { Swap(stage.Rows, r, r - 1); _board.ClearSelection(); return true; });
+                AddItem(menu, Lang.T("下へ移動", "Move down"), r < stage.Rows.Count - 1, () => { Swap(stage.Rows, r, r + 1); _board.ClearSelection(); return true; });
+                menu.Items.Add(new ToolStripSeparator());
+                AddItem(menu, Lang.T("行を削除", "Delete row"), true, () =>
+                {
+                    if (row.Drills.Count > 0 && MessageBox.Show(this,
+                            string.Format(CultureInfo.CurrentCulture, Lang.T("行「{0}」を削除しますか？", "Delete the row \"{0}\"?"), row.Name),
+                            "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return false;
+                    stage.Rows.RemoveAt(r);
+                    _board.ClearSelection();
+                    return true;
+                });
+            }
+
+            menu.Show(Cursor.Position);
+        }
+
+        /// <summary>
+        /// メニューの1項目。<paramref name="edit"/> が true を返したら保存して出し直し、
+        /// 出し直した表で <paramref name="after"/>（選び直しなど）を呼ぶ。
+        /// </summary>
+        private void AddItem(ContextMenuStrip menu, string text, bool enabled, Func<bool> edit, Action after = null)
+        {
+            menu.Items.Add(new ToolStripMenuItem(text, null, (s, e) =>
+            {
+                if (!edit()) return;
+                Edited();
+                after?.Invoke();
+            }) { Enabled = enabled });
+        }
+
+        private static void Swap<T>(List<T> list, int a, int b)
+        {
+            T t = list[a];
+            list[a] = list[b];
+            list[b] = t;
+        }
+
+        /// <summary>カスタムステージを変えたら、書いて表を出し直す。</summary>
+        private void Edited()
+        {
+            SaveStages();
+            ShowStage();
+        }
+
+        /// <summary>選んでいるステージを、最後に読んだ記録で出す。</summary>
+        private void ShowStage()
+        {
+            var stage = CurrentStage;
+            bool other = IsOther;
+            var rows = other ? DrillSetMedals.Evaluate(CustomStage.Other(OtherNames(), _book.Stages), _best)
+                : stage == null ? DrillSetMedals.Evaluate(_best)
+                : DrillSetMedals.Evaluate(stage, _best);
+            ShowRows(rows, editable: stage != null && !_bookBroken);
+
+            // 生成は指定を持っている標準だけ。その他・カスタムは作ったドリルを並べたもの
+            bool standard = !other && stage == null;
+            _generate.Visible = standard;
+            _generateAll.Visible = standard;
+            _overwrite.Visible = standard;
+            UpdateButtons();
+        }
+
+        private void UpdateButtons()
+        {
+            var cell = _board.Selected;
+            _preview.Enabled = cell != null;
+            _generate.Enabled = cell != null && cell.Entry != null && !_generating;
+            _replay.Enabled = cell != null && cell.BestPercent.HasValue;
         }
 
         private async Task ScanAsync()
@@ -165,15 +529,11 @@ namespace JumpDrill.Gui
                 int failed = 0;
                 string workspace = _workspaceRoot;
                 string install = InstallPicker.Selected;
-                var best = await Task.Run(() => DrillSetMedals.BestById(DrillRecords.Load(workspace, (path, ex) => failed++, install)));
-
-                var rows = DrillSetMedals.Evaluate(best);
-                ShowRows(rows);
-
-                int medals = rows.Sum(r => r.Cells.Count(c => c.Medal != Medal.None));
-                int total = rows.Sum(r => r.Cells.Count);
-                _status.Text = string.Format(CultureInfo.CurrentCulture, Lang.T("メダル数 {0} / {1}{2}", "Medals {0} / {1}{2}"),
-                    medals, total, failed > 0 ? Lang.T("   読み込めなかったリプレイ: " + failed + " 件", "   Unreadable replays: " + failed) : "");
+                _otherNames = null;
+                _best = await Task.Run(() => DrillSetMedals.BestById(DrillRecords.Load(workspace, (path, ex) => failed++, install)));
+                _failed = failed;
+                _loaded = true;
+                ShowStage();
             }
             catch (Exception ex)
             {
@@ -240,7 +600,7 @@ namespace JumpDrill.Gui
                 _generating = false;
                 if (!IsDisposed)
                 {
-                    _generate.Enabled = _board.Selected != null;
+                    UpdateButtons();
                     _generateAll.Enabled = true;
                 }
             }
@@ -250,7 +610,7 @@ namespace JumpDrill.Gui
         {
             var cell = _board.Selected;
             if (cell == null || _openPreview == null) return;
-            _openPreview(this, cell.Entry.Options.Name);
+            _openPreview(this, cell.SongName);
         }
 
         private void OpenReplay()
@@ -260,268 +620,18 @@ namespace JumpDrill.Gui
             _openReplay(cell.Id);
         }
 
-        private void ShowRows(List<MedalRow> rows)
+        private void ShowRows(List<MedalRow> rows, bool editable)
         {
             _total.Text = string.Format(CultureInfo.CurrentCulture, Lang.T("総合 Lv {0} / {1}", "Total Lv {0} / {1}"),
-                rows.Sum(r => r.Level), DrillSetMedals.MaxLevel);
-            _board.SetRows(rows);
+                rows.Sum(r => r.Level), rows.Sum(r => r.MaxLevel));
+            _board.SetRows(rows, editable);
+
+            if (!_loaded) return;
+            int medals = rows.Sum(r => r.Cells.Count(c => c.Medal != Medal.None));
+            int total = rows.Sum(r => r.Cells.Count);
+            _status.Text = string.Format(CultureInfo.CurrentCulture, Lang.T("メダル数 {0} / {1}{2}", "Medals {0} / {1}{2}"),
+                medals, total, _failed > 0 ? Lang.T("   読み込めなかったリプレイ: " + _failed + " 件", "   Unreadable replays: " + _failed) : "");
         }
 
-        /// <summary>メダルの表。行が方向、列が Stage。</summary>
-        private sealed class MedalBoard : Panel
-        {
-            // 96 dpi での寸法。文字は画面の拡大率で大きくなるので、枠も同じ率で広げる
-            // （広げないと「133.3 BPM」や「Stage 8 (30s)」が欠ける）。
-            private int LabelWidth { get { return Scaled(128); } }
-            private int CellWidth { get { return Scaled(62); } }
-            private int RowHeight { get { return Scaled(48); } }
-            private int HeaderHeight { get { return Scaled(18); } }
-            private int Disc { get { return Scaled(30); } }
-
-            /// <summary>向きの絵の1マス。4×3 のグリッドを描く。</summary>
-            private int IconCell { get { return Scaled(9); } }
-
-            private static readonly Color RightColor = Color.FromArgb(0x2E, 0x86, 0xD8);
-            private static readonly Color LeftColor = Color.FromArgb(0xD0, 0x3A, 0x3A);
-
-            private static readonly Color GoldColor = Color.FromArgb(0xE0, 0xB4, 0x3C);
-            private static readonly Color SilverColor = Color.FromArgb(0xB8, 0xC0, 0xCC);
-            private static readonly Color BronzeColor = Color.FromArgb(0xC0, 0x7A, 0x42);
-
-            private static readonly Color PickedColor = Color.FromArgb(0x8C, 0xD8, 0xFF);
-
-            private List<MedalRow> _rows = new List<MedalRow>();
-            private readonly ToolTip _tip = new ToolTip();
-            private MedalCell _hover;
-
-            /// <summary>選んでいるマスの ID。読み直してもこれで選び直す。</summary>
-            private string _selectedId;
-
-            /// <summary>選んでいるマス。無ければ null。</summary>
-            public MedalCell Selected
-            {
-                get { return _rows.SelectMany(r => r.Cells).FirstOrDefault(c => c.Id == _selectedId); }
-            }
-
-            public event EventHandler SelectionChanged;
-            public event EventHandler CellDoubleClicked;
-
-            private int Scaled(int value)
-            {
-                return (int)Math.Round(value * DeviceDpi / 96.0);
-            }
-
-            public MedalBoard()
-            {
-                DoubleBuffered = true;
-                AutoScroll = true;
-                SetStyle(ControlStyles.ResizeRedraw, true);
-            }
-
-            /// <summary>表全体の大きさ（スクロールなしで見せるのに要る広さ）。</summary>
-            public Size ContentSize
-            {
-                get { return AutoScrollMinSize + new Size(Scaled(8), Scaled(6)); }
-            }
-
-            /// <summary>拡大率が決まってから寸法を出し直す。</summary>
-            public void Remeasure()
-            {
-                SetRows(_rows);
-            }
-
-            public void SetRows(List<MedalRow> rows)
-            {
-                _rows = rows ?? new List<MedalRow>();
-                int columns = _rows.Count == 0 ? 0 : _rows.Max(r => r.Cells.Count);
-                AutoScrollMinSize = new Size(LabelWidth + columns * CellWidth + Scaled(16), HeaderHeight + _rows.Count * RowHeight + Scaled(8));
-                Invalidate();
-            }
-
-            protected override void OnScroll(ScrollEventArgs se)
-            {
-                base.OnScroll(se);
-                Invalidate();
-            }
-
-            protected override void OnPaint(PaintEventArgs e)
-            {
-                base.OnPaint(e);
-
-                var g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TranslateTransform(AutoScrollPosition.X + Scaled(8), AutoScrollPosition.Y);
-
-                using (var faint = new SolidBrush(Theme.Faint))
-                using (var text = new SolidBrush(Theme.Text))
-                using (var line = new Pen(Theme.Line))
-                using (var bold = new Font(Font.FontFamily, 9f, FontStyle.Bold))
-                using (var small = new Font(Font.FontFamily, 6.5f))
-                {
-                    var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-
-                    // Stage の見出し。BPM は方向ごとに倍率が違うのでマスの中に書き、ここは Stage だけ。
-                    if (_rows.Count > 0)
-                    {
-                        var cells = _rows[0].Cells;
-                        for (int c = 0; c < cells.Count; c++)
-                        {
-                            var entry = cells[c].Entry;
-                            string head = entry.Options.DurationSeconds > DrillSet.ShortSeconds
-                                ? string.Format(CultureInfo.CurrentCulture, "Stage {0} ({1:0}s)", entry.Stage, entry.Options.DurationSeconds)
-                                : string.Format(CultureInfo.CurrentCulture, "Stage {0}", entry.Stage);
-                            g.DrawString(head, small, faint, new RectangleF(LabelWidth + c * CellWidth, 0, CellWidth, HeaderHeight), center);
-                        }
-                    }
-
-                    for (int r = 0; r < _rows.Count; r++)
-                    {
-                        var row = _rows[r];
-                        int y = HeaderHeight + r * RowHeight;
-
-                        g.DrawLine(line, 0, y, LabelWidth + row.Cells.Count * CellWidth, y);
-                        g.DrawString(row.Direction, bold, text, new PointF(Scaled(2), y + Scaled(6)));
-                        g.DrawString(string.Format(CultureInfo.CurrentCulture, "Lv {0} / {1}",
-                            row.Level, row.Cells.Count * DrillSetMedals.Points(Medal.Gold)), Font, faint, new PointF(Scaled(4), y + Scaled(26)));
-
-                        // 名前だけでは向きが読めないので、遷移をグリッドの絵で添える。
-                        int iconX = LabelWidth - Scaled(12) - 4 * IconCell;
-                        int iconY = y + (RowHeight - 3 * IconCell) / 2;
-                        DrawIcon(g, row.Cells[0].Entry.Options.Sequences, iconX, iconY, line);
-
-                        for (int c = 0; c < row.Cells.Count; c++)
-                            DrawCell(g, row.Cells[c], LabelWidth + c * CellWidth, y, small, text, faint, line, center);
-                    }
-                }
-            }
-
-            /// <summary>
-            /// 向きの絵。4×3 のグリッドに、右手を青・左手を赤の線と点で描く。
-            /// 色は遷移を組む画面（GridPicker）と同じ。
-            /// </summary>
-            private void DrawIcon(Graphics g, IReadOnlyList<HandSequence> sequences, int x, int y, Pen line)
-            {
-                int cell = IconCell;
-                for (int col = 0; col < 4; col++)
-                    for (int layer = 0; layer < 3; layer++)
-                        g.DrawRectangle(line, x + col * cell, y + layer * cell, cell, cell);
-
-                foreach (var seq in sequences)
-                {
-                    Color color = seq.Hand == Hand.Right ? RightColor : LeftColor;
-
-                    // 横の遷移（85・c9 など）は左右の手が同じマスを通り、線が重なって片方が消える。
-                    // 右手を少し上、左手を少し下にずらして両方見えるようにする。
-                    float shift = (seq.Hand == Hand.Right ? -0.18f : 0.18f) * cell;
-                    var points = seq.Steps.Select(st => new PointF(
-                        x + (st.Position.LineIndex + 0.5f) * cell,
-                        y + (2 - st.Position.LineLayer + 0.5f) * cell + shift)).ToArray();
-
-                    using (var pen = new Pen(color, Scaled(2)))
-                    {
-                        if (points.Length == 2) g.DrawLine(pen, points[0], points[1]);
-                        else if (points.Length > 2) g.DrawPolygon(pen, points);
-                    }
-
-                    float r = cell * 0.28f;
-                    using (var brush = new SolidBrush(color))
-                        foreach (var pt in points)
-                            g.FillEllipse(brush, pt.X - r, pt.Y - r, r * 2, r * 2);
-                }
-            }
-
-            private void DrawCell(Graphics g, MedalCell cell, int x, int y, Font small,
-                Brush text, Brush faint, Pen line, StringFormat center)
-            {
-                g.DrawString(string.Format(CultureInfo.InvariantCulture, "{0:0.#} BPM", cell.Entry.Bpm), small, faint,
-                    new RectangleF(x, y + Scaled(1), CellWidth, Scaled(14)), center);
-
-                // 円の中はベストの再現精度。Lv は色で読める（金 3・銀 2・銅 1）。
-                var disc = new Rectangle(x + (CellWidth - Disc) / 2, y + Scaled(16), Disc, Disc);
-                Color? color = ColorOf(cell.Medal);
-                if (color.HasValue)
-                {
-                    using (var fill = new SolidBrush(color.Value))
-                        g.FillEllipse(fill, disc);
-                }
-                else
-                {
-                    g.DrawEllipse(line, disc);
-                }
-
-                if (cell.Id == _selectedId)
-                {
-                    int pad = Scaled(3);
-                    using (var ring = new Pen(PickedColor, Scaled(2)))
-                        g.DrawEllipse(ring, disc.X - pad, disc.Y - pad, disc.Width + pad * 2, disc.Height + pad * 2);
-                }
-
-                if (!cell.BestPercent.HasValue) return;
-
-                using (var number = new Font(small.FontFamily, 6.5f, FontStyle.Bold))
-                using (var dark = new SolidBrush(Color.FromArgb(0x20, 0x20, 0x20)))
-                    g.DrawString(cell.BestPercent.Value.ToString("0.0", CultureInfo.InvariantCulture), number,
-                        color.HasValue ? dark : text, disc, center);
-            }
-
-            private static Color? ColorOf(Medal medal)
-            {
-                switch (medal)
-                {
-                    case Medal.Gold: return GoldColor;
-                    case Medal.Silver: return SilverColor;
-                    case Medal.Bronze: return BronzeColor;
-                    default: return null;
-                }
-            }
-
-            protected override void OnMouseDown(MouseEventArgs e)
-            {
-                base.OnMouseDown(e);
-
-                var cell = CellAt(e.Location);
-                if (cell == null || cell.Id == _selectedId) return;
-
-                _selectedId = cell.Id;
-                Invalidate();
-                SelectionChanged?.Invoke(this, EventArgs.Empty);
-            }
-
-            protected override void OnMouseDoubleClick(MouseEventArgs e)
-            {
-                base.OnMouseDoubleClick(e);
-                if (CellAt(e.Location) != null) CellDoubleClicked?.Invoke(this, EventArgs.Empty);
-            }
-
-            protected override void OnMouseMove(MouseEventArgs e)
-            {
-                base.OnMouseMove(e);
-
-                var cell = CellAt(e.Location);
-                if (cell == _hover) return;
-                _hover = cell;
-
-                if (cell == null) { _tip.SetToolTip(this, null); return; }
-
-                _tip.SetToolTip(this, string.Format(CultureInfo.CurrentCulture,
-                    "{0}\nNJS {1:0.#}   {2}",
-                    cell.Entry.Options.Name, cell.Entry.Options.Njs,
-                    cell.BestPercent.HasValue
-                        ? Lang.T("ベスト ", "Best ") + cell.BestPercent.Value.ToString("0.0", CultureInfo.InvariantCulture) + "%"
-                        : Lang.T("未プレイ", "Not played")));
-            }
-
-            private MedalCell CellAt(Point location)
-            {
-                int x = location.X - AutoScrollPosition.X - Scaled(8) - LabelWidth;
-                int y = location.Y - AutoScrollPosition.Y - HeaderHeight;
-                if (x < 0 || y < 0) return null;
-
-                int r = y / RowHeight;
-                int c = x / CellWidth;
-                if (r >= _rows.Count || c >= _rows[r].Cells.Count) return null;
-                return _rows[r].Cells[c];
-            }
-        }
     }
 }

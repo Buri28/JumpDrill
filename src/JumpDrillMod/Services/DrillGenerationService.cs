@@ -103,6 +103,14 @@ namespace JumpDrillMod.Services
                 // 点が1つしかない等。DrillOptions.Validate より手前で出る
                 return Failure("Invalid transition", e);
             }
+            catch (ClashException e)
+            {
+                return Failure("Hands would clash. Change the layout or Both Hands", e);
+            }
+            catch (TowerOverlapException e)
+            {
+                return Failure("Tower: both hands share a cell. Use Split", e);
+            }
             catch (InvalidOperationException e)
             {
                 // DrillOptions.Validate の指摘
@@ -149,9 +157,11 @@ namespace JumpDrillMod.Services
                 Njs = config.Njs,
                 JumpDistance = config.JumpDistance,
                 Sets = config.Sets,
+                FlickPercent = config.FlickPercent,
                 CountInClicks = config.CountInClicks,
                 Direction = ParseEnum(config.Direction, DirectionMode.Axis),
                 HandPattern = ParseEnum(config.HandPattern, HandPattern.Split),
+                Tower = config.Tower,
                 Click = ParseEnum(config.Click, ClickMode.Down),
             };
 
