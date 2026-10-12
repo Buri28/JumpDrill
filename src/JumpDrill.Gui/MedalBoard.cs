@@ -94,6 +94,8 @@ namespace JumpDrill.Gui
         /// <summary>
         /// 窓を合わせる広さ。高さは標準のステージ（14行）までで、それより多い行（「その他」）はスクロールで見せる。
         /// 行が多いたびに窓が縦に伸びると、画面に収まらなくなる。
+        /// 幅には縦のスクロールバーのぶんを常に足す。窓の大きさは開いたときにしか決めないので、
+        /// あとで行の多いステージに切り替えて縦のバーが出ても、横のバーまで出ないようにする。
         /// </summary>
         public Size ContentSize
         {
@@ -101,10 +103,7 @@ namespace JumpDrill.Gui
             {
                 var size = AutoScrollMinSize + new Size(Scaled(8), Scaled(6));
                 int cap = HeaderHeight + CustomStage.MaxRows * RowHeight + Scaled(8) + Scaled(6);
-                if (size.Height <= cap) return size;
-
-                // 縦のスクロールバーのぶん幅を足して、横のスクロールバーが出ないようにする。
-                return new Size(size.Width + SystemInformation.VerticalScrollBarWidth, cap);
+                return new Size(size.Width + SystemInformation.VerticalScrollBarWidth, Math.Min(size.Height, cap));
             }
         }
 
@@ -213,10 +212,8 @@ namespace JumpDrill.Gui
 
                     // 行名は「方向 + 印（tower・alt-trip・flick25）」。1行に並べると印が切れて見えないので、
                     // 印は方向の下に小さく分けて出す。
-                    string name = row.Direction ?? "";
-                    int space = name.IndexOf(' ');
-                    string tags = space > 0 ? name.Substring(space + 1).Trim() : "";
-                    if (space > 0) name = name.Substring(0, space);
+                    string name, tags;
+                    DrillNaming.SplitTags(row.Direction, out name, out tags);
 
                     float labelWidth = LabelWidth - Scaled(16) - 4 * IconCell;
                     var noWrap = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };

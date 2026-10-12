@@ -284,6 +284,33 @@ namespace JumpDrill.Model
             return direction;
         }
 
+        /// <summary>
+        /// 行名（<see cref="DirectionOf"/> の形、<c>R3bL2a tower flick25</c>）を、方向と後ろの印に分ける。
+        /// 印は tower・alt-trip・flick〈数字〉だけ。ほかの語（ユーザーが付けた「My jumps」など）は分けずに名前のまま返す。
+        /// </summary>
+        public static void SplitTags(string rowName, out string name, out string tags)
+        {
+            name = rowName ?? "";
+            tags = "";
+
+            var words = name.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            int first = words.Length;
+            while (first > 1 && IsTagWord(words[first - 1])) first--;
+            if (first == words.Length) return;
+
+            name = string.Join(" ", words, 0, first);
+            tags = string.Join(" ", words, first, words.Length - first);
+        }
+
+        private static bool IsTagWord(string word)
+        {
+            if (word == TowerWord.Trim() || word == AltTripWord.Trim()) return true;
+            if (!word.StartsWith(FlickPrefix, StringComparison.Ordinal) || word.Length == FlickPrefix.Length) return false;
+
+            double percent;
+            return double.TryParse(word.Substring(FlickPrefix.Length), NumberStyles.Float, CultureInfo.InvariantCulture, out percent);
+        }
+
         /// <summary>フリックの印の頭。後ろに割合が付く（<c>flick25</c>）。</summary>
         private const string FlickPrefix = "flick";
 

@@ -168,6 +168,36 @@ namespace JumpDrill.Core.Tests
             Assert.Equal(Alternating('1', '4', left.Length), left);
         }
 
+        [Theory]
+        [InlineData(DirectionMode.Dot, 45.0, HandPattern.Sync)]
+        [InlineData(DirectionMode.Dot, 50.0, HandPattern.Split)]
+        [InlineData(DirectionMode.Dot, 0.0, HandPattern.AlternateRoundTrip)]
+        [InlineData(DirectionMode.Perpendicular, 50.0, HandPattern.AlternateRoundTrip)]
+        public void Uneven_spacing_keeps_alternating_without_the_name(DirectionMode mode, double flick, HandPattern pattern)
+        {
+            // 名前から最初の点が読めなくても、前の行き先から決め続けられる（間隔が2種類交互でも切れ目と見なさない）。
+            var options = new DrillOptions
+            {
+                Sequences = SequenceParser.ParseAll("R3b, L2a"),
+                IntervalMs = 300,
+                DurationSeconds = 12,
+                Direction = mode,
+                Tower = true,
+                FlickPercent = flick,
+                HandPattern = pattern,
+                Name = "renamed drill",
+            };
+            var map = DrillGenerator.Generate(options);
+
+            var kept = TowerReplay.Collapse(Play(map)).Notes.Where(n => n.ColorType == (int)Hand.Right).ToList();
+            string tokens = string.Concat(kept.Select(n => new GridPosition(n.LineIndex, n.LineLayer).ToToken()));
+            string expected = string.Concat(map.Notes.Where(n => n.Hand == Hand.Right)
+                .GroupBy(n => n.StepIndex).Select(g => g.First().Position.ToToken()));
+
+            // 最初の1本は名前が無いと決められないので、2本目から比べる。
+            Assert.Equal(expected.Substring(1), tokens.Substring(1));
+        }
+
         [Fact]
         public void Plain_drills_are_left_alone()
         {

@@ -414,13 +414,22 @@ namespace JumpDrillMod.UI.Medals
 
         /// <summary>
         /// 行名の「方向 + 印（tower・alt-trip・flick25）」の印を、色と大きさを変えて方向と見分けが付くようにする。
+        /// 行名はカスタムステージで自由に付けられるので、タグとして読まれないよう &lt;noparse&gt; で囲む。
         /// </summary>
         private static string RowName(string? direction)
         {
-            string name = direction ?? string.Empty;
-            int space = name.IndexOf(' ');
-            if (space <= 0) return name;
-            return name.Substring(0, space) + " <color=#E0B060><size=75%>" + name.Substring(space + 1).Trim() + "</size></color>";
+            string name, tags;
+            JumpDrill.Model.DrillNaming.SplitTags(direction, out name, out tags);
+
+            string shown = NoParse(name);
+            if (tags.Length > 0) shown += " <color=#E0B060><size=75%>" + NoParse(tags) + "</size></color>";
+            return shown;
+        }
+
+        /// <summary>リッチテキストのタグとして読ませない。閉じタグが中にあれば崩れるので、その &lt; だけ全角に置き換える。</summary>
+        private static string NoParse(string text)
+        {
+            return "<noparse>" + text.Replace("</noparse>", "＜/noparse>") + "</noparse>";
         }
 
         // ───────── 操作 ─────────

@@ -84,10 +84,13 @@ namespace JumpDrill.Generation
                     int laps = sequences[a].Length * sequences[b].Length;
                     for (int i = 1; i <= laps; i++)
                     {
-                        // タワーにならない振り（一直線でない）は比べない。タワーが無いのに止めてしまう。
+                        // 両手ともタワーにならない振り（一直線でない）なら比べない。タワーが無いのに止めてしまう。
+                        // 片手だけタワーなら、もう片方は着地点の1マスで比べる（タワーの間のマスに降りるとぶつかる）。
                         var cellsA = TowerCells(sequences[a], i);
                         var cellsB = TowerCells(sequences[b], i);
-                        if (cellsA == null || cellsB == null) continue;
+                        if (cellsA == null && cellsB == null) continue;
+                        cellsA = cellsA ?? new List<GridPosition> { sequences[a].StepAt(i).Position };
+                        cellsB = cellsB ?? new List<GridPosition> { sequences[b].StepAt(i).Position };
                         foreach (var cell in cellsA)
                             if (cellsB.Contains(cell)) throw new TowerOverlapException();
                     }

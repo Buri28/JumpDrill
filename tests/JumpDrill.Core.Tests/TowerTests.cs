@@ -118,11 +118,20 @@ namespace JumpDrill.Core.Tests
         [Theory]
         [InlineData(HandPattern.Alternate)]
         [InlineData(HandPattern.AlternateRoundTrip)]
+        public void Landing_inside_the_other_hands_tower_crashes(HandPattern pattern)
+        {
+            // 右 3>b のタワーは 7 を通る。左の 7>9 は一直線でないが、7 に降りるのでぶつかる。
+            Assert.Throws<TowerOverlapException>(() => Generate("R3b, L79", true, pattern));
+        }
+
+        [Theory]
+        [InlineData(HandPattern.Alternate)]
+        [InlineData(HandPattern.AlternateRoundTrip)]
         public void Jumps_that_never_become_towers_are_not_checked(HandPattern pattern)
         {
-            // 4>b は一直線でないのでタワーにならない。左の 6>b とは行き先が同じでも、
+            // 4>b も 2>b も一直線でないのでタワーにならない。行き先が同じでも、
             // 交互なら向きが違う線なのでぶつからない。タワーの判定でも止めない。
-            var map = Generate("R4b, L6b", true, pattern);
+            var map = Generate("R4b, L2b", true, pattern);
             Assert.NotEmpty(map.Notes);
         }
 

@@ -331,6 +331,21 @@ namespace JumpDrill.Tests
             Assert.Throws<InvalidOperationException>(() => DrillGenerator.Generate(flick));
         }
 
+        [Theory]
+        [InlineData("R3bL2a tower flick25", "R3bL2a", "tower flick25")]
+        [InlineData("R3bL2a alt-trip", "R3bL2a", "alt-trip")]
+        [InlineData("R3bL2a", "R3bL2a", "")]
+        [InlineData("My jumps", "My jumps", "")]
+        [InlineData("My tower", "My", "tower")]
+        [InlineData("flick fast", "flick fast", "")]
+        public void Row_names_split_only_known_tags(string row, string name, string tags)
+        {
+            string n, t;
+            DrillNaming.SplitTags(row, out n, out t);
+            Assert.Equal(name, n);
+            Assert.Equal(tags, t);
+        }
+
         [Fact]
         public void Explicit_directions_from_the_spec_win()
         {

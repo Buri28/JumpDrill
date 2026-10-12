@@ -20,9 +20,11 @@ namespace JumpDrill.Replays
         private const float SameTime = 0.001f;
 
         /// <summary>
-        /// その手のノーツの間隔（中央値）の何倍空いたら、前の行き先を当てにしないか。
+        /// その手のノーツの間隔（上位 1/4 の値）の何倍空いたら、前の行き先を当てにしないか。
         /// 片手ずつのブロックの切れ目（カウントインぶん空く）では、循環が最初の点からやり直しになる。
         /// 秒で決め打ちすると、遅いドリルで毎回やり直しと見なしてしまう。
+        /// 中央値にしないのは、間隔が2種類交互に来る譜面（フリックの短い・長い、往復ごとに交互の 1 間隔・3 間隔）で
+        /// 短い方が中央値になり、長い方の間隔までブロックの切れ目と見なしてしまうため。
         /// </summary>
         private const float BlockGapFactor = 2.5f;
 
@@ -63,7 +65,7 @@ namespace JumpDrill.Replays
                 hints.TryGetValue(hand, out hint);
 
                 var groups = Groups(notes).ToList();
-                float blockGap = MedianGap(groups) * BlockGapFactor;
+                float blockGap = TypicalGap(groups) * BlockGapFactor;
 
                 GridPosition? previous = null;
                 float previousTime = float.NegativeInfinity;
@@ -110,8 +112,11 @@ namespace JumpDrill.Replays
             return false;
         }
 
-        /// <summary>同じ手の、続くまとまりどうしの間隔の中央値 (秒)。測れなければ無限大（やり直しと見なさない）。</summary>
-        private static float MedianGap(List<List<ReplayNote>> groups)
+        /// <summary>
+        /// 同じ手の、続くまとまりどうしの間隔の上位 1/4 の値 (秒)。測れなければ無限大（やり直しと見なさない）。
+        /// ブロックの切れ目はブロックの数しか無いので、ここには入ってこない。
+        /// </summary>
+        private static float TypicalGap(List<List<ReplayNote>> groups)
         {
             var gaps = new List<float>();
             for (int i = 1; i < groups.Count; i++)
@@ -119,7 +124,7 @@ namespace JumpDrill.Replays
             if (gaps.Count == 0) return float.PositiveInfinity;
 
             gaps.Sort();
-            return gaps[gaps.Count / 2];
+            return gaps[Math.Min(gaps.Count - 1, gaps.Count * 3 / 4)];
         }
 
         private static IEnumerable<List<ReplayNote>> Groups(List<ReplayNote> sorted)
