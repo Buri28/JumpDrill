@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -81,7 +81,7 @@ namespace JumpDrill.Updater
         public const string ManifestFileName = "installed-files.txt";
 
         /// <summary>利用者のデータが入るフォルダ。更新では触らない。</summary>
-        public static readonly string[] PreservedDirectories = { "workspace" };
+        public static readonly string[] PreservedDirectories = { "workspace", Installer.WorkFolderName };
     }
 
     internal sealed class Options
@@ -369,7 +369,7 @@ namespace JumpDrill.Updater
         private void ApplyWork(object sender, DoWorkEventArgs e)
         {
             var release = (ReleaseInfo)e.Argument;
-            string stageDir = Installer.CreateTempDirectory("JumpDrillUpdate_");
+            string stageDir = Installer.CreateTempDirectory(_options.InstallDir, "package_");
             string zipPath = Path.Combine(stageDir, "release.zip");
             GitHubReleases.Download(release.ZipUrl, zipPath);
 
@@ -380,7 +380,7 @@ namespace JumpDrill.Updater
                     throw new InvalidOperationException("zip の中に " + Product.AppExeName + " がありません。");
             }
 
-            string helper = Installer.CopySelfToTempDirectory();
+            string helper = Installer.CopySelfToTempDirectory(_options.InstallDir);
             Installer.LaunchHelper(helper, _options, zipPath, stageDir, release.Version, Process.GetCurrentProcess().Id);
             e.Result = release;
         }
@@ -503,17 +503,23 @@ namespace JumpDrill.Updater
             }
         }
 
-        public static string CreateTempDirectory(string prefix)
+        /// <summary>
+        /// 更新の作業フォルダ。アプリのフォルダの中（.update）に作り、ユーザーのフォルダ（%TEMP%）は使わない。
+        /// 更新を手伝う複製は自分を消せないので残る。アプリが次に起動したときに .update ごと消す。
+        /// </summary>
+        public const string WorkFolderName = ".update";
+
+        public static string CreateTempDirectory(string installDir, string prefix)
         {
-            string path = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(installDir, WorkFolderName, prefix + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(path);
             return path;
         }
 
-        public static string CopySelfToTempDirectory()
+        public static string CopySelfToTempDirectory(string installDir)
         {
             string source = Assembly.GetExecutingAssembly().Location;
-            string dest = Path.Combine(CreateTempDirectory("JumpDrillUpdateHelper_"), Path.GetFileName(source));
+            string dest = Path.Combine(CreateTempDirectory(installDir, "helper_"), Path.GetFileName(source));
             File.Copy(source, dest, true);
             return dest;
         }

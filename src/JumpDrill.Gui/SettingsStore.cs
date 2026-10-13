@@ -25,11 +25,13 @@ namespace JumpDrill.Gui
             Path = path;
         }
 
+        /// <summary>
+        /// アプリの workspace（既定の場所）に置く。ユーザーのフォルダには置かない。
+        /// workspace は更新でも消さない。
+        /// </summary>
         public static string DefaultPath()
         {
-            return System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "JumpDrill", "settings.txt");
+            return System.IO.Path.Combine(JumpDrill.Output.Workspace.DefaultRoot(), "settings.txt");
         }
 
         /// <summary>読めなければ黙って既定値。設定ファイルで起動を止めない。</summary>

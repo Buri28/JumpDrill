@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Windows.Forms;
 
@@ -12,6 +12,9 @@ namespace JumpDrill.Gui
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            // 以前の版がユーザーのフォルダに置いていたものを移す。設定を読む前に
+            LegacyData.Migrate();
 
             Lang.English = LoadEnglish();
 

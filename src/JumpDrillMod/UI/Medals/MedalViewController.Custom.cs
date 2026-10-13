@@ -177,7 +177,8 @@ namespace JumpDrillMod.UI.Medals
         {
             try
             {
-                book = CustomStageBook.Load(CustomStageBook.DefaultPath());
+                CustomStageBook.MoveLegacy(StagesPath);
+                book = CustomStageBook.Load(StagesPath);
                 bookBroken = false;
             }
             catch (Exception e)
@@ -196,12 +197,15 @@ namespace JumpDrillMod.UI.Medals
             RefreshDropdown();
         }
 
+        /// <summary>このインスタンスの <c>UserData\JumpDrill\stages.json</c>。</summary>
+        private static string StagesPath => CustomStageBook.PathFor(InstallPaths.Root);
+
         /// <summary>stages.json に書く。書けなければ知らせて false。</summary>
         private bool SaveBook()
         {
             try
             {
-                book.Save(CustomStageBook.DefaultPath());
+                book.Save(StagesPath);
                 return true;
             }
             catch (Exception e)

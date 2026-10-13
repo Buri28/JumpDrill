@@ -1915,7 +1915,7 @@ namespace JumpDrill.Gui
             {
                 // メダル画面を開いていれば、そちらの持っている中身を直して保存する（ファイルだけ直すと上書きで戻る）
                 if (_medalForm != null && !_medalForm.IsDisposed) _medalForm.DrillDeleted(drill.SongName, true);
-                else RemoveFromStages(drill.SongName);
+                else RemoveFromStages(drill.SongName, drill.Path);
             }
             else if (_medalForm != null && !_medalForm.IsDisposed)
             {
@@ -1929,11 +1929,14 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>カスタムステージ（stages.json）から曲名を外す。読めなければ触らない。</summary>
-        private void RemoveFromStages(string songName)
+        private void RemoveFromStages(string songName, string folder)
         {
             try
             {
-                string path = CustomStageBook.DefaultPath();
+                string install = CustomStageBook.InstallRootOf(folder);
+                if (install == null) return;
+                string path = CustomStageBook.PathFor(install);
+                CustomStageBook.MoveLegacy(path);
                 var book = CustomStageBook.Load(path);
                 bool changed = false;
                 foreach (var stage in book.Stages)

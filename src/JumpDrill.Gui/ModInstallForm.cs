@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -38,8 +38,8 @@ namespace JumpDrill.Gui
 
         private static string LocalFolder => Path.Combine(AppContext.BaseDirectory, "mod");
 
-        private static string CacheFolder => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JumpDrill", "mod", "v" + Version);
+        /// <summary>リリースから取ってきた DLL の置き場。アプリの workspace に置く（ユーザーのフォルダには置かない）。</summary>
+        private static string CacheFolder => Path.Combine(Workspace.DefaultRoot(), "mod", "v" + Version);
 
         /// <summary>入れる MOD の版。アプリと同じ。</summary>
         public static string Version => UpdateCheck.CurrentVersion();

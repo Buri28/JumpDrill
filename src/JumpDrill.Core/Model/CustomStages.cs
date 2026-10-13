@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -155,13 +155,60 @@ namespace JumpDrill.Model
         }
 
         /// <summary>
-        /// 設定ファイルの置き場所。GUI と MOD で同じファイルを使い、どちらで作ったステージも両方に出す。
+        /// 設定ファイルの置き場所。Beat Saber ごとの <c>UserData\JumpDrill\stages.json</c>。
+        /// GUI と MOD で同じファイルを使い、どちらで作ったステージも両方に出す。
         /// </summary>
-        public static string DefaultPath()
+        public static string PathFor(string installRoot)
+        {
+            return Path.Combine(installRoot, "UserData", "JumpDrill", "stages.json");
+        }
+
+        /// <summary>以前の版の置き場所（ユーザーのフォルダ）。</summary>
+        public static string LegacyPath()
         {
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "JumpDrill", "stages.json");
+        }
+
+        /// <summary>
+        /// 以前の版の置き場所にファイルが残っていれば、<paramref name="path"/> へ移す。
+        /// <paramref name="path"/> に既にあれば何もしない。移せなくても読み書きは止めない。
+        /// </summary>
+        public static void MoveLegacy(string path)
+        {
+            try
+            {
+                string legacy = LegacyPath();
+                if (File.Exists(path) || !File.Exists(legacy)) return;
+
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.Move(legacy, path);
+
+                // 空になった以前のフォルダも消す
+                string legacyDir = Path.GetDirectoryName(legacy);
+                if (Directory.Exists(legacyDir) && Directory.GetFileSystemEntries(legacyDir).Length == 0)
+                    Directory.Delete(legacyDir);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        /// <summary>
+        /// <paramref name="folder"/> を含む Beat Saber のフォルダ（Beat Saber.exe のある階層）。無ければ null。
+        /// </summary>
+        public static string InstallRootOf(string folder)
+        {
+            try
+            {
+                for (var dir = new DirectoryInfo(folder); dir != null; dir = dir.Parent)
+                    if (File.Exists(Path.Combine(dir.FullName, "Beat Saber.exe"))) return dir.FullName;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (ArgumentException) { }
+            return null;
         }
 
         /// <summary>

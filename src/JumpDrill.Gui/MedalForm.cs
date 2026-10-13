@@ -75,7 +75,11 @@ namespace JumpDrill.Gui
         private ToolStripMenuItem _deleteStage;
 
         private readonly SettingsStore _settings;
-        private readonly string _stagesPath;
+        /// <summary>
+        /// 見ている Beat Saber の stages.json。「すべてのバージョン」で Beat Saber が複数あるときは決まらず null
+        /// （カスタムステージは出さず、組み替えもさせない）。
+        /// </summary>
+        private string _stagesPath;
         private CustomStageBook _book = new CustomStageBook();
 
         /// <summary>stages.json が読めなかった。上書きして中身を失わないよう、編集させない。</summary>
@@ -112,8 +116,6 @@ namespace JumpDrill.Gui
         {
             _settings = settings;
             _findDrills = findDrills;
-            // MOD と同じファイル。どちらで作ったステージも両方に出る
-            _stagesPath = CustomStageBook.DefaultPath();
             _generateSet = generateSet;
             _workspaceRoot = workspaceRoot;
             _install = new InstallPicker(settings) { Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 8, 3) };
@@ -173,6 +175,7 @@ namespace JumpDrill.Gui
             {
                 if (IsDisposed) return;
                 if (!_rescan.Enabled) { _reloadPending = true; return; }
+                LoadStages();
                 await ScanAsync();
             };
             InstallPicker.Changed += reload;
@@ -227,9 +230,23 @@ namespace JumpDrill.Gui
         /// <summary>stages.json を読んでプルダウンを作る。前に見ていたステージを選び直す。</summary>
         private void LoadStages()
         {
+            // MOD と同じファイル（Beat Saber ごとの UserData\JumpDrill\stages.json）。どちらで作ったステージも両方に出る
+            _stagesPath = StagesPathFor(InstallPicker.Selected);
+            _bookBroken = false;
             try
             {
-                _book = CustomStageBook.Load(_stagesPath);
+                if (_stagesPath == null)
+                {
+                    _book = new CustomStageBook();
+                    _bookBroken = true;
+                    _status.Text = Lang.T("カスタムステージを使うには、Beat Saber のバージョンを選んでください。",
+                        "Choose a Beat Saber version to use custom stages.");
+                }
+                else
+                {
+                    CustomStageBook.MoveLegacy(_stagesPath);
+                    _book = CustomStageBook.Load(_stagesPath);
+                }
             }
             catch (Exception ex)
             {
@@ -239,6 +256,36 @@ namespace JumpDrill.Gui
             }
 
             FillStagePicker(_settings.GetString("medalStage", ""), _settings.GetBool("medalOther", false));
+        }
+
+        /// <summary>選んでいる Beat Saber の stages.json。「すべて」なら、Beat Saber が1つだけのときはそれ。</summary>
+        private static string StagesPathFor(string install)
+        {
+            if (string.IsNullOrEmpty(install))
+            {
+                var installs = LevelWriter.FindInstalls();
+                if (installs.Count != 1) return null;
+                install = installs[0].Root;
+            }
+            return CustomStageBook.PathFor(install);
+        }
+
+        /// <summary>
+        /// 選んでいる Beat Saber のフォルダの中にあるドリル。「すべてのバージョン」なら全部。
+        /// その他・ドリルの選択・ドリルの削除で使う（カスタムステージもメダルも版ごとなので、譜面も版で絞る）。
+        /// </summary>
+        private List<DrillLibrary.DrillLevel> FindDrills()
+        {
+            var all = _findDrills();
+            string install = InstallPicker.Selected;
+            if (string.IsNullOrEmpty(install)) return all;
+
+            string root = Path.GetFullPath(install).TrimEnd('\\', '/');
+            return all.Where(d =>
+            {
+                string owner = CustomStageBook.InstallRootOf(d.Path);
+                return owner != null && string.Equals(Path.GetFullPath(owner).TrimEnd('\\', '/'), root, StringComparison.OrdinalIgnoreCase);
+            }).ToList();
         }
 
         /// <summary>プルダウンは 標準・その他・カスタムステージの順。</summary>
@@ -263,7 +310,7 @@ namespace JumpDrill.Gui
         {
             if (_otherNames == null)
             {
-                try { _otherNames = _findDrills == null ? new List<string>() : _findDrills().Select(d => d.SongName).ToList(); }
+                try { _otherNames = _findDrills == null ? new List<string>() : FindDrills().Select(d => d.SongName).ToList(); }
                 catch (Exception ex)
                 {
                     _otherNames = new List<string>();
@@ -341,6 +388,7 @@ namespace JumpDrill.Gui
         {
             try
             {
+                if (_stagesPath == null) return;
                 string dir = Path.GetDirectoryName(_stagesPath);
                 Directory.CreateDirectory(dir);
                 string args = File.Exists(_stagesPath) ? "/select,\"" + _stagesPath + "\"" : "\"" + dir + "\"";
@@ -389,7 +437,7 @@ namespace JumpDrill.Gui
 
             bool newRow = row >= stage.Rows.Count;
             int room = newRow ? CustomStage.MaxDrillsPerRow : CustomStage.MaxDrillsPerRow - stage.Rows[row].Drills.Count;
-            var picked = StageDialogs.PickDrills(this, _findDrills(), multiple: true, direction: newRow ? null : DirectionOf(stage.Rows[row]),
+            var picked = StageDialogs.PickDrills(this, FindDrills(), multiple: true, direction: newRow ? null : DirectionOf(stage.Rows[row]),
                 limit: Math.Max(1, room));
             if (picked == null) return;
 
@@ -437,7 +485,7 @@ namespace JumpDrill.Gui
                 {
                     // 行に1本しか無ければ方向ごと替えてよい。2本以上なら行の方向に揃える
                     string direction = row.Drills.Count > 1 ? DirectionOf(row) : null;
-                    var picked = _findDrills == null ? null : StageDialogs.PickDrills(this, _findDrills(), multiple: false, direction: direction);
+                    var picked = _findDrills == null ? null : StageDialogs.PickDrills(this, FindDrills(), multiple: false, direction: direction);
                     if (picked == null) return false;
 
                     // 方向ごと替えたら、方向のままの行の名前も付け替える
@@ -498,7 +546,7 @@ namespace JumpDrill.Gui
             List<DrillLibrary.DrillLevel> copies;
             try
             {
-                copies = (_findDrills == null ? new List<DrillLibrary.DrillLevel>() : _findDrills())
+                copies = (_findDrills == null ? new List<DrillLibrary.DrillLevel>() : FindDrills())
                     .Where(d => string.Equals(d.SongName, songName, StringComparison.Ordinal))
                     .ToList();
             }
@@ -675,6 +723,7 @@ namespace JumpDrill.Gui
             if (_reloadPending && !IsDisposed)
             {
                 _reloadPending = false;
+                LoadStages();
                 await ScanAsync();
             }
         }
