@@ -107,10 +107,10 @@ namespace JumpDrill.Model
             if (Sets < 1)
                 throw new InvalidOperationException(Lang.T("セット数は 1 以上。", "Sets must be 1 or more."));
             if (FlickPercent < 0 || FlickPercent > MaxFlickPercent)
-                throw new InvalidOperationException(Lang.T("フリックは 0〜50 %。", "Flick must be 0-50 %."));
+                throw new InvalidOperationException(Lang.T("フリック度は 0〜50 %。", "Flick must be 0-50 %."));
             if (FlickPercent > 0 && HandPattern == HandPattern.Alternate)
                 throw new InvalidOperationException(Lang.T(
-                    "フリックは配置が 1ステップごとに交互（alt）のときは使えません。往復が続かないためです。",
+                    "フリックは配置パターンが 1ステップごとに交互（alt）のときは使えません。往復が続かないためです。",
                     "Flick cannot be used with alternate (no back-to-back round trip)."));
             if (FlickPercent > 0)
                 foreach (var seq in Sequences)

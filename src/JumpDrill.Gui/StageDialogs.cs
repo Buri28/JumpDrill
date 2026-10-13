@@ -14,15 +14,17 @@ namespace JumpDrill.Gui
     {
         /// <summary>名前を入れさせる。取り消したら null。</summary>
         /// <param name="validate">入れた名前が使えなければ理由を返す。使えれば null。</param>
-        public static string AskName(IWin32Window owner, string title, string initial, Func<string, string> validate)
+        /// <param name="prompt">入力欄の上に出す説明。無ければ出さない。</param>
+        public static string AskName(IWin32Window owner, string title, string initial, Func<string, string> validate, string prompt = null)
         {
-            using (var form = NewDialog(title, new Size(380, 120)))
+            using (var form = NewDialog(title, new Size(380, prompt == null ? 120 : 140)))
             {
+                var label = prompt == null ? null : new Label { Text = prompt, AutoSize = true, Margin = new Padding(0, 0, 0, 4) };
                 var box = new TextBox { Text = initial ?? "", Dock = DockStyle.Fill };
                 var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true, Padding = new Padding(16, 2, 16, 2) };
                 var cancel = new Button { Text = Lang.T("キャンセル", "Cancel"), DialogResult = DialogResult.Cancel, AutoSize = true, Padding = new Padding(16, 2, 16, 2) };
 
-                form.Controls.Add(Layout(box, ok, cancel, null));
+                form.Controls.Add(Layout(box, ok, cancel, label));
                 form.AcceptButton = ok;
                 form.CancelButton = cancel;
                 Theme.Apply(form);

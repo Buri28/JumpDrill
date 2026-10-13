@@ -113,7 +113,7 @@
                           apply-on-change='true'
                           hover-hint='Also build the same shape, mirrored, for the other hand.'/>
 
-          <list-setting text='Both Hands'
+          <list-setting text='Hand Pattern'
                         value='pattern'
                         options='pattern-options'
                         apply-on-change='true'
@@ -125,7 +125,7 @@
                         apply-on-change='true'
                         hover-hint='Axis follows the transition vector (back and forth along one line). Perp crosses it. Joining the arrows in order draws a circle: Inner turns its top inward, Outer turns it outward. Dot removes the arrow.'/>
 
-          <toggle-setting text='Tower'
+          <toggle-setting text='Tower / Stack'
                           value='tower'
                           apply-on-change='true'
                           hover-hint='Fill the cells between the two points with notes of the same direction when they are in a straight line. Adjacent points become a stack.'/>

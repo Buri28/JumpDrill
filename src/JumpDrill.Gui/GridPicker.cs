@@ -25,6 +25,9 @@ namespace JumpDrill.Gui
         private static readonly Color RightColor = Color.FromArgb(0x2E, 0x86, 0xD8);
         private static readonly Color LeftColor = Color.FromArgb(0xD0, 0x3A, 0x3A);
 
+        /// <summary>左右の手が同じマス・同じ線を使うところの色（赤と青の間）。</summary>
+        private static readonly Color OverlapColor = Color.FromArgb(0x9B, 0x59, 0xD0);
+
         // 点ごとに s を持つので、位置だけでなく SequenceStep のまま抱える。
         private readonly List<SequenceStep> _right = new List<SequenceStep>();
         private readonly List<SequenceStep> _left = new List<SequenceStep>();
@@ -70,6 +73,23 @@ namespace JumpDrill.Gui
             {
                 if (_tower == value) return;
                 _tower = value;
+                Invalidate();
+            }
+        }
+
+        private bool _mirror;
+
+        /// <summary>
+        /// 左右反転して反対の手にも同じ形を組むか。片手だけ組んでいるとき、反対の手に反転した形を薄く出す
+        /// （押しても置けない。生成のときに作られる形を見せるだけ）。
+        /// </summary>
+        public bool Mirror
+        {
+            get { return _mirror; }
+            set
+            {
+                if (_mirror == value) return;
+                _mirror = value;
                 Invalidate();
             }
         }
@@ -280,11 +300,92 @@ namespace JumpDrill.Gui
                 ? new[] { Hand.Left, Hand.Right }
                 : new[] { Hand.Right, Hand.Left };
 
+            // 反転で作られる反対の手は、組んでいる手の後ろに薄く描く
+            var ghost = GhostSteps();
+            if (ghost != null)
+                DrawSteps(g, area, _right.Count > 0 ? Hand.Left : Hand.Right, cell, ghost, ghost: true);
+
             foreach (var hand in order)
                 DrawHand(g, area, hand, cell);
 
+            DrawOverlap(g, area, cell, ghost);
+
             if (_right.Count == 0 && _left.Count == 0)
                 DrawHint(g, area);
+        }
+
+        /// <summary>反転で作られる反対の手の点。片手だけ組んでいて反転がオンのときだけ。それ以外は null。</summary>
+        private List<SequenceStep> GhostSteps()
+        {
+            if (!_mirror || (_right.Count == 0) == (_left.Count == 0)) return null;
+
+            var source = _right.Count > 0 ? _right : _left;
+            return source
+                .Select(st => new SequenceStep(new GridPosition(GridPosition.Columns - 1 - st.Position.LineIndex, st.Position.LineLayer), null, st.Straighten))
+                .ToList();
+        }
+
+        /// <summary>
+        /// 左右の手が同じマス・同じ線を使うところを紫で塗り直す。反転で重なる配置（R41 と L14 など）に気付けるように。
+        /// 反転の薄い形も相手の手として数える。
+        /// </summary>
+        private void DrawOverlap(Graphics g, RectangleF area, float cell, List<SequenceStep> ghost)
+        {
+            var right = _right.Count > 0 ? _right : ghost ?? new List<SequenceStep>();
+            var left = _left.Count > 0 ? _left : ghost ?? new List<SequenceStep>();
+            if (right.Count == 0 || left.Count == 0) return;
+
+            float markerRadius = cell * 0.22f;
+            float lineWidth = Math.Max(1.5f, cell * 0.045f);
+            if (_tower) lineWidth *= (float)JumpDrill.Output.SequenceIcon.TowerWidthFactor;
+
+            using (var pen = new Pen(OverlapColor, lineWidth) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+            using (var fill = new SolidBrush(OverlapColor))
+            using (var labelBrush = new SolidBrush(Color.White))
+            using (var labelFont = new Font(Font.FontFamily, Math.Max(7f, cell * 0.2f), FontStyle.Bold, GraphicsUnit.Pixel))
+            {
+                // 線：両手の遷移が同じ直線で2マス以上重なるところ
+                foreach (var a in Segments(right))
+                    foreach (var b in Segments(left))
+                    {
+                        var cellsA = JumpDrill.Generation.Tower.Cells(a[0], a[1]);
+                        var cellsB = JumpDrill.Generation.Tower.Cells(b[0], b[1]);
+                        if (cellsA == null || cellsB == null) continue;
+                        var common = cellsA.Where(c => cellsB.Contains(c)).ToList();
+                        if (common.Count >= 2)
+                            g.DrawLine(pen, CellCenter(common[0], area), CellCenter(common[common.Count - 1], area));
+                    }
+
+                // 点：両手のノーツが同じマスにあるところ。番号は編集中の手のものを出す
+                var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                var active = _activeHand == Hand.Right ? right : left;
+                var cellsLeft = NoteCellsOf(left);
+                foreach (var p in NoteCellsOf(right).Where(c => cellsLeft.Contains(c)))
+                {
+                    var c = CellCenter(p, area);
+                    var box = new RectangleF(c.X - markerRadius, c.Y - markerRadius, markerRadius * 2, markerRadius * 2);
+                    g.FillEllipse(fill, box);
+                    int index = IndexOf(active, p);
+                    if (index >= 0) g.DrawString((index + 1).ToString(), labelFont, labelBrush, box, format);
+                }
+            }
+        }
+
+        /// <summary>その手のノーツが置かれるマス（タワーなら点の間も）。</summary>
+        private List<GridPosition> NoteCellsOf(List<SequenceStep> list)
+        {
+            if (_tower && list.Count >= 2)
+                return JumpDrill.Generation.Tower.NoteCells(new HandSequence(Hand.Right, list));
+            return list.Select(st => st.Position).ToList();
+        }
+
+        /// <summary>循環の線分。2点なら1本。</summary>
+        private static IEnumerable<GridPosition[]> Segments(List<SequenceStep> list)
+        {
+            if (list.Count < 2) yield break;
+            int edges = list.Count == 2 ? 1 : list.Count;
+            for (int i = 0; i < edges; i++)
+                yield return new[] { list[i % list.Count].Position, list[(i + 1) % list.Count].Position };
         }
 
         private void DrawHint(Graphics g, RectangleF area)
@@ -304,20 +405,25 @@ namespace JumpDrill.Gui
 
         private void DrawHand(Graphics g, RectangleF area, Hand hand, float cell)
         {
-            var list = ListFor(hand);
+            DrawSteps(g, area, hand, cell, ListFor(hand), ghost: false);
+        }
+
+        /// <param name="ghost">反転で作られる形。編集中でない手よりさらに薄く描く。</param>
+        private void DrawSteps(Graphics g, RectangleF area, Hand hand, float cell, List<SequenceStep> list, bool ghost)
+        {
             if (list.Count == 0) return;
 
-            bool active = hand == _activeHand;
+            bool active = !ghost && hand == _activeHand;
             Color baseColor = hand == Hand.Right ? RightColor : LeftColor;
-            Color color = active ? baseColor : Color.FromArgb(0x60, baseColor);
+            Color color = active ? baseColor : Color.FromArgb(ghost ? 0x48 : 0x60, baseColor);
 
             float markerRadius = cell * 0.22f;
             float lineWidth = Math.Max(1.5f, cell * 0.045f);
             if (_tower) lineWidth *= (float)JumpDrill.Output.SequenceIcon.TowerWidthFactor;
 
-            using (var pen = new Pen(Color.FromArgb(active ? 0xC0 : 0x50, baseColor), lineWidth))
+            using (var pen = new Pen(Color.FromArgb(active ? 0xC0 : ghost ? 0x40 : 0x50, baseColor), lineWidth))
             using (var fill = new SolidBrush(color))
-            using (var labelBrush = new SolidBrush(active ? Color.White : Color.FromArgb(0x90, Color.White)))
+            using (var labelBrush = new SolidBrush(active ? Color.White : Color.FromArgb(ghost ? 0x70 : 0x90, Color.White)))
             using (var labelFont = new Font(Font.FontFamily, Math.Max(7f, cell * 0.2f), FontStyle.Bold, GraphicsUnit.Pixel))
             {
                 pen.EndCap = LineCap.Round;

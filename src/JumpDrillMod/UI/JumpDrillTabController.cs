@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BeatSaberMarkupLanguage.Attributes;
 using HMUI;
 using JumpDrill.Parsing;
@@ -86,6 +87,9 @@ namespace JumpDrillMod.UI
         /// <summary>右手・左手の色。GUI のグリッドと同じ。</summary>
         private const string RightColor = "#2E86D8";
         private const string LeftColor = "#D03A3A";
+
+        /// <summary>左右の手が同じマスを使うところの色（GUI のグリッドと同じ紫）。</summary>
+        private const string OverlapColor = "#9B59D0";
 
         [UIAction("#post-parse")]
         public void PostParse()
@@ -191,17 +195,34 @@ namespace JumpDrillMod.UI
             if (tower && steps.Count >= 2)
                 towerCells = JumpDrill.Generation.Tower.NoteCells(new JumpDrill.Model.HandSequence(editor.Hand, steps));
 
+            // 反転がオンなら、反対の手に作られる形を薄い色で出す（GUI のグリッドの薄い形）
+            var ghostCells = new List<JumpDrill.Model.GridPosition>();
+            if ((Config?.Mirror ?? true) && steps.Count > 0)
+            {
+                var mirrored = steps.Select(st => new JumpDrill.Model.SequenceStep(
+                    new JumpDrill.Model.GridPosition(JumpDrill.Model.GridPosition.Columns - 1 - st.Position.LineIndex, st.Position.LineLayer),
+                    null, st.Straighten)).ToList();
+                ghostCells = tower && mirrored.Count >= 2
+                    ? JumpDrill.Generation.Tower.NoteCells(new JumpDrill.Model.HandSequence(editor.Hand, mirrored))
+                    : mirrored.Select(st => st.Position).ToList();
+            }
+            string ghostColor = (editor.Hand == JumpDrill.Model.Hand.Left ? RightColor : LeftColor) + "88";
+
             for (int i = 0; i < buttons.Length; i++)
             {
                 char token = SequenceEditor.Tokens[i];
                 int order = steps.FindIndex(s => s.Position.ToToken() == token);
                 bool filled = towerCells.Exists(p => p.ToToken() == token);
+                bool ghost = ghostCells.Exists(p => p.ToToken() == token);
 
                 // 置いた点は手の色で、何番目かを添える（GUI の丸の中の数字）。
-                // タワーの間のマスは手の色だけ（GUI の番号なしの ●）
+                // タワーの間のマスは手の色だけ（GUI の番号なしの ●）。
+                // 反対の手と同じマスを使うところは紫（GUI と同じ）
+                string own = ghost && (order >= 0 || filled) ? OverlapColor : color;
                 string label;
-                if (order >= 0) label = "<color=" + color + ">" + token + "<size=70%> " + (order + 1) + "</size></color>";
-                else if (filled) label = "<color=" + color + ">" + token + "</color>";
+                if (order >= 0) label = "<color=" + own + ">" + token + "<size=70%> " + (order + 1) + "</size></color>";
+                else if (filled) label = "<color=" + own + ">" + token + "</color>";
+                else if (ghost) label = "<color=" + ghostColor + ">" + token + "</color>";
                 else label = token.ToString();
                 SetLabel(buttons[i], label);
             }

@@ -82,6 +82,27 @@ namespace JumpDrill.Gui
         /// <summary>編集できない表（その他）でも、マスの右クリックでメニューを出すか。ドリルの削除に使う。</summary>
         public bool CellMenus { get; set; }
 
+        /// <summary>
+        /// 編集できる表で、行の名前をつかんで別の位置へ落とした。値は（元の行, 移した後の行）。
+        /// </summary>
+        public event EventHandler<Tuple<int, int>> RowMoved;
+
+        /// <summary>つかんでいる行。つかんでいなければ -1。</summary>
+        private int _dragRow = -1;
+        private Point _dragStart;
+        private bool _dragging;
+
+        /// <summary>落とす位置（行と行の間の番号。0 なら先頭の上）。</summary>
+        private int _dropIndex = -1;
+
+        /// <summary>マウスの位置から、落とす位置（行と行の間）を出す。</summary>
+        private int DropIndexAt(Point location)
+        {
+            int y = location.Y - AutoScrollPosition.Y - HeaderHeight;
+            int index = (int)Math.Round(y / (double)RowHeight);
+            return Math.Max(0, Math.Min(_rows.Count, index));
+        }
+
         /// <summary>当たったマス。マスでなければ null。</summary>
         public MedalCell CellOf(Hit hit)
         {
@@ -249,6 +270,18 @@ namespace JumpDrill.Gui
                         DrawAdd(g, LabelWidth + row.Cells.Count * CellWidth, y, faint, center, IsHover(HitKind.AddCell, r));
                 }
 
+                // 行をつかんで動かしている間は、つかんだ行を薄く塗り、落とす位置に線を引く
+                if (_dragging && _dragRow >= 0 && _dropIndex >= 0)
+                {
+                    using (var held = new SolidBrush(Color.FromArgb(0x30, Theme.HoverText)))
+                        g.FillRectangle(held, 0, HeaderHeight + _dragRow * RowHeight, LabelWidth, RowHeight);
+                    using (var drop = new Pen(Theme.HoverText, Scaled(2)))
+                    {
+                        int y = HeaderHeight + _dropIndex * RowHeight;
+                        g.DrawLine(drop, 0, y, LabelWidth + Math.Max(1, _rows.Max(r => r.Cells.Count)) * CellWidth, y);
+                    }
+                }
+
                 if (CanAddRow)
                 {
                     int y = HeaderHeight + _rows.Count * RowHeight;
@@ -396,6 +429,13 @@ namespace JumpDrill.Gui
             if (hit.Kind == HitKind.Cell && (hit.Row != _selectedRow || hit.Column != _selectedColumn))
                 Select(hit.Row, hit.Column);
 
+            // 行の名前をつかんだら、動かし始めるまでは何もしない（クリックだけなら並べ替えない）
+            if (e.Button == MouseButtons.Left && _editable && hit.Kind == HitKind.RowLabel)
+            {
+                _dragRow = hit.Row;
+                _dragStart = e.Location;
+            }
+
             if (e.Button == MouseButtons.Left && (hit.Kind == HitKind.AddCell || hit.Kind == HitKind.AddRow))
                 AddClicked?.Invoke(this, hit);
         }
@@ -403,6 +443,22 @@ namespace JumpDrill.Gui
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+
+            if (e.Button == MouseButtons.Left && _dragRow >= 0)
+            {
+                bool dragged = _dragging;
+                int from = _dragRow;
+                int to = DropIndexAt(e.Location);
+                EndDrag();
+
+                // 落とす位置は行の間の番号。自分より下へ落とすと、自分が抜けた分だけ1つ詰まる
+                if (dragged)
+                {
+                    if (to > from) to--;
+                    if (to != from) RowMoved?.Invoke(this, Tuple.Create(from, to));
+                    return;
+                }
+            }
 
             var hit = HitAt(e.Location);
             if (e.Button == MouseButtons.Right &&
@@ -420,12 +476,37 @@ namespace JumpDrill.Gui
         {
             base.OnMouseMove(e);
 
+            if (_dragRow >= 0 && (e.Button & MouseButtons.Left) != 0)
+            {
+                var size = SystemInformation.DragSize;
+                if (!_dragging && (Math.Abs(e.X - _dragStart.X) > size.Width || Math.Abs(e.Y - _dragStart.Y) > size.Height))
+                {
+                    _dragging = true;
+                    Cursor = GrabCursors.Closed;
+                    _tip.SetToolTip(this, null);
+                }
+
+                if (_dragging)
+                {
+                    int index = DropIndexAt(e.Location);
+                    if (index != _dropIndex)
+                    {
+                        _dropIndex = index;
+                        Invalidate();
+                    }
+                    return;
+                }
+            }
+
             var hit = HitAt(e.Location);
             if (hit.Kind == _hover.Kind && hit.Row == _hover.Row && hit.Column == _hover.Column) return;
 
             bool redraw = IsAddKind(hit.Kind) || IsAddKind(_hover.Kind);
             _hover = hit;
-            Cursor = IsAddKind(hit.Kind) ? Cursors.Hand : Cursors.Default;
+            // 行の名前はつかんで動かせる。開いた手で知らせる
+            Cursor = IsAddKind(hit.Kind) ? Cursors.Hand
+                : _editable && hit.Kind == HitKind.RowLabel ? GrabCursors.Open
+                : Cursors.Default;
             if (redraw) Invalidate();
 
             var cell = hit.Kind == HitKind.Cell ? CellAt(hit.Row, hit.Column) : null;
@@ -438,6 +519,23 @@ namespace JumpDrill.Gui
                 cell.BestPercent.HasValue
                     ? Lang.T("ベスト ", "Best ") + cell.BestPercent.Value.ToString("0.0", CultureInfo.InvariantCulture) + "%"
                     : Lang.T("未プレイ", "Not played")));
+        }
+
+        private void EndDrag()
+        {
+            bool redraw = _dragging;
+            _dragRow = -1;
+            _dragging = false;
+            _dropIndex = -1;
+            Cursor = Cursors.Default;
+            if (redraw) Invalidate();
+        }
+
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            base.OnMouseCaptureChanged(e);
+            // ほかの窓に移ったなどでつかみが外れたら、並べ替えずにやめる
+            if (!Capture && _dragRow >= 0 && MouseButtons == MouseButtons.None) EndDrag();
         }
 
         protected override void OnMouseLeave(EventArgs e)

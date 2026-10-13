@@ -96,7 +96,7 @@ namespace JumpDrill.Gui
         {
             get { return HandsOrder[Math.Max(0, _hands.SelectedIndex)]; }
         }
-        private readonly CheckBox _tower = new CheckBox { Text = Lang.T("一直線のジャンプの間もノーツで埋める", "Fill the cells between straight jumps"), AutoSize = true };
+        private readonly CheckBox _tower = new CheckBox { Text = Lang.T("一直線のジャンプの間をノーツで埋める", "Fill the cells between straight jumps"), AutoSize = true };
         private readonly CheckBox _mirror = new CheckBox { Text = Lang.T("左右反転して反対の手にも同じ形を組む", "Mirror the pattern onto the other hand"), AutoSize = true };
         private readonly ComboBox _order = Combo(Lang.T("右 → 左", "Right → Left"), Lang.T("左 → 右", "Left → Right"));
         private readonly NumericUpDown _sets = Spin(1, 50, 1, 0);
@@ -153,7 +153,6 @@ namespace JumpDrill.Gui
         private readonly Button _generate = new Button { Text = Lang.T("生成", "Generate"), Height = 34, Dock = DockStyle.Fill };
 
         /// <summary>ドリル（14方向 × 8 Stage）を出力先へ一括で書く。画面の指定は使わない。</summary>
-        private readonly Button _bulk = new Button { Text = Lang.T("ドリル一括生成", "Generate all drills"), Height = 34, Dock = DockStyle.Fill };
         /// <summary>
         /// 同じ名前の譜面が既にあるとき書き直すか。生成と一括生成の両方に効く。
         /// 名前に入らない指定（クリック音・NJS など）だけ変えたときも同じ名前になる。
@@ -163,13 +162,13 @@ namespace JumpDrill.Gui
         /// <summary>生成（メダル画面からの分も含む）の最中か。同時に2つ書かない。</summary>
         private bool _setRunning;
         private readonly Button _openOut = new Button { Text = Lang.T("出力先を開く", "Open output folder"), Height = 34, Dock = DockStyle.Fill };
-        private readonly Button _preview = new Button { Text = Lang.T("ArcViewer でプレビュー", "Preview in ArcViewer"), Height = 34, Dock = DockStyle.Fill };
 
         /// <summary>ArcViewer に譜面 zip を渡すためのローカル HTTP サーバ。要るまで立てない。</summary>
         private LocalFileServer _server;
 
         /// <summary>前回プレビューした譜面。次に開いたとき選んだ状態にする。</summary>
         private string _lastPreviewFolder;
+        private readonly Button _preview = new Button { Text = Lang.T("ArcViewer でプレビュー", "Preview in ArcViewer"), Height = 34, Dock = DockStyle.Fill };
         private readonly Button _scoreboard = new Button { Text = Lang.T("スコア", "Scores"), Height = 34, Dock = DockStyle.Fill };
         private readonly Button _medals = new Button { Text = Lang.T("メダル", "Medals"), Height = 34, Dock = DockStyle.Fill };
         /// <summary>配布版だけに出す。確認が済むまでは押せない。</summary>
@@ -267,10 +266,22 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
+        /// 設定欄を、入れ物の幅いっぱいまで広げる。下の確認欄・CLI は窓の幅いっぱいなので、
+        /// 設定欄が中身の幅のままだと右端がずれる。中身より狭ければ広げず、横にスクロールさせる。
+        /// </summary>
+        private void ApplyParamsWidth()
+        {
+            if (_params == null || _paramsScroll == null) return;
+            _params.MinimumSize = new Size(Math.Max(0, _paramsScroll.ClientSize.Width), 0);
+        }
+
+        /// <summary>
         /// 窓を中身が収まる大きさにする。左の列と設定欄の幅、高い方の列の高さで決まる。
         /// </summary>
         private void FitWindow(bool center)
         {
+            // 中身の幅を測るので、広げた分はいったん外す（外さないと測るたびに広がる）
+            _params.MinimumSize = Size.Empty;
             PerformLayout();
 
             Size parameters = _params.GetPreferredSize(Size.Empty);
@@ -299,6 +310,9 @@ namespace JumpDrill.Gui
                 Location = new Point(
                     Math.Max(area.Left, Math.Min(Left, area.Right - outer.Width)),
                     Math.Max(area.Top, Math.Min(Top, area.Bottom - outer.Height)));
+
+            PerformLayout();
+            ApplyParamsWidth();
         }
 
         private int Px(int value)
@@ -407,8 +421,9 @@ namespace JumpDrill.Gui
             // 遷移を書いたらすぐ押せるよう、生成はその真下に大きく置く。
             // 上書きはその下の段。同じ段に並べると、英語で［出力先を開く］の文字が切れる
             var generateRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, AutoSize = true, Margin = new Padding(0, 6, 0, 0) };
-            generateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
-            generateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+            // 右の列には［出力先を開く］［ArcViewer でプレビュー］が入る。文字が切れないよう半分ずつにする
+            generateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            generateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             _generate.Font = new Font(Font.FontFamily, 11f, FontStyle.Bold);
             _generate.Height = 44;
             _generate.Margin = new Padding(3, 0, 4, 0);
@@ -418,6 +433,9 @@ namespace JumpDrill.Gui
             generateRow.Controls.Add(_generate, 0, 0);
             generateRow.Controls.Add(_openOut, 1, 0);
             generateRow.Controls.Add(_overwrite, 0, 1);
+            // 作ったものをすぐ目で確かめられるよう、プレビューは生成の下に置く
+            _preview.Margin = new Padding(4, 6, 3, 0);
+            generateRow.Controls.Add(_preview, 1, 1);
             panel.Controls.Add(generateRow, 0, 5);
 
             // 言語は左の列の下の空きに固定する。ボタンの並びに入れると、
@@ -481,11 +499,11 @@ namespace JumpDrill.Gui
                 Group(Lang.T("時間", "Timing"), Rows(
                     Row(Lang.T("BPM (1拍に2ノーツ)", "BPM (2 notes per beat)"), _interval),
                     Row(Lang.T("尺 (秒)", "Length (s)"), _seconds),
-                    Row(Lang.T("フリック (%)", "Flick (%)"), _flick))),
+                    Row(Lang.T("フリック度 (%)", "Flick (%)"), _flick))),
                 Group(Lang.T("切る方向 / 手", "Direction / hands"), Rows(
                     Row(Lang.T("切る方向", "Cut direction"), _direction),
-                    Row(Lang.T("タワー", "Tower"), _tower),
-                    Row(Lang.T("配置", "Hand pattern"), _hands),
+                    Row(Lang.T("タワー／スタック", "Tower / stack"), _tower),
+                    Row(Lang.T("配置パターン", "Hand pattern"), _hands),
                     Row(Lang.T("セットの順番", "Set order"), _order),
                     Row(Lang.T("セット数", "Sets"), _sets))),
                 Group(Lang.T("クリック音（音源に焼き込む）", "Click (baked into the audio)"), Rows(
@@ -514,10 +532,12 @@ namespace JumpDrill.Gui
             outInner.Controls.Add(_registerPack, 0, 4);
 
             var right = Stack(
-                Group(Lang.T("ジャンプ（間隔とは独立）", "Jump (independent of interval)"), Rows(
+                // 3行目は空ける。左の「時間」と行の数を揃えて、枠の高さが左右でずれないようにする
+                Group(Lang.T("ノーツの速さと出現位置", "Note speed and spawn"), Rows(
                     Row("NJS", _njs),
-                    Row(Lang.T("指定の仕方", "Set by"), _jumpMode),
-                    Row(Lang.T("値", "Value"), _jumpValue))),
+                    // 何で決めるかと、その値を1行に並べる。値だけ別の行だと、何の値か読めない
+                    Row(Lang.T("ノーツ出現位置", "Note spawn"), _jumpMode, _jumpValue),
+                    Row("", new Control { Width = 1, Height = _njs.Height }))),
                 Group(Lang.T("出力", "Output"), outInner));
 
             // 入力欄は中身の幅なので、設定欄も中身の大きさで決まる。窓が狭ければスクロールする。
@@ -530,7 +550,8 @@ namespace JumpDrill.Gui
                 Margin = new Padding(0),
             };
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            // 右の列は余った幅を受け取る。下の確認欄・CLI と右端を揃える（ApplyParamsWidth）
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             panel.Controls.Add(left, 0, 0);
             panel.Controls.Add(right, 1, 0);
 
@@ -538,6 +559,7 @@ namespace JumpDrill.Gui
             scroll.Controls.Add(panel);
             _paramsScroll = scroll;
             _params = panel;
+            scroll.Resize += (s, e) => ApplyParamsWidth();
 
             var cliRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, AutoSize = true };
             cliRow.Controls.Add(new Label { Text = Lang.T("同じ内容の CLI コマンド:", "Equivalent CLI command:"), AutoSize = true, ForeColor = SystemColors.GrayText }, 0, 0);
@@ -555,12 +577,12 @@ namespace JumpDrill.Gui
                 WrapContents = true,
                 Margin = new Padding(0),
             };
-            foreach (var button in new[] { _bulk, _preview, _medals, _scoreboard })
+            // 一括生成はメダル画面（標準）の［すべて生成］で行う
+            foreach (var button in new[] { _scoreboard, _medals })
             {
                 SizeButton(button);
                 buttons.Controls.Add(button);
             }
-            _preview.Margin = new Padding(24, 3, 3, 3);
 
             var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
             actions.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -629,11 +651,14 @@ namespace JumpDrill.Gui
         {
             public string Label;
             public Control Control;
+
+            /// <summary>入力欄の右に並べる欄（無ければ null）。何の値かが読めるよう、選ぶ欄と値を1行に置く。</summary>
+            public Control Extra;
         }
 
-        private static Field Row(string label, Control control)
+        private static Field Row(string label, Control control, Control extra = null)
         {
-            return new Field { Label = label, Control = control };
+            return new Field { Label = label, Control = control, Extra = extra };
         }
 
         /// <summary>
@@ -646,14 +671,14 @@ namespace JumpDrill.Gui
             var table = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 2,
+                ColumnCount = fields.Any(f => f.Extra != null) ? 3 : 2,
                 RowCount = fields.Length,
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
             };
             // ラベルの列は文字の幅に合わせる。決め打ちの幅だと拡大率が上がったときに切れる。
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            for (int c = 0; c < table.ColumnCount; c++)
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
             for (int i = 0; i < fields.Length; i++)
             {
@@ -674,6 +699,14 @@ namespace JumpDrill.Gui
                 fields[i].Control.Anchor = AnchorStyles.Left;
                 fields[i].Control.Margin = new Padding(0, 1, 0, 1);
                 table.Controls.Add(fields[i].Control, 1, i);
+
+                if (fields[i].Extra != null)
+                {
+                    fields[i].Extra.Dock = DockStyle.None;
+                    fields[i].Extra.Anchor = AnchorStyles.Left;
+                    fields[i].Extra.Margin = new Padding(6, 1, 0, 1);
+                    table.Controls.Add(fields[i].Extra, 2, i);
+                }
             }
 
             return table;
@@ -810,7 +843,7 @@ namespace JumpDrill.Gui
                 c.SelectedIndexChanged += (s, e) => RefreshPreview();
 
             _hands.SelectedIndexChanged += (s, e) => { ApplyHandPattern(); RefreshPreview(); };
-            _mirror.CheckedChanged += (s, e) => ApplyHandPattern();
+            _mirror.CheckedChanged += (s, e) => { _picker.Mirror = _mirror.Checked; ApplyHandPattern(); };
             _tower.CheckedChanged += (s, e) => { _picker.Tower = _tower.Checked; RefreshPreview(); };
 
             _jumpMode.SelectedIndexChanged += (s, e) =>
@@ -832,15 +865,13 @@ namespace JumpDrill.Gui
             new ToolTip().SetToolTip(_workspace, Lang.T("専用パックと zip をこの下に置く。", "Packs and zips are saved under this folder.") + Environment.NewLine + Lang.T("Beat Saber の中に置くと BSManager の更新で消える。", "Inside Beat Saber they are deleted when BSManager updates."));
             _browse.Click += (s, e) => Browse();
             _generate.Click += async (s, e) => await GenerateAsync();
-            _bulk.Click += async (s, e) => await GenerateBulkAsync();
             _overwrite.CheckedChanged += (s, e) => RefreshPreview();
             _tips.SetToolTip(_overwrite, Lang.T(
                 "オフ: 同じ名前の譜面が既にあれば書かない（一括生成は無いものだけ作る）\r\nオン: 書き直す。記録は消えない",
                 "Off: maps that already exist are left as is (Generate all writes only the missing ones)\r\nOn: they are written again. Records are kept"));
-            _tips.SetToolTip(_bulk, Lang.T("14方向 × 8 Stage の譜面（112曲）を出力先に作成します。", "Writes 112 maps (14 directions × 8 stages) to the output folder."));
             _openOut.Click += (s, e) => OpenOutputFolder();
-            _preview.Click += (s, e) => OpenInArcViewer();
             FormClosed += (s, e) => { if (_server != null) _server.Dispose(); };
+            _preview.Click += (s, e) => OpenInArcViewer();
             _scoreboard.Click += (s, e) => ShowScoreboard();
             _medals.Click += (s, e) => ShowMedals();
             _tips.SetToolTip(_language, "言語 / Language");
@@ -1150,6 +1181,7 @@ namespace JumpDrill.Gui
                 _sets.Value = _settings.GetDecimal("sets", 1, _sets.Minimum, _sets.Maximum);
                 _flick.Value = _settings.GetDecimal("flick", 0, _flick.Minimum, _flick.Maximum);
                 _mirror.Checked = _settings.GetBool("mirror", false);
+                _picker.Mirror = _mirror.Checked;
                 _tower.Checked = _settings.GetBool("tower", false);
                 _picker.Tower = _tower.Checked;
 
@@ -1352,35 +1384,11 @@ namespace JumpDrill.Gui
             }
         }
 
-        /// <summary>パック名を訊く。既定は JumpDrill。</summary>
+        /// <summary>パック名を訊く。既定は JumpDrill。ほかの名前の入力と同じ形の窓を使う（ボタンが潰れない）。</summary>
         private string PromptPackName()
         {
-            using (var dialog = new Form())
-            {
-                dialog.Text = Lang.T("パック名", "Pack name");
-                dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
-                dialog.StartPosition = FormStartPosition.CenterParent;
-                dialog.MinimizeBox = false;
-                dialog.MaximizeBox = false;
-                dialog.ClientSize = new Size(360, 108);
-                dialog.Font = Font;
-
-                var box = new TextBox { Text = "JumpDrill", Left = 12, Top = 34, Width = 336 };
-                var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 192, Top = 70, Width = 75 };
-                var cancel = new Button { Text = Lang.T("キャンセル", "Cancel"), DialogResult = DialogResult.Cancel, Left = 273, Top = 70, Width = 75 };
-
-                dialog.Controls.Add(new Label { Text = Lang.T("曲一覧に出すパックの名前", "Pack name shown in the song list"), Left = 12, Top = 12, AutoSize = true });
-                dialog.Controls.Add(box);
-                dialog.Controls.Add(ok);
-                dialog.Controls.Add(cancel);
-                dialog.AcceptButton = ok;
-                dialog.CancelButton = cancel;
-
-                if (dialog.ShowDialog(this) != DialogResult.OK) return null;
-
-                string name = box.Text.Trim();
-                return name.Length == 0 ? null : name;
-            }
+            return StageDialogs.AskName(this, Lang.T("パック名", "Pack name"), "JumpDrill", null,
+                Lang.T("曲一覧に出すパックの名前", "Pack name shown in the song list"));
         }
 
         /// <summary>見つかった CustomLevels を選択肢に並べる。先頭は常に手動指定。</summary>
@@ -1509,6 +1517,7 @@ namespace JumpDrill.Gui
                         folder, Path.GetDirectoryName(LevelWriter.LastZipPath))
                     : string.Format(CultureInfo.CurrentCulture, Lang.T("書き出しました: {0}", "Written: {0}"), folder);
                 _openOut.Enabled = true;
+                FillPreviewList();   // プレビューの一覧を開いていれば、いま作ったものを足す
             }
             catch (Exception ex)
             {
@@ -1525,11 +1534,6 @@ namespace JumpDrill.Gui
         private static string AlreadyExists => Lang.T(
             "既にあります。作り直すときは［上書き］にチェックを入れてください。",
             "Already exists. Check [Overwrite] to write it again.");
-
-        private async Task GenerateBulkAsync()
-        {
-            await GenerateSetAsync(this, DrillSet.All(), _overwrite.Checked, text => _status.Text = text);
-        }
 
         /// <summary>
         /// 一括生成のドリルを書く。全部でも1本でもよい。メダル画面からも呼ぶ。
@@ -1566,7 +1570,6 @@ namespace JumpDrill.Gui
 
             _setRunning = true;
             _generate.Enabled = false;
-            _bulk.Enabled = false;
             _openOut.Enabled = false;
             report(Lang.T("生成中...", "Generating..."));
 
@@ -1589,6 +1592,7 @@ namespace JumpDrill.Gui
                     ? string.Format(CultureInfo.CurrentCulture, Lang.T("書き出しました: {0}", "Written: {0}"), folders[0])
                     : string.Format(CultureInfo.CurrentCulture, Lang.T("一括生成が完了しました: {0}", "All drills written: {0}"), root));
                 _openOut.Enabled = true;
+                FillPreviewList();
                 return true;
             }
             catch (Exception ex)
@@ -1603,7 +1607,6 @@ namespace JumpDrill.Gui
             {
                 _setRunning = false;
                 _generate.Enabled = true;
-                _bulk.Enabled = true;
             }
         }
 
@@ -1690,10 +1693,26 @@ namespace JumpDrill.Gui
         /// </summary>
         private void OpenInArcViewer()
         {
-            string folder = ChooseDrill();
-            if (folder == null) return;
+            // 一覧は開いたままにできる（モードレス）。作り直したり別のドリルを見たりするたびに開き直さなくて済む。
+            // もう開いていれば前に出して、一覧を読み直す（いま作ったものを拾う）
+            if (_previewForm != null && !_previewForm.IsDisposed)
+            {
+                FillPreviewList();
+                if (_previewForm.WindowState == FormWindowState.Minimized) _previewForm.WindowState = FormWindowState.Normal;
+                _previewForm.Activate();
+                return;
+            }
 
-            Preview(this, folder);
+            if (FindDrillsForPreview().Count == 0)
+            {
+                MessageBox.Show(this,
+                    Lang.T("JumpDrill が作った譜面が見つかりませんでした。", "No maps made by JumpDrill were found.") + Environment.NewLine +
+                    Lang.T("先に生成するか、消したり移したりしていないか確認してください。", "Generate one first, or check that it was not deleted or moved."),
+                    "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            ShowPreviewList();
         }
 
         /// <summary>譜面フォルダを ArcViewer で開く。</summary>
@@ -1735,94 +1754,250 @@ namespace JumpDrill.Gui
             Preview(owner, folder);
         }
 
-        /// <summary>プレビューするドリルを選ばせる。取り消したら null。</summary>
-        private string ChooseDrill()
+        /// <summary>プレビューの一覧の窓。開いていなければ null。</summary>
+        private Form _previewForm;
+        private ListView _previewList;
+        private ImageList _previewIcons;
+
+        private List<DrillLibrary.DrillLevel> FindDrillsForPreview()
         {
-            var drills = DrillLibrary.Find(CurrentWorkspace().Root, _outDir.Text.Trim(), _lastOutputFolder);
-
-            if (drills.Count == 0)
-            {
-                MessageBox.Show(this,
-                    Lang.T("JumpDrill が作った譜面が見つかりませんでした。", "No maps made by JumpDrill were found.") + Environment.NewLine +
-                    Lang.T("先に生成するか、消したり移したりしていないか確認してください。", "Generate one first, or check that it was not deleted or moved."),
-                    "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return null;
-            }
-
-            return ChooseFromList(drills);
+            return DrillLibrary.Find(CurrentWorkspace().Root, _outDir.Text.Trim(), _lastOutputFolder);
         }
 
-        /// <summary>見つかったドリルを新しい順に並べて選ばせる。取り消したら null。</summary>
-        private string ChooseFromList(List<DrillLibrary.DrillLevel> drills)
+        /// <summary>
+        /// 見つかったドリルを新しい順に並べる窓を開く（モードレス）。選んで［開く］かダブルクリックで ArcViewer を開き、
+        /// 窓は閉じるまで残る。行頭に方向の絵（メダル画面と同じもの）を付ける。名前の字だけでは配置が思い浮かばない。
+        /// </summary>
+        private void ShowPreviewList()
         {
-            using (var form = new Form
+            var form = new Form
             {
-                Text = Lang.T("JumpDrill — どのドリルを見ますか", "JumpDrill — choose a drill"),
+                Text = Lang.T("JumpDrill — ArcViewer でプレビュー", "JumpDrill — Preview in ArcViewer"),
+                Icon = AppIcon.Value,
                 Font = Font,
                 StartPosition = FormStartPosition.CenterParent,
-                MinimizeBox = false,
-                MaximizeBox = false,
+                MinimizeBox = true,
+                MaximizeBox = true,
                 ShowInTaskbar = false,
-                ClientSize = new Size(720, 420),
-            })
+                ClientSize = new Size(Px(720), Px(420)),
+            };
+
+            var list = new ListView
             {
-                var list = new ListView
-                {
-                    Dock = DockStyle.Fill,
-                    View = View.Details,
-                    FullRowSelect = true,
-                    MultiSelect = false,
-                    HideSelection = false,
-                };
-                list.Columns.Add(Lang.T("譜面", "Map"), 380);
-                list.Columns.Add(Lang.T("置き場所", "Location"), 150);
-                list.Columns.Add(Lang.T("書き出し", "Written"), 120);
+                Dock = DockStyle.Fill,
+                View = View.Details,
+                FullRowSelect = true,
+                MultiSelect = false,
+                HideSelection = false,
+            };
 
-                foreach (var drill in drills)
-                {
-                    var item = new ListViewItem(DrillNaming.StripId(drill.SongName));
-                    item.SubItems.Add(drill.Where);
-                    item.SubItems.Add(drill.Written == DateTime.MinValue
-                        ? "" : drill.Written.ToString("yy/MM/dd HH:mm", CultureInfo.InvariantCulture));
-                    item.Tag = drill;
-                    list.Items.Add(item);
-                }
+            var icons = new ImageList { ColorDepth = ColorDepth.Depth32Bit };
+            int iconCell = Px(8), pad = Px(3);
+            icons.ImageSize = new Size(4 * iconCell + 1 + pad * 2, 3 * iconCell + 1 + pad * 2);
+            list.SmallImageList = icons;
 
-                // 前に見たものがあればそれ、無ければいちばん新しいもの。
-                int start = 0;
-                for (int i = 0; i < drills.Count; i++)
-                    if (string.Equals(drills[i].Path, _lastPreviewFolder, StringComparison.OrdinalIgnoreCase)) start = i;
+            list.Columns.Add(Lang.T("譜面", "Map"), Px(420));
+            list.Columns.Add(Lang.T("置き場所", "Location"), Px(150));
+            list.Columns.Add(Lang.T("書き出し", "Written"), Px(120));
 
-                list.Items[start].Selected = true;
-                list.Items[start].EnsureVisible();
+            // 横のスクロールを出さない。譜面の列を、窓の幅から右の2列を引いた残りにする（縦のバーが出ても収まる）
+            Action fitColumns = () =>
+            {
+                int rest = list.ClientSize.Width - list.Columns[1].Width - list.Columns[2].Width - 1;
+                if (rest > Px(120)) list.Columns[0].Width = rest;
+            };
+            list.ClientSizeChanged += (s, e) => fitColumns();
+            form.Shown += (s, e) => fitColumns();
 
-                var ok = new Button { Text = Lang.T("開く", "Open"), DialogResult = DialogResult.OK, AutoSize = true, Padding = new Padding(16, 4, 16, 4) };
-                var cancel = new Button { Text = Lang.T("やめる", "Cancel"), DialogResult = DialogResult.Cancel, AutoSize = true, Padding = new Padding(16, 4, 16, 4) };
-                list.DoubleClick += (s, e) => { if (list.SelectedItems.Count > 0) form.DialogResult = DialogResult.OK; };
+            var open = new Button { Text = Lang.T("開く", "Open"), AutoSize = true, Padding = new Padding(16, 4, 16, 4) };
+            var reload = new Button { Text = Lang.T("読み直す", "Reload"), AutoSize = true, Padding = new Padding(16, 4, 16, 4) };
+            var delete = new Button { Text = Lang.T("削除", "Delete"), AutoSize = true, Padding = new Padding(16, 4, 16, 4) };
+            var close = new Button { Text = Lang.T("閉じる", "Close"), AutoSize = true, Padding = new Padding(16, 4, 16, 4) };
 
-                var buttons = new FlowLayoutPanel
-                {
-                    Dock = DockStyle.Fill,
-                    FlowDirection = FlowDirection.RightToLeft,
-                    AutoSize = true,
-                };
-                buttons.Controls.Add(ok);
-                buttons.Controls.Add(cancel);
+            Action openSelected = () =>
+            {
+                if (list.SelectedItems.Count == 0) return;
+                Preview(form, ((DrillLibrary.DrillLevel)list.SelectedItems[0].Tag).Path);
+            };
+            open.Click += (s, e) => openSelected();
+            list.DoubleClick += (s, e) => openSelected();
+            list.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { openSelected(); e.Handled = true; } };
+            list.SelectedIndexChanged += (s, e) => open.Enabled = delete.Enabled = list.SelectedItems.Count > 0;
+            reload.Click += (s, e) => FillPreviewList();
+            delete.Click += (s, e) =>
+            {
+                if (list.SelectedItems.Count == 0) return;
+                DeletePreviewDrill(form, (DrillLibrary.DrillLevel)list.SelectedItems[0].Tag);
+            };
+            list.KeyDown += (s, e) => { if (e.KeyCode == Keys.Delete) { delete.PerformClick(); e.Handled = true; } };
+            close.Click += (s, e) => form.Close();
 
-                var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Padding = new Padding(10) };
-                root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-                root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-                root.Controls.Add(list, 0, 0);
-                root.Controls.Add(buttons, 0, 1);
-                form.Controls.Add(root);
+            // 折り返さない。折り返せると、幅を測るときに縦に積んだ高さで段が取られ、ボタンが上下にずれる
+            var buttons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = false,
+            };
+            buttons.Controls.Add(close);
+            buttons.Controls.Add(open);
+            buttons.Controls.Add(reload);
+            // 削除は開く・閉じるから離して左端に置く（押し間違えないように）
+            var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, AutoSize = true };
+            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            delete.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            bottom.Controls.Add(delete, 0, 0);
+            bottom.Controls.Add(buttons, 1, 0);
 
-                form.AcceptButton = ok;
-                form.CancelButton = cancel;
-                Theme.Apply(form);
+            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Padding = new Padding(10) };
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.Controls.Add(list, 0, 0);
+            root.Controls.Add(bottom, 0, 1);
+            form.Controls.Add(root);
+            form.CancelButton = close;
+            Theme.Apply(form);
 
-                if (form.ShowDialog(this) != DialogResult.OK || list.SelectedItems.Count == 0) return null;
-                return ((DrillLibrary.DrillLevel)list.SelectedItems[0].Tag).Path;
+            form.FormClosed += (s, e) =>
+            {
+                icons.Dispose();
+                _previewForm = null;
+                _previewList = null;
+                _previewIcons = null;
+            };
+
+            _previewForm = form;
+            _previewList = list;
+            _previewIcons = icons;
+            FillPreviewList();
+            form.Show(this);
+        }
+
+        /// <summary>
+        /// プレビューの一覧で選んだ譜面のフォルダを消す。一覧の1行は置き場所ごとなので、消すのはその1か所だけ。
+        /// ほかの置き場所に同じドリルが残っていなければ、カスタムステージからも外す。
+        /// 記録（リプレイ）は残す。ごみ箱には送らずそのまま消す（リプレイの削除と同じ）。
+        /// </summary>
+        private void DeletePreviewDrill(IWin32Window owner, DrillLibrary.DrillLevel drill)
+        {
+            bool lastCopy = !FindDrillsForPreview().Any(d =>
+                string.Equals(d.SongName, drill.SongName, StringComparison.Ordinal) &&
+                !string.Equals(d.Path, drill.Path, StringComparison.OrdinalIgnoreCase));
+
+            var message = new StringBuilder();
+            message.AppendLine(string.Format(CultureInfo.CurrentCulture,
+                Lang.T("ドリル「{0}」を削除しますか？", "Delete the drill \"{0}\"?"), DrillNaming.StripId(drill.SongName)));
+            message.AppendLine();
+            message.AppendLine(Lang.T("次の譜面のフォルダを消します（元に戻せません）:", "This map folder is deleted (cannot be undone):"));
+            message.AppendLine("  " + drill.Path);
+            message.AppendLine(lastCopy
+                ? Lang.T("カスタムステージに入っていれば、そこからも外します。", "It is also removed from custom stages.")
+                : Lang.T("ほかの置き場所にある同じドリルは残ります。", "Copies in other locations are kept."));
+            message.Append(Lang.T("記録（リプレイ）は残ります。", "Records (replays) are kept."));
+
+            if (MessageBox.Show(owner, message.ToString(), "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+
+            try
+            {
+                Directory.Delete(drill.Path, true);
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show(owner, ex.Message, "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            if (lastCopy)
+            {
+                // メダル画面を開いていれば、そちらの持っている中身を直して保存する（ファイルだけ直すと上書きで戻る）
+                if (_medalForm != null && !_medalForm.IsDisposed) _medalForm.DrillDeleted(drill.SongName, true);
+                else RemoveFromStages(drill.SongName);
+            }
+            else if (_medalForm != null && !_medalForm.IsDisposed)
+            {
+                _medalForm.DrillDeleted(drill.SongName, false);
+            }
+
+            if (string.Equals(_lastPreviewFolder, drill.Path, StringComparison.OrdinalIgnoreCase)) _lastPreviewFolder = null;
+            FillPreviewList();
+            _status.Text = string.Format(CultureInfo.CurrentCulture,
+                Lang.T("ドリル「{0}」を削除しました。", "Deleted the drill \"{0}\"."), DrillNaming.StripId(drill.SongName));
+        }
+
+        /// <summary>カスタムステージ（stages.json）から曲名を外す。読めなければ触らない。</summary>
+        private void RemoveFromStages(string songName)
+        {
+            try
+            {
+                string path = CustomStageBook.DefaultPath();
+                var book = CustomStageBook.Load(path);
+                bool changed = false;
+                foreach (var stage in book.Stages)
+                    foreach (var row in stage.Rows)
+                        changed |= row.Drills.RemoveAll(d => d == songName) > 0;
+                if (changed) book.Save(path);
+            }
+            catch (Exception ex)
+            {
+                _status.Text = Lang.T("ステージから外せませんでした: ", "Could not remove it from the stages: ") + ex.Message;
+            }
+        }
+
+        /// <summary>プレビューの一覧を読み直す。選んでいたもの（無ければ前に見たもの、それも無ければ最新）を選び直す。</summary>
+        private void FillPreviewList()
+        {
+            if (_previewList == null || _previewIcons == null) return;
+
+            string keep = _previewList.SelectedItems.Count > 0
+                ? ((DrillLibrary.DrillLevel)_previewList.SelectedItems[0].Tag).Path
+                : _lastPreviewFolder;
+
+            var drills = FindDrillsForPreview();
+            int iconCell = Px(8), pad = Px(3);
+
+            _previewList.BeginUpdate();
+            _previewList.Items.Clear();
+            foreach (var drill in drills)
+            {
+                var item = new ListViewItem(DrillNaming.StripId(drill.SongName));
+                item.ImageKey = IconKey(_previewIcons, drill.SongName, iconCell, pad);
+                item.SubItems.Add(drill.Where);
+                item.SubItems.Add(drill.Written == DateTime.MinValue
+                    ? "" : drill.Written.ToString("yy/MM/dd HH:mm", CultureInfo.InvariantCulture));
+                item.Tag = drill;
+                _previewList.Items.Add(item);
+            }
+            _previewList.EndUpdate();
+
+            if (_previewList.Items.Count == 0) return;
+            int start = 0;
+            for (int i = 0; i < drills.Count; i++)
+                if (string.Equals(drills[i].Path, keep, StringComparison.OrdinalIgnoreCase)) start = i;
+            _previewList.Items[start].Selected = true;
+            _previewList.Items[start].EnsureVisible();
+        }
+
+        /// <summary>譜面名の方向の絵を一覧の画像に足し、その鍵を返す。同じ方向（タワーかどうかも）は1枚を使い回す。</summary>
+        private static string IconKey(ImageList icons, string songName, int cell, int pad)
+        {
+            var sequences = DrillNaming.ParseSequences(songName);
+            bool tower = DrillNaming.IsTower(songName);
+            string key = string.Concat(sequences.Select(q => q.ToString())) + (tower ? " tower" : "");
+            if (sequences.Count == 0 || icons.Images.ContainsKey(key)) return sequences.Count == 0 ? null : key;
+
+            var bitmap = new Bitmap(icons.ImageSize.Width, icons.ImageSize.Height);
+            using (var g = Graphics.FromImage(bitmap))
+            using (var line = new Pen(Theme.Line))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                MedalBoard.DrawSequenceIcon(g, sequences, pad, pad, cell, Math.Max(1.5f, cell / 4f), line, tower);
+            }
+            icons.Images.Add(key, bitmap);
+            return key;
         }
 
         private void OpenOutputFolder()

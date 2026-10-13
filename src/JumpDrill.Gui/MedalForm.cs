@@ -203,6 +203,7 @@ namespace JumpDrill.Gui
             _board.CellDoubleClicked += (s, e) => OpenReplay();
             _board.AddClicked += (s, hit) => AddDrills(hit.Row);
             _board.MenuRequested += (s, hit) => ShowBoardMenu(hit);
+            _board.RowMoved += (s, move) => MoveRow(move.Item1, move.Item2);
 
             // 表の大きさは方向の数と画面の拡大率で決まるので、決め打ちせず中身に合わせる。
             Load += (s, e) => FitToContent();
@@ -554,6 +555,41 @@ namespace JumpDrill.Gui
                 : Lang.T("消せなかった譜面があります。", "Some maps could not be deleted.");
             if (failed.Count > 0)
                 MessageBox.Show(this, string.Join(Environment.NewLine, failed), "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        /// <summary>カスタムステージの行を並べ替える（行の名前をドラッグ）。</summary>
+        private void MoveRow(int from, int to)
+        {
+            var stage = CurrentStage;
+            if (stage == null || _bookBroken) return;
+            if (from < 0 || from >= stage.Rows.Count || to < 0 || to >= stage.Rows.Count) return;
+
+            var row = stage.Rows[from];
+            stage.Rows.RemoveAt(from);
+            stage.Rows.Insert(to, row);
+            _board.ClearSelection();
+            Edited();
+        }
+
+        /// <summary>
+        /// ほかの画面でドリルの譜面を消したとき。どのカスタムステージからも外し（<paramref name="removeFromStages"/>）、
+        /// その他の一覧を探し直す。ステージはこの画面が持っている中身を直して保存する
+        /// （ファイルだけ直すと、あとでこの画面が保存したときに元に戻ってしまう）。
+        /// </summary>
+        internal void DrillDeleted(string songName, bool removeFromStages)
+        {
+            if (removeFromStages && !_bookBroken)
+            {
+                bool changed = false;
+                foreach (var stage in _book.Stages)
+                    foreach (var row in stage.Rows)
+                        changed |= row.Drills.RemoveAll(d => d == songName) > 0;
+                if (changed) SaveStages();
+            }
+
+            _otherNames = null;
+            _board.ClearSelection();
+            ShowStage();
         }
 
         /// <summary>
