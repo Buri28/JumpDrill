@@ -30,13 +30,30 @@ namespace JumpDrillMod.UI
         private readonly DrillSetGenerationService drillSet;
         private readonly Medals.DrillSetScreen drillSetScreen;
         private readonly IconService icons;
-        private readonly SequenceEditor editor = new SequenceEditor();
+
+        /// <summary>
+        /// 組みかけのグリッド。Mods タブと Jump Drill 画面の Make drill で同じものを使う。
+        /// </summary>
+        private static readonly SequenceEditor editor = new SequenceEditor();
 
         /// <summary>
         /// 設定の記法をグリッドに読み戻せなかった（手で書いた複数の遷移など）。
         /// グリッドを触るまでは設定の記法をそのまま使い、書き換えない。
         /// </summary>
-        private bool keepConfigSequence;
+        private static bool keepConfigSequence;
+
+        private static bool editorLoaded;
+
+        /// <summary>同じ画面を出している実体。片方で変えたら、もう片方の表示を合わせる。</summary>
+        private static readonly List<JumpDrillTabController> instances = new List<JumpDrillTabController>();
+
+        /// <summary>
+        /// Drill ボタンで呼ぶもの。Jump Drill 画面の中に出しているときは、その画面へ戻る。
+        /// null なら Jump Drill 画面を開く（Mods タブ）。
+        /// </summary>
+        internal Action? Back { get; set; }
+
+        [UIParams] private readonly BeatSaberMarkupLanguage.Parser.BSMLParserParams? parserParams = null;
 
         internal JumpDrillTabController(DrillGenerationService generator, SongRefreshService refresher,
             DrillSetGenerationService drillSet, Medals.DrillSetScreen drillSetScreen, ReplayCleanupService cleanup,
@@ -48,10 +65,31 @@ namespace JumpDrillMod.UI
             this.refresher = refresher;
             this.drillSet = drillSet;
             this.drillSetScreen = drillSetScreen;
+            instances.Add(this);
 
             // 設定ファイルの記法からグリッドの状態を復元する。
             // 読めなければ編集前の既定（右手・空）のままにして、指定は残しておく
+            if (editorLoaded) return;
+            editorLoaded = true;
             keepConfigSequence = !editor.Load(Config?.Sequence) && !string.IsNullOrWhiteSpace(Config?.Sequence);
+        }
+
+        /// <summary>メニューを組み直したときに外す。</summary>
+        internal void Release() => instances.Remove(this);
+
+        /// <summary>ほかの実体で変えた設定とグリッドを、この画面に出し直す。</summary>
+        internal void Reload()
+        {
+            parserParams?.EmitEvent("jd-get");
+            RefreshSequenceText();
+            RefreshReplayUsage();
+        }
+
+        /// <summary>この実体以外の画面を出し直す。</summary>
+        internal void ReloadOthers()
+        {
+            foreach (var other in instances.ToList())
+                if (other != this) other.Reload();
         }
 
         private static PluginConfig? Config => PluginConfig.Instance;
@@ -508,6 +546,12 @@ namespace JumpDrillMod.UI
         [UIAction("open-medals")]
         public void OpenMedals()
         {
+            if (Back != null)
+            {
+                Back();
+                return;
+            }
+
             string? error = drillSetScreen.Open();
             if (error != null) SetStatus(error);
         }

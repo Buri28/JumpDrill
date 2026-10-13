@@ -2,7 +2,7 @@
   曲選択画面の Mods タブ。
 
   上から:
-    1. Drill                      ドリルセット（一番よく使う入口なので左上。一括生成もその中）
+    1. Drill                      ドリルセット（一括生成もその中）。押し間違えないよう右端
     2. 遷移の表示と Generate       いま組んでいるドリルと、それを書き出すボタン
     3. 状態の1行
     4. タブ（Transition / Hand & Direction / Timing / Click）
@@ -24,22 +24,25 @@
 
     <!-- ───── ドリルセット ─────
          Jump Drill 画面を開く。ドリルセット（112 本）のメダルと Lv、自作のドリル（Other）、
-         一括生成（Generate drills）、そこからのプレイがまとまっている -->
-    <horizontal spacing='2' pad='0'>
-      <button text='Drill' on-click='open-medals' pref-width='40' pref-height='8'
+         一括生成（Generate drills）、そこからのプレイがまとまっている。
+         Jump Drill 画面の Make drill から開いたときは、その画面へ戻る。
+         右端に置く。左上はタブや Generate へ手を伸ばす途中にあり、押し間違えやすい -->
+    <horizontal spacing='2' pad='0' pref-width='104' child-expand-width='false' child-align='MiddleRight'>
+      <button text='Drill' on-click='open-medals' pref-width='26' pref-height='6'
               hover-hint='Browse the 112 drills with medals and levels, generate them, and play a drill from there. Other drills you made are under Other.'/>
     </horizontal>
 
     <!-- ───── いま組んでいるドリル ─────
          Generate はどのタブからでも押せるように、タブの外に置く。
-         遷移を組んでから Timing で速さを決め、そのまま書き出す、という順で使うため -->
+         遷移を組んでから Timing で速さを決め、そのまま書き出す、という順で使うため。
+         ほかのボタンと見分けが付くように、色の付いたボタン（action-button）で大きめにする -->
     <horizontal spacing='2' pad='0'>
-      <text id='sequence-text' text='' font-size='4.5' align='Left' pref-width='42'/>
-      <button text='Generate' on-click='generate' pref-width='28' pref-height='7'
+      <text id='sequence-text' text='' font-size='4.5' align='Left' pref-width='38'/>
+      <action-button text='Generate' on-click='generate' pref-width='32' pref-height='9'
               hover-hint='Write this drill to the JumpDrill pack and reload the song list. The pack is registered as WIP, so scores are not submitted to ScoreSaber or BeatLeader.'/>
       <!-- toggle-setting は文字を左端、スイッチを右端に置くので、幅を詰めて間を空けすぎないようにする -->
       <horizontal pref-width='26'>
-        <toggle-setting text='Overwrite' value='overwrite' apply-on-change='true'
+        <toggle-setting text='Overwrite' value='overwrite' apply-on-change='true' get-event='jd-get'
                         hover-hint='Off: if this drill already exists, it is left as is. On: it is written again. Records are kept.'/>
       </horizontal>
     </horizontal>
@@ -105,29 +108,29 @@
           <list-setting text='Hand'
                         value='hand'
                         options='hand-options'
-                        apply-on-change='true'
+                        apply-on-change='true' get-event='jd-get'
                         hover-hint='Which hand the transition is for.'/>
 
           <toggle-setting text='Mirror to Other Hand'
                           value='mirror'
-                          apply-on-change='true'
+                          apply-on-change='true' get-event='jd-get'
                           hover-hint='Also build the same shape, mirrored, for the other hand.'/>
 
           <list-setting text='Hand Pattern'
                         value='pattern'
                         options='pattern-options'
-                        apply-on-change='true'
+                        apply-on-change='true' get-event='jd-get'
                         hover-hint='How the two hands interleave. Split runs one hand at a time and is what jump practice usually wants. Alternate switches hands every note, Alt Round Trip after each round trip. Only used with Mirror.'/>
 
           <list-setting text='Cut Direction'
                         value='direction'
                         options='direction-options'
-                        apply-on-change='true'
+                        apply-on-change='true' get-event='jd-get'
                         hover-hint='Axis follows the transition vector (back and forth along one line). Perp crosses it. Joining the arrows in order draws a circle: Inner turns its top inward, Outer turns it outward. Dot removes the arrow.'/>
 
           <toggle-setting text='Tower / Stack'
                           value='tower'
-                          apply-on-change='true'
+                          apply-on-change='true' get-event='jd-get'
                           hover-hint='Fill the cells between the two points with notes of the same direction when they are in a straight line. Adjacent points become a stack.'/>
 
         </vertical>
@@ -139,38 +142,38 @@
         <vertical spacing='0.5' pad='1' pref-width='104' child-expand-height='false' child-align='UpperCenter'>
           <slider-setting text='BPM'
                           value='interval-bpm'
-                          apply-on-change='true'
+                          apply-on-change='true' get-event='jd-get'
                           min='60' max='600' increment='5'
                           hover-hint='Note speed, counted as two notes per beat (1/2). This is the one to nudge while playing.'/>
 
           <slider-setting text='NJS'
                           value='njs'
-                          apply-on-change='true'
+                          apply-on-change='true' get-event='jd-get'
                           min='8' max='30' increment='0.5'
                           hover-hint='Note jump speed. Independent of the interval and of the jump distance.'/>
 
           <slider-setting text='Jump Distance (m)'
                           value='jump-distance'
-                          apply-on-change='true'
+                          apply-on-change='true' get-event='jd-get'
                           min='10' max='30' increment='0.5'
                           hover-hint='Jump distance in meters. The offset is derived from this.'/>
 
           <slider-setting text='Length (s)'
                           value='duration'
-                          apply-on-change='true'
+                          apply-on-change='true' get-event='jd-get'
                           min='5' max='180' increment='5'
                           hover-hint='Length of one block. With Split this is the length per hand.'/>
 
           <increment-setting text='Sets'
                              value='sets'
-                             apply-on-change='true'
+                             apply-on-change='true' get-event='jd-get'
                              integer-only='true'
                              min='1' max='10' increment='1'
                              hover-hint='How many times the whole thing repeats.'/>
 
           <increment-setting text='Flick (%)'
                              value='flick'
-                             apply-on-change='true'
+                             apply-on-change='true' get-event='jd-get'
                              integer-only='true'
                              min='0' max='50' increment='5'
                              hover-hint='Shortens the gap from each note to its return by this share of the interval, and lengthens the gap to the next pair by the same amount. 0 is off. Not for Alternate.'/>
@@ -182,12 +185,12 @@
           <list-setting text='Click'
                         value='click'
                         options='click-options'
-                        apply-on-change='true'
+                        apply-on-change='true' get-event='jd-get'
                         hover-hint='Which notes the click sounds on. Down is the standard.'/>
 
           <increment-setting text='Count-in'
                              value='count-in'
-                             apply-on-change='true'
+                             apply-on-change='true' get-event='jd-get'
                              integer-only='true'
                              min='0' max='16' increment='1'
                              hover-hint='Clicks before the first note.'/>
@@ -205,14 +208,14 @@
 
           <increment-setting text='Keep top'
                              value='replay-keep'
-                             apply-on-change='true'
+                             apply-on-change='true' get-event='jd-get'
                              integer-only='true'
                              min='10' max='9999' increment='5'
                              hover-hint='How many records to keep for each drill, from the top rank.'/>
 
           <toggle-setting text='Auto delete'
                           value='replay-auto'
-                          apply-on-change='true'
+                          apply-on-change='true' get-event='jd-get'
                           hover-hint='After each play, delete the records of that drill below the top. The play you just made is kept until you play that drill again.'/>
 
           <horizontal pref-height='7' spacing='2'>

@@ -68,9 +68,9 @@ namespace JumpDrillMod.UI.Medals
         private static void AppendEditRow(StringBuilder sb)
         {
             sb.Append("<horizontal id='edit-row' active='false' pref-height='6' spacing='1'>");
+            Button(sb, "Remove", "cell-remove", 15, "Remove the selected drill from this stage. The map and its records are kept.");
             Button(sb, "◀", "cell-left", 8, "Move the selected drill left.");
             Button(sb, "▶", "cell-right", 8, "Move the selected drill right.");
-            Button(sb, "Remove", "cell-remove", 15, "Remove the selected drill from this stage. The map and its records are kept.");
             Button(sb, "Row ▲", "row-up", 13, "Move the selected row up.");
             Button(sb, "Row ▼", "row-down", 13, "Move the selected row down.");
             Button(sb, "Rename row", "row-rename", 20, "Rename the selected row.");

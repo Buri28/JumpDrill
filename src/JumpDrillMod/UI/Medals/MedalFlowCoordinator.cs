@@ -31,6 +31,9 @@ namespace JumpDrillMod.UI.Medals
         private ReplayScoreReader? reader;
         private DiagramService? diagrams;
 
+        /// <summary>Make drill で出す、ドリルを組む画面。</summary>
+        private DrillMakerViewController? maker;
+
         /// <summary>
         /// 自分を出した親。閉じるときに要る。
         /// HMUI の <c>_parentFlowCoordinator</c> は外から見えないので、出すときに覚えておく。
@@ -38,14 +41,21 @@ namespace JumpDrillMod.UI.Medals
         private FlowCoordinator? parent;
 
         internal void Setup(ReplayScoreReader reader, LevelLauncher launcher, IconService icons, DiagramService diagrams,
-            DrillSetGenerationService drillSet)
+            DrillSetGenerationService drillSet, JumpDrillTabController? makerHost)
         {
             this.launcher = launcher;
             this.reader = reader;
             this.diagrams = diagrams;
 
             if (view == null) view = BeatSaberUI.CreateViewController<MedalViewController>();
-            view.Setup(reader, launcher, icons, drillSet, Play, ShowRecords);
+            view.Setup(reader, launcher, icons, drillSet, Play, ShowRecords, makerHost == null ? null : (Action)OpenMaker);
+
+            if (makerHost != null)
+            {
+                if (maker == null) maker = BeatSaberUI.CreateViewController<DrillMakerViewController>();
+                maker.Setup(makerHost);
+                makerHost.Back = CloseMaker;
+            }
 
             // 曲選択の枠に出しているものとは別の実体にする。1つのビューを2つの画面には出せない
             if (board == null) board = BeatSaberUI.CreateViewController<JumpDrillLeaderboardView>();
@@ -87,12 +97,35 @@ namespace JumpDrillMod.UI.Medals
 
         private void OnReplaysChanged() => view?.Rescan();
 
+        /// <summary>ドリルを組む画面を表の上に出す。</summary>
+        private void OpenMaker()
+        {
+            if (maker == null || topViewController != view) return;
+            SetTitle("Make Drill");
+            PresentViewController(maker, null, ViewController.AnimationDirection.Vertical);
+        }
+
+        /// <summary>ドリルを組む画面を閉じて表に戻る。作ったドリルが出るように読み直す。</summary>
+        private void CloseMaker()
+        {
+            if (maker == null || topViewController != maker) return;
+            SetTitle("Jump Drill");
+            DismissViewController(maker, ViewController.AnimationDirection.Vertical, () => view?.Rescan());
+        }
+
         protected override void BackButtonWasPressed(ViewController topViewController)
         {
             // 結果画面を出している間は、戻るで結果だけを閉じる
             if (results != null && topViewController == results)
             {
                 ContinueFromResults(results);
+                return;
+            }
+
+            // ドリルを組む画面を出している間は、戻るでその画面だけを閉じる
+            if (maker != null && topViewController == maker)
+            {
+                CloseMaker();
                 return;
             }
 

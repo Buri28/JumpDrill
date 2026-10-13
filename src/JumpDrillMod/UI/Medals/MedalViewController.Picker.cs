@@ -22,6 +22,9 @@ namespace JumpDrillMod.UI.Medals
     /// BPM の小さい方・大きい方を行の空きの数だけ取り、遅い順に並べる。
     ///
     /// 出すのは<b>読み込まれている譜面</b>（叩けるもの）だけ。Other と同じ。
+    /// そのステージに既にあるドリルは、どの行にあっても出さない。
+    /// 並びは作った日時の新しい順。作ってすぐ足しに来たとき、いま作ったものが一番上に来る。
+    /// 作った日時は Info.dat を書いた日時（上書きで作り直せば、その日時になる）。
     /// </remarks>
     internal partial class MedalViewController
     {
@@ -38,6 +41,9 @@ namespace JumpDrillMod.UI.Medals
         private string? pickerDirection;
 
         private List<string> pickerNames = new List<string>();
+
+        /// <summary>曲名ごとの作った日時。</summary>
+        private readonly Dictionary<string, DateTime> pickerTimes = new Dictionary<string, DateTime>(StringComparer.Ordinal);
         private readonly HashSet<string> pickerChosen = new HashSet<string>(StringComparer.Ordinal);
         private int pickerPage;
 
@@ -53,7 +59,7 @@ namespace JumpDrillMod.UI.Medals
             string width = PickerWidth.ToString(CultureInfo.InvariantCulture);
 
             sb.Append("<modal id='picker' show-event='show-picker' hide-event='hide-picker' click-off-closes='true'");
-            sb.Append(" move-to-center='true' size-delta-x='").Append(PickerWidth + 6).Append("' size-delta-y='74'>");
+            sb.Append(" move-to-center='true' size-delta-x='").Append(PickerWidth + 6).Append("' size-delta-y='76'>");
             sb.Append("<vertical pad='2' spacing='0.3' child-expand-height='false' child-align='UpperCenter' pref-width='")
               .Append(width).Append("'>");
 
@@ -71,11 +77,12 @@ namespace JumpDrillMod.UI.Medals
                 sb.Append("</horizontal>");
             }
 
-            OpenRow(sb, 4.5);
+            // ▲▼ は高さ 5 ないと記号が潰れる（表の見出しの段と同じ）
+            OpenRow(sb, 6);
             sb.Append("<text id='picker-note' text='' font-size='2.6' align='Left' color='#8899AA' pref-width='")
               .Append(PickerWidth - 20).Append("'/>");
-            sb.Append("<button text='▲' on-click='picker-up' pref-width='9' pref-height='4'/>");
-            sb.Append("<button text='▼' on-click='picker-down' pref-width='9' pref-height='4'/>");
+            sb.Append("<button text='▲' on-click='picker-up' pref-width='9' pref-height='5'/>");
+            sb.Append("<button text='▼' on-click='picker-down' pref-width='9' pref-height='5'/>");
             sb.Append("</horizontal>");
 
             sb.Append("<horizontal pref-height='7' spacing='2' pad-top='1'>");
@@ -128,11 +135,23 @@ namespace JumpDrillMod.UI.Medals
 
             try
             {
-                pickerNames = launcher.DrillLevels()
-                    .Select(d => d.SongName)
-                    .Where(n => pickerDirection == null || DrillNaming.DirectionOf(n) == pickerDirection)
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(n => DrillNaming.DirectionOf(n), StringComparer.OrdinalIgnoreCase)
+                // このステージに既にあるドリルは出さない（同じドリルを2回足させない）。曲名の付け方が変わっても拾えるよう ID で比べる
+                var placed = new HashSet<string>(
+                    stage.Rows.SelectMany(r => r.Drills).Select(n => DrillNaming.ExtractId(n) ?? n),
+                    StringComparer.Ordinal);
+
+                pickerTimes.Clear();
+                foreach (var level in launcher.DrillLevels())
+                {
+                    if (pickerDirection != null && DrillNaming.DirectionOf(level.SongName) != pickerDirection) continue;
+                    if (placed.Contains(level.Id) || placed.Contains(level.SongName)) continue;
+                    if (pickerTimes.ContainsKey(level.SongName)) continue;
+                    pickerTimes[level.SongName] = CreatedAt(level.Folder);
+                }
+
+                pickerNames = pickerTimes.Keys
+                    .OrderByDescending(n => pickerTimes[n])
+                    .ThenBy(n => DrillNaming.DirectionOf(n), StringComparer.OrdinalIgnoreCase)
                     .ThenBy(n => DrillNaming.ParseBpm(n) ?? double.MaxValue)
                     .ThenBy(n => n, StringComparer.Ordinal)
                     .ToList();
@@ -146,8 +165,8 @@ namespace JumpDrillMod.UI.Medals
             if (pickerNames.Count == 0)
             {
                 SetStatus(pickerDirection == null
-                    ? "No drills are loaded. Make one with the grid in the Mods tab."
-                    : "No " + pickerDirection + " drills are loaded.");
+                    ? "No drills to add. Make one with Make drill."
+                    : "No " + pickerDirection + " drills to add. Make one with Make drill.");
                 return;
             }
 
@@ -160,6 +179,23 @@ namespace JumpDrillMod.UI.Medals
 
             FillPicker(null);
             parserParams.EmitEvent("show-picker");
+        }
+
+        /// <summary>譜面を作った日時。読めなければ一番古い扱いにする。</summary>
+        private static DateTime CreatedAt(string? folder)
+        {
+            if (string.IsNullOrEmpty(folder)) return DateTime.MinValue;
+            try
+            {
+                string info = System.IO.Path.Combine(folder, "Info.dat");
+                if (System.IO.File.Exists(info)) return System.IO.File.GetLastWriteTime(info);
+                if (System.IO.Directory.Exists(folder)) return System.IO.Directory.GetLastWriteTime(folder);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log?.Warn("could not read the date of " + folder + ": " + e.Message);
+            }
+            return DateTime.MinValue;
         }
 
         private void TogglePick(int row)
@@ -274,6 +310,9 @@ namespace JumpDrillMod.UI.Medals
                 {
                     bool chosen = pickerChosen.Contains(name);
                     string shown = DisplayName(name);
+                    DateTime created;
+                    if (pickerTimes.TryGetValue(name, out created) && created != DateTime.MinValue)
+                        shown = "<color=#8899AA>" + created.ToString("yyyy/MM/dd HH:mm", ci) + "</color>  " + shown;
                     double best;
                     string id = DrillNaming.ExtractId(name) ?? string.Empty;
                     if (bestById.TryGetValue(id, out best)) shown += string.Format(ci, "   <color=#8899AA>best {0:0.0}%</color>", best);

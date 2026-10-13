@@ -51,6 +51,9 @@ namespace JumpDrillMod.UI.Medals
         /// <summary>ドリルを選んだとき。右の枠のリーダーボードを切り替えるのに使う。</summary>
         private Action<string?>? onSelect;
 
+        /// <summary>Make drill を押したとき。ドリルを組む画面を出す。</summary>
+        private Action? onMake;
+
         /// <summary>方向ごとの成績。読み込み前は全部空で出す（どこを埋めればいいかが見える）。</summary>
         private List<MedalRow> rows = DrillSetMedals.Evaluate(new Dictionary<string, double>());
 
@@ -125,8 +128,9 @@ namespace JumpDrillMod.UI.Medals
 
         /// <summary>外から要るものを渡す。ビューは Zenject を通らない。</summary>
         internal void Setup(ReplayScoreReader reader, LevelLauncher launcher, IconService icons,
-            DrillSetGenerationService drillSet, Action<string> onPlay, Action<string?> onSelect)
+            DrillSetGenerationService drillSet, Action<string> onPlay, Action<string?> onSelect, Action? onMake)
         {
+            this.onMake = onMake;
             this.reader = reader;
             this.launcher = launcher;
             this.icons = icons;
@@ -163,17 +167,23 @@ namespace JumpDrillMod.UI.Medals
               .Append("' spacing='0.3' pad='2' child-expand-height='false' child-align='UpperCenter'>");
 
             // 総合と切り替え
-            sb.Append("<horizontal pref-height='6' spacing='2'>");
-            sb.Append("<text id='total' text='' font-size='4.5' align='Left'/>");
-            sb.Append("<text id='count' text='' font-size='3.2' align='Left' color='#8899AA'/>");
+            // 総合とメダル数は縦に重ねる。右にボタンが4つ並ぶので、横に並べると重なる
+            sb.Append("<horizontal pref-height='7' spacing='1.5'>");
+            sb.Append("<vertical spacing='0' child-expand-height='false' child-align='MiddleLeft'>");
+            sb.Append("<text id='total' text='' font-size='4.2' align='Left'/>");
+            sb.Append("<text id='count' text='' font-size='2.6' align='Left' color='#8899AA'/>");
+            sb.Append("</vertical>");
             // ステージの切り替え（Standard / Other / カスタムステージ）と、カスタムステージの追加
             sb.Append("<dropdown-list-setting id='stage-dropdown' text='' value='stage' options='stage-options'");
             sb.Append(" apply-on-change='true' bind-value='true' on-change='stage-changed' pref-width='30' pref-height='6'");
             sb.Append(" hover-hint='Standard: the 112 drills. Other: drills not in any stage. CUSTOM: stages you made.'/>");
             sb.Append("<button text='New' on-click='stage-new' pref-width='12' pref-height='6'");
             sb.Append(" hover-hint='Make a new custom stage. You can rename it later.'/>");
-            sb.Append("<button text='Rescan' on-click='rescan' pref-width='17' pref-height='6'");
+            sb.Append("<button text='Rescan' on-click='rescan' pref-width='15' pref-height='6'");
             sb.Append(" hover-hint='Read the replays again.'/>");
+            // ドリルを組む画面（Mods タブと同じもの）。作ってすぐカスタムステージに足せるように
+            sb.Append("<action-button text='Make drill' on-click='make-drill' pref-width='22' pref-height='6'");
+            sb.Append(" hover-hint='Make a new drill with the grid, the same as in the Mods tab.'/>");
             sb.Append("</horizontal>");
 
             // ───── Drill ─────
@@ -255,7 +265,7 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("<horizontal pref-height='9' spacing='3' pad-top='1'>");
             sb.Append("<text id='detail' text='' font-size='3' align='Left' pref-width='")
               .Append(TableWidth - 35).Append("'/>");
-            sb.Append("<button text='Play' on-click='play' pref-width='32' pref-height='9'");
+            sb.Append("<action-button text='Play' on-click='play' pref-width='32' pref-height='9'");
             sb.Append(" hover-hint='Play this drill now (practice mode; scores are not submitted). If it is not generated yet, it is generated first. You come back here when it ends.'/>");
             sb.Append("</horizontal>");
 
@@ -444,6 +454,9 @@ namespace JumpDrillMod.UI.Medals
         /// 解析結果はファイル単位で持っているので、2回目からは増えた分しか読まない。
         /// Other の一覧（読み込まれている譜面）はメインスレッドでしか引けないので、戻ってから作る。
         /// </remarks>
+        [UIAction("make-drill")]
+        public void MakeDrill() => onMake?.Invoke();
+
         [UIAction("rescan")]
         public void Rescan()
         {

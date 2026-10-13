@@ -21,6 +21,9 @@ namespace JumpDrillMod.UI.Medals
 
         private MedalFlowCoordinator? flow;
 
+        /// <summary>Make drill で出す、ドリルを組む画面の中身。</summary>
+        internal JumpDrillTabController? Maker { get; set; }
+
         internal DrillSetScreen(ReplayScoreReader reader, LevelLauncher launcher, IconService icons, DiagramService diagrams,
             DrillSetGenerationService drillSet)
         {
@@ -41,7 +44,7 @@ namespace JumpDrillMod.UI.Medals
                 // 既に出ているなら何もしない。重ねて出すと戻るボタンを2回押さないと抜けられない
                 if (flow.isActivated) return null;
 
-                flow.Setup(reader, launcher, icons, diagrams, drillSet);
+                flow.Setup(reader, launcher, icons, diagrams, drillSet, Maker);
                 flow.Open();
                 return null;
             }

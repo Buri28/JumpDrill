@@ -19,6 +19,9 @@ namespace JumpDrillMod.UI
     internal class MenuUiRegistrar : IInitializable, IDisposable
     {
         private readonly JumpDrillTabController tab;
+
+        /// <summary>Jump Drill 画面の Make drill で出す方。中身は Mods タブと同じ。</summary>
+        private readonly JumpDrillTabController maker;
         private readonly DrillPackLocator pack;
 
         /// <summary>
@@ -36,6 +39,8 @@ namespace JumpDrillMod.UI
         {
             this.pack = pack;
             tab = new JumpDrillTabController(generator, refresher, drillSet, drillSetScreen, cleanup, icons);
+            maker = new JumpDrillTabController(generator, refresher, drillSet, drillSetScreen, cleanup, icons);
+            drillSetScreen.Maker = maker;
             drillSetButton = new MenuButton("JumpDrill",
                 "Jump drills: medals, records and play",
                 () => drillSetScreen.Open());
@@ -64,6 +69,9 @@ namespace JumpDrillMod.UI
 
         public void Dispose()
         {
+            tab.Release();
+            maker.Release();
+
             if (tabRegistered && TryRun("RemoveTab", () =>
                     GameplaySetup.Instance.RemoveTab(JumpDrillTabController.TabName)))
             {
