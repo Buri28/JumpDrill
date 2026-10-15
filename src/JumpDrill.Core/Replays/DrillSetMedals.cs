@@ -29,7 +29,7 @@ namespace JumpDrill.Replays
         /// <summary>譜面の ID。記録はこれで引く。</summary>
         public string Id { get; internal set; }
 
-        /// <summary>人のプレイのベスト再現精度 %。叩いていなければ null。</summary>
+        /// <summary>人のプレイのベスト（再現精度 % か精度 %。<see cref="DrillSetMedals.BestById"/> で選んだ方）。叩いていなければ null。</summary>
         public double? BestPercent { get; internal set; }
 
         public Medal Medal { get; internal set; }
@@ -61,6 +61,7 @@ namespace JumpDrill.Replays
     /// 一括生成のドリルのメダルと Lv。
     ///
     /// メダルは<b>再現精度 %</b> で決める（🥉 70 / 🥈 80 / 🥇 90 以上）。
+    /// GUI では精度 % に切り替えられる（線は同じ）。
     /// 成績の一覧で順位に使っているのと同じ数字で、ミスで振れなかったぶんが差し引かれているので
     /// ミス数の条件は別に要らない。
     ///
@@ -74,12 +75,12 @@ namespace JumpDrill.Replays
         public const double SilverPercent = 80.0;
         public const double GoldPercent = 90.0;
 
-        /// <summary>再現精度 % から取れるメダル。</summary>
-        public static Medal MedalOf(double reproducibilityPercent)
+        /// <summary>再現精度 %（または精度 %）から取れるメダル。</summary>
+        public static Medal MedalOf(double percent)
         {
-            if (reproducibilityPercent >= GoldPercent) return Medal.Gold;
-            if (reproducibilityPercent >= SilverPercent) return Medal.Silver;
-            if (reproducibilityPercent >= BronzePercent) return Medal.Bronze;
+            if (percent >= GoldPercent) return Medal.Gold;
+            if (percent >= SilverPercent) return Medal.Silver;
+            if (percent >= BronzePercent) return Medal.Bronze;
             return Medal.None;
         }
 
@@ -108,9 +109,10 @@ namespace JumpDrill.Replays
         }
 
         /// <summary>
-        /// ID ごとの、人のプレイのベスト再現精度 %。記録として数えないもの（自動プレイ・速度を変えたもの）は入れない。
+        /// ID ごとの、人のプレイのベスト再現精度 %（<paramref name="metric"/> で精度 %）。
+        /// 記録として数えないもの（自動プレイ・速度を変えたもの）は入れない。
         /// </summary>
-        public static Dictionary<string, double> BestById(IEnumerable<ReplayScore> scores)
+        public static Dictionary<string, double> BestById(IEnumerable<ReplayScore> scores, RankMetric metric = RankMetric.Reproducibility)
         {
             var best = new Dictionary<string, double>(StringComparer.Ordinal);
 
@@ -121,9 +123,10 @@ namespace JumpDrill.Replays
                 string id = DrillRecords.MapIdOf(score);
                 if (id == null) continue;
 
+                double value = DrillRecords.ValueOf(score, metric);
                 double current;
-                if (!best.TryGetValue(id, out current) || score.ReproducibilityPercent > current)
-                    best[id] = score.ReproducibilityPercent;
+                if (!best.TryGetValue(id, out current) || value > current)
+                    best[id] = value;
             }
 
             return best;

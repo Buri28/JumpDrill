@@ -30,10 +30,10 @@ namespace JumpDrill.Gui
     {
         private readonly string _workspaceRoot;
         private readonly MedalBoard _board = new MedalBoard { Dock = DockStyle.Fill };
-        private readonly Label _total = new Label { AutoSize = true, Font = new Font("Yu Gothic UI", 11f, FontStyle.Bold), Margin = new Padding(0, 0, 16, 0) };
+        private readonly Label _total = new Label { AutoSize = true, Font = new Font("Yu Gothic UI", 11f, FontStyle.Bold), Margin = new Padding(0) };
         private readonly Label _status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
         private readonly Button _rescan = new Button { Text = Lang.T("再スキャン", "Rescan"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1) };
-        private readonly Button _preview = new Button { Text = Lang.T("ArcViewer でプレビュー", "Preview in ArcViewer"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1), Enabled = false };
+        private readonly Button _preview = new Button { Text = Lang.T("プレビュー", "Preview"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1), Enabled = false };
         private readonly Button _generate = new Button { Text = Lang.T("生成", "Generate"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1), Enabled = false };
         private readonly Button _generateAll = new Button { Text = Lang.T("すべて生成", "Generate all"), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 1, 6, 1) };
 
@@ -63,6 +63,9 @@ namespace JumpDrill.Gui
         /// <summary>記録を読む Beat Saber。</summary>
         private readonly InstallPicker _install;
 
+        /// <summary>メダルを再現精度 % で決めるか、精度 % で決めるか。</summary>
+        private readonly MetricPicker _metric;
+
         /// <summary>読んでいる間に見る版が変わった。読み終えたら読み直す。</summary>
         private bool _reloadPending;
 
@@ -88,8 +91,18 @@ namespace JumpDrill.Gui
         /// <summary>作ったドリルの一覧（割り当てのダイアログに出す）。</summary>
         private readonly Func<List<DrillLibrary.DrillLevel>> _findDrills;
 
-        /// <summary>最後に読んだ記録。ステージを切り替えても読み直さずに済むよう持っておく。</summary>
-        private Dictionary<string, double> _best = new Dictionary<string, double>();
+        /// <summary>
+        /// 最後に読んだ記録の、ID ごとのベスト（再現精度 % と精度 %）。
+        /// ステージや基準を切り替えても読み直さずに済むよう、両方持っておく。
+        /// </summary>
+        private Dictionary<string, double> _bestRepro = new Dictionary<string, double>();
+        private Dictionary<string, double> _bestAcc = new Dictionary<string, double>();
+
+        /// <summary>いまの基準でのベスト。</summary>
+        private Dictionary<string, double> _best
+        {
+            get { return MetricPicker.Current == RankMetric.Accuracy ? _bestAcc : _bestRepro; }
+        }
         private int _failed;
 
         /// <summary>記録を1度でも読み終えたか。読む前は状態の文にメダル数を出さない。</summary>
@@ -119,6 +132,7 @@ namespace JumpDrill.Gui
             _generateSet = generateSet;
             _workspaceRoot = workspaceRoot;
             _install = new InstallPicker(settings) { Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 8, 3) };
+            _metric = new MetricPicker(settings) { Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 8, 3) };
             _openPreview = openPreview;
             _openReplay = openReplay;
             _followReplay = followReplay;
@@ -143,19 +157,34 @@ namespace JumpDrill.Gui
             stageBox.Controls.Add(_stageMenuButton);
             top.Controls.Add(stageBox, 0, 0);
             top.Controls.Add(_total, 1, 0);
+            // 総合 Lv とボタンがくっつかないよう、左に間を取る（窓の幅はこの段にも合わせるので、詰まったときもこの間は残る）
+            _replay.Margin = new Padding(16, _replay.Margin.Top, _replay.Margin.Right, _replay.Margin.Bottom);
             top.Controls.Add(_replay, 3, 0);
             top.Controls.Add(_preview, 4, 0);
             top.Controls.Add(_rescan, 5, 0);
             // 状態の文は2段目に出す。1段目はステージの欄とボタンで埋まり、並べると切れる。
             // 生成のボタンは2段目の右。生成の進み具合はこの状態の文に出るので、並べて置く
-            top.Controls.Add(_install, 0, 1);
+            var viewBox = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0), Anchor = AnchorStyles.Left };
+            viewBox.Controls.Add(_install);
+            viewBox.Controls.Add(new Label { Text = Lang.T("基準", "Rank by"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 4, 3) });
+            viewBox.Controls.Add(_metric);
+            top.Controls.Add(viewBox, 0, 1);
             top.Controls.Add(_status, 1, 1);
             top.SetColumnSpan(_status, 2);
             top.Controls.Add(_generate, 3, 1);
             top.Controls.Add(_generateAll, 4, 1);
             top.Controls.Add(_overwrite, 5, 1);
 
+            // 1段目と2段目のボタンは列ごとに左右の端を揃える（幅は列の広い方に合わせて伸ばす）。
+            // 上書きのチェックは、箱の左端を上の再スキャンの左端に揃える
+            foreach (var button in new[] { _replay, _preview, _rescan, _generate, _generateAll })
+                button.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            _generate.Margin = new Padding(_replay.Margin.Left, _generate.Margin.Top, _replay.Margin.Right, _generate.Margin.Bottom);
+            _overwrite.Margin = new Padding(_rescan.Margin.Left, 3, 0, 3);
+
             var outer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+            // 列は窓の幅に合わせる。中身の幅で広げると、上の段が広いときに表ごと窓の外へはみ出す
+            outer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             outer.Controls.Add(top, 0, 0);
@@ -179,8 +208,21 @@ namespace JumpDrill.Gui
                 await ScanAsync();
             };
             InstallPicker.Changed += reload;
-            FormClosed += (s, e) => InstallPicker.Changed -= reload;
-            Load += (s, e) => _install.FitWidth(DeviceDpi);
+
+            // 基準を変えたら、読んである記録で出し直す（スコア画面で変えたときも）
+            Action remetric = () =>
+            {
+                if (IsDisposed) return;
+                ShowStage();
+                UpdateButtons();
+            };
+            MetricPicker.Changed += remetric;
+            FormClosed += (s, e) =>
+            {
+                InstallPicker.Changed -= reload;
+                MetricPicker.Changed -= remetric;
+            };
+            Load += (s, e) => { _install.FitWidth(DeviceDpi); _metric.FitWidth(DeviceDpi); };
 
             // マスを選んでボタンを押す。ダブルクリックはスコア画面。スコアはプレイしたマスだけ。
             // スコア画面を開いたままなら、マスを選ぶだけでそちらも切り替わる。
@@ -197,6 +239,7 @@ namespace JumpDrill.Gui
                 if (cell != null && cell.Entry != null) await Generate(new[] { cell.Entry });
             };
             _generateAll.Click += async (s, e) => await Generate(DrillSet.All());
+            _tips.SetToolTip(_preview, Lang.T("選んだマスの譜面を ArcViewer で開きます。", "Opens the selected map in ArcViewer."));
             _tips.SetToolTip(_generate, Lang.T("選んだマスの譜面を出力先に作成します。", "Writes the selected map to the output folder."));
             _tips.SetToolTip(_generateAll, Lang.T("14方向 × 8 Stage の譜面（112曲）を出力先に作成します。", "Writes 112 maps (14 directions × 8 stages) to the output folder."));
             _tips.SetToolTip(_overwrite, Lang.T(
@@ -706,7 +749,9 @@ namespace JumpDrill.Gui
                 string workspace = _workspaceRoot;
                 string install = InstallPicker.Selected;
                 _otherNames = null;
-                _best = await Task.Run(() => DrillSetMedals.BestById(DrillRecords.Load(workspace, (path, ex) => failed++, install)));
+                var scores = await Task.Run(() => DrillRecords.Load(workspace, (path, ex) => failed++, install));
+                _bestRepro = DrillSetMedals.BestById(scores, RankMetric.Reproducibility);
+                _bestAcc = DrillSetMedals.BestById(scores, RankMetric.Accuracy);
                 _failed = failed;
                 _loaded = true;
                 ShowStage();
@@ -744,8 +789,10 @@ namespace JumpDrill.Gui
             for (int pass = 0; pass < 2; pass++)
             {
                 Size diff = _board.ContentSize - _board.ClientSize;
+                // 上の段（ステージ・ボタン）が表より広ければ、そちらに合わせる。狭いと右のボタンが切れる
+                int topExtra = _top.GetPreferredSize(Size.Empty).Width - _top.Width;
                 outer = new Size(
-                    Math.Min(Math.Max(Width + diff.Width, MinimumSize.Width), area.Width),
+                    Math.Min(Math.Max(Width + Math.Max(diff.Width, topExtra), MinimumSize.Width), area.Width),
                     Math.Min(Math.Max(Height + diff.Height, MinimumSize.Height), area.Height));
                 Size = outer;
                 PerformLayout();
@@ -803,7 +850,8 @@ namespace JumpDrill.Gui
                 rows.Sum(r => r.Level), rows.Sum(r => r.MaxLevel));
             _board.SetRows(rows, editable);
 
-            if (!_loaded) return;
+            // 生成中は状態の行に進み具合が出ている。消すと生成中だと分からなくなる
+            if (!_loaded || _generating) return;
             int medals = rows.Sum(r => r.Cells.Count(c => c.Medal != Medal.None));
             int total = rows.Sum(r => r.Cells.Count);
             _status.Text = string.Format(CultureInfo.CurrentCulture, Lang.T("メダル数 {0} / {1}{2}", "Medals {0} / {1}{2}"),

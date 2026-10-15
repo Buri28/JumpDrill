@@ -6,6 +6,16 @@ using JumpDrill.Output;
 
 namespace JumpDrill.Replays
 {
+    /// <summary>順位・ベスト・メダルを決める数字。</summary>
+    public enum RankMetric
+    {
+        /// <summary>再現精度 %（<see cref="ReplayScore.ReproducibilityPercent"/>）。</summary>
+        Reproducibility = 0,
+
+        /// <summary>精度 %。ゲームの Acc と同じ値（<see cref="ReplayScore.Accuracy"/>）。</summary>
+        Accuracy = 1,
+    }
+
     /// <summary>
     /// ドリルの記録を読んで、譜面ごとにまとめるための共通処理。
     /// 成績（ローカルリーダーボード）とメダルの両方が同じ読み方をする。
@@ -94,8 +104,14 @@ namespace JumpDrill.Replays
             return null;
         }
 
+        /// <summary>順位に使う数字。</summary>
+        public static double ValueOf(ReplayScore score, RankMetric metric)
+        {
+            return metric == RankMetric.Accuracy ? score.Accuracy : score.ReproducibilityPercent;
+        }
+
         /// <summary>
-        /// ベストは<b>再現精度 %</b> がいちばん高いもの。
+        /// ベストは<b>再現精度 %</b>（<paramref name="metric"/> で精度 % にもできる）がいちばん高いもの。
         ///
         /// 再現性そのもので選んではいけない。あれは本数を見ないので、
         /// 少ししか振らずに崩れる前にやめた記録が上位に出る。
@@ -105,7 +121,7 @@ namespace JumpDrill.Replays
         /// 速度を変えたプレイは別の速さを叩いている。どちらも数えるものが無いときだけ出す
         /// （その順で、速度を変えた人のプレイを自動プレイより先に）。
         /// </summary>
-        public static ReplayScore PickBest(IEnumerable<ReplayScore> plays)
+        public static ReplayScore PickBest(IEnumerable<ReplayScore> plays, RankMetric metric = RankMetric.Reproducibility)
         {
             ReplayScore best = null;
 
@@ -115,7 +131,7 @@ namespace JumpDrill.Replays
 
                 int rank = Rank(play), bestRank = Rank(best);
                 if (rank != bestRank) { if (rank < bestRank) best = play; continue; }
-                if (play.ReproducibilityPercent > best.ReproducibilityPercent) best = play;
+                if (ValueOf(play, metric) > ValueOf(best, metric)) best = play;
             }
 
             return best;

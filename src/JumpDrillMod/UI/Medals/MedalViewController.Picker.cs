@@ -7,8 +7,11 @@ using BeatSaberMarkupLanguage.Attributes;
 using BeatSaberMarkupLanguage.Components;
 using HMUI;
 using JumpDrill.Model;
+using JumpDrillMod.Services;
+using RankMetric = JumpDrill.Replays.RankMetric;
 using TMPro;
 using UnityEngine;
+using ScoreFormat = JumpDrill.Replays.ScoreFormat;
 
 namespace JumpDrillMod.UI.Medals
 {
@@ -315,7 +318,10 @@ namespace JumpDrillMod.UI.Medals
                         shown = "<color=#8899AA>" + created.ToString("yyyy/MM/dd HH:mm", ci) + "</color>  " + shown;
                     double best;
                     string id = DrillNaming.ExtractId(name) ?? string.Empty;
-                    if (bestById.TryGetValue(id, out best)) shown += string.Format(ci, "   <color=#8899AA>best {0:0.0}%</color>", best);
+                    if (bestById.TryGetValue(id, out best))
+                        shown += RankSetting.Current == RankMetric.Accuracy
+                            ? "   <color=#8899AA>best ACC " + ScoreFormat.Floor(best, 2) + "%</color>"
+                            : "   <color=#8899AA>best REPRO " + ScoreFormat.Floor(best, 1) + "%</color>";
 
                     text.text = chosen ? "[" + shown + "]" : shown;
                     Color color = chosen ? Picked : Played;

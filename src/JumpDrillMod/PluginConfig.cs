@@ -88,10 +88,16 @@ namespace JumpDrillMod
         public virtual bool DiagramMeanOnly { get; set; } = false;
 
         /// <summary>
-        /// リーダーボードを新しい順に並べるか。false なら順位（再現精度 % の高い順）。
+        /// リーダーボードを新しい順に並べるか。false なら順位（<see cref="RankByAccuracy"/> の数字の高い順）。
         /// 叩くたびに切り替え直さなくて済むように残しておく。
         /// </summary>
         public virtual bool LeaderboardNewestFirst { get; set; } = false;
+
+        /// <summary>
+        /// 順位・ベスト・メダルを ACC（精度 %）で決めるか。false なら REPRO（再現精度 %）。
+        /// Jump Drill 画面とリーダーボードで共通（<see cref="Services.RankSetting"/>）。
+        /// </summary>
+        public virtual bool RankByAccuracy { get; set; } = false;
 
         /// <summary>
         /// Jump Drill 画面で最後に見ていたステージ。空は Standard、<c>other</c> は Other、
@@ -99,7 +105,7 @@ namespace JumpDrillMod
         /// </summary>
         public virtual string MedalStage { get; set; } = string.Empty;
 
-        /// <summary>リプレイの整理で、ドリルごとに残す記録の数（順位の上位）。10 以上。</summary>
+        /// <summary>リプレイの整理で、ドリルごとに残す記録の数（REPRO・ACC それぞれの順位の上位）。10 以上。</summary>
         public virtual int ReplayKeep { get; set; } = 20;
 
         /// <summary>

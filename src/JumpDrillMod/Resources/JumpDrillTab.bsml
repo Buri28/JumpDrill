@@ -26,9 +26,11 @@
          Jump Drill 画面を開く。ドリルセット（112 本）のメダルと Lv、自作のドリル（Other）、
          一括生成（Generate drills）、そこからのプレイがまとまっている。
          Jump Drill 画面の Make drill から開いたときは、その画面へ戻る。
-         右端に置く。左上はタブや Generate へ手を伸ばす途中にあり、押し間違えやすい -->
+         右端に置く。左上はタブや Generate へ手を伸ばす途中にあり、押し間違えやすい。
+         画面を移るボタンは、色ではなく字の後ろの「→」で示す（Jump Drill 画面の Make drill・リーダーボードの Drill と揃える。
+         → は ▲▼ と同じく JIS の記号で、本体の日本語フォントで出る見込み。豆腐になるならゲーム内で替える） -->
     <horizontal spacing='2' pad='0' pref-width='104' child-expand-width='false' child-align='MiddleRight'>
-      <button text='Drill' on-click='open-medals' pref-width='26' pref-height='6'
+      <button text='Drill →' on-click='open-medals' pref-width='26' pref-height='6'
               hover-hint='Browse the 112 drills with medals and levels, generate them, and play a drill from there. Other drills you made are under Other.'/>
     </horizontal>
 
@@ -211,7 +213,7 @@
                              apply-on-change='true' get-event='jd-get'
                              integer-only='true'
                              min='10' max='9999' increment='5'
-                             hover-hint='How many records to keep for each drill, from the top rank.'/>
+                             hover-hint='How many records to keep for each drill. The top records by REPRO and by ACC are both kept.'/>
 
           <toggle-setting text='Auto delete'
                           value='replay-auto'

@@ -97,7 +97,7 @@ namespace JumpDrillMod.UI
 
                     armed = plan;
                     SetReplayNote(string.Format(CultureInfo.InvariantCulture,
-                        "<color=#FF8060>Press Delete now again to delete {0} record(s) below the top {1} ({2} file(s), {3}). It cannot be undone.</color>",
+                        "<color=#FF8060>Press Delete now again to delete {0} record(s) outside the top {1} by REPRO and ACC ({2} file(s), {3}). It cannot be undone.</color>",
                         plan.Targets.Count, keep, plan.Files.Count, ReplayCleanupService.Megabytes(plan.Bytes)));
                 }, UnityMainThreadTaskScheduler.Default);
                 return;

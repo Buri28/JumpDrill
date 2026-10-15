@@ -103,6 +103,19 @@ namespace JumpDrill.Gui
             return Math.Max(0, Math.Min(_rows.Count, index));
         }
 
+        /// <summary>
+        /// 表の左端。窓が表より広ければ表を左右の真ん中に置き、右だけが余って見えないようにする。
+        /// 表の幅は縦スクロールバーの分を空けて取ってあるので（その他で行が多いとき）、出ていなければその分も左右に分ける。
+        /// </summary>
+        private int OffsetX
+        {
+            get
+            {
+                int table = AutoScrollMinSize.Width - Scaled(16);
+                return Math.Max(Scaled(8), (ClientSize.Width - table) / 2);
+            }
+        }
+
         /// <summary>当たったマス。マスでなければ null。</summary>
         public MedalCell CellOf(Hit hit)
         {
@@ -217,7 +230,7 @@ namespace JumpDrill.Gui
 
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TranslateTransform(AutoScrollPosition.X + Scaled(8), AutoScrollPosition.Y);
+            g.TranslateTransform(AutoScrollPosition.X + OffsetX, AutoScrollPosition.Y);
 
             using (var faint = new SolidBrush(Theme.Faint))
             using (var text = new SolidBrush(Theme.Text))
@@ -395,7 +408,7 @@ namespace JumpDrill.Gui
 
             using (var number = new Font(small.FontFamily, 6.5f, FontStyle.Bold))
             using (var dark = new SolidBrush(Color.FromArgb(0x20, 0x20, 0x20)))
-                g.DrawString(cell.BestPercent.Value.ToString("0.0", CultureInfo.InvariantCulture), number,
+                g.DrawString(ScoreFormat.Floor(cell.BestPercent.Value, 1), number,
                     color.HasValue ? dark : text, disc, center);
         }
 
@@ -517,8 +530,16 @@ namespace JumpDrill.Gui
             _tip.SetToolTip(this, string.Format(CultureInfo.CurrentCulture, "{0}\n{1}{2}",
                 DrillNaming.StripId(cell.SongName), njs,
                 cell.BestPercent.HasValue
-                    ? Lang.T("ベスト ", "Best ") + cell.BestPercent.Value.ToString("0.0", CultureInfo.InvariantCulture) + "%"
+                    ? Lang.T("ベスト ", "Best ") + BestText(cell.BestPercent.Value)
                     : Lang.T("未プレイ", "Not played")));
+        }
+
+        /// <summary>ツールチップのベスト。どちらの基準の数字かを添え、桁はスコア画面の1段目と揃える。</summary>
+        private static string BestText(double percent)
+        {
+            return MetricPicker.Current == RankMetric.Accuracy
+                ? Lang.T("精度 ", "Acc ") + ScoreFormat.Floor(percent, 2) + "%"
+                : Lang.T("再現精度 ", "Repro acc ") + ScoreFormat.Floor(percent, 1) + "%";
         }
 
         private void EndDrag()
@@ -552,7 +573,7 @@ namespace JumpDrill.Gui
 
         private Hit HitAt(Point location)
         {
-            int x = location.X - AutoScrollPosition.X - Scaled(8);
+            int x = location.X - AutoScrollPosition.X - OffsetX;
             int y = location.Y - AutoScrollPosition.Y - HeaderHeight;
             if (x < 0 || y < 0) return default(Hit);
 

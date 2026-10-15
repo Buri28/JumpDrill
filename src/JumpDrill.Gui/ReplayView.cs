@@ -847,9 +847,9 @@ namespace JumpDrill.Gui
             // 再現も角度も「割合」ではなく目盛りに載せた点数。% と書くと嘘になる。
             values = new[]
             {
-                hand.Reproducibility.ToString("0.0", ci) + " /100",
-                hand.AverageCut.ToString("0.0", ci) + " /115",
-                hand.AnglePercent.ToString("0.0", ci) + " /100",
+                ScoreFormat.Floor(hand.Reproducibility, 1) + " /100",
+                ScoreFormat.Floor(hand.AverageCut, 1) + " /115",
+                ScoreFormat.Floor(hand.AnglePercent, 1) + " /100",
             };
         }
 
@@ -1000,7 +1000,7 @@ namespace JumpDrill.Gui
         {
             if (side == null) return "";
 
-            return side.PreSwing.ToString("0", ci) + " / " + side.PostSwing.ToString("0", ci);
+            return ScoreFormat.Floor(side.PreSwing, 0) + " / " + ScoreFormat.Floor(side.PostSwing, 0);
         }
 
         /// <summary>

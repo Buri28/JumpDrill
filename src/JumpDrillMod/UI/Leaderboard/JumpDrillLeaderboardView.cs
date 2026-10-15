@@ -6,12 +6,15 @@ using BeatSaberMarkupLanguage;
 using BeatSaberMarkupLanguage.Attributes;
 using BeatSaberMarkupLanguage.ViewControllers;
 using BeatSaberMarkupLanguage.Components;
+using BeatSaberMarkupLanguage.Components.Settings;
+using RankMetric = JumpDrill.Replays.RankMetric;
 using HMUI;
 using JumpDrillMod.Models;
 using JumpDrillMod.Services;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using ScoreFormat = JumpDrill.Replays.ScoreFormat;
 
 namespace JumpDrillMod.UI.Leaderboard
 {
@@ -33,7 +36,7 @@ namespace JumpDrillMod.UI.Leaderboard
 
         public override string ResourceName => "JumpDrillMod.Resources.Leaderboard.bsml";
 
-        /// <summary>順位の順（渡されたまま）。# の数字はこの並びで付ける。</summary>
+        /// <summary>順位の順（基準で並べ直したもの、<see cref="RankSetting.Rank"/>）。# の数字はこの並びで付ける。</summary>
         private IReadOnlyList<DrillScore> ranked = new List<DrillScore>();
 
         /// <summary>画面に出す順。順位の順か新しい順（<see cref="NewestFirst"/>）。</summary>
@@ -72,8 +75,9 @@ namespace JumpDrillMod.UI.Leaderboard
         /// </summary>
         internal void SetScores(IReadOnlyList<DrillScore> scores, DiagramService diagrams)
         {
-            ranked = scores;
-            this.scores = Arrange(scores);
+            rankedMetric = RankSetting.Current;
+            ranked = RankSetting.Rank(scores, rankedMetric);
+            this.scores = Arrange(ranked);
             this.diagrams = diagrams;
 
             // 譜面が変われば選び直し。前の譜面の3位を選んでいた、を持ち越さない
@@ -162,7 +166,7 @@ namespace JumpDrillMod.UI.Leaderboard
             return NewestFirst ? ranked.OrderByDescending(s => s.PlayedAt).ToList() : ranked;
         }
 
-        /// <summary>その記録の順位（1 始まり）。並べ方に関わらず再現精度 % の順。</summary>
+        /// <summary>その記録の順位（1 始まり）。並べ方（新しい順）に関わらず、基準（REPRO / ACC）の順。</summary>
         private int RankOf(DrillScore score)
         {
             for (int i = 0; i < ranked.Count; i++)
@@ -262,16 +266,21 @@ namespace JumpDrillMod.UI.Leaderboard
             if (error != null && diagramNote != null) diagramNote.text = error;
         }
 
-        private const string OrderBest = "Best";
+        // 並べ方。REPRO / ACC は順位の順で、その数字で順位を付ける（基準、Jump Drill 画面のプルダウンと共通）。
+        // Newest は日時の順で、# は直前に選んでいた基準の順位のまま
+        private const string OrderRepro = "REPRO";
+        private const string OrderAcc = "ACC";
         private const string OrderNewest = "Newest";
 
+        [UIComponent("order-dropdown")] private DropDownListSetting? orderDropdown = null;
+
         [UIValue("order-options")]
-        public List<object> OrderOptions => new List<object> { OrderBest, OrderNewest };
+        public List<object> OrderOptions => new List<object> { OrderRepro, OrderAcc, OrderNewest };
 
         [UIValue("order")]
         public string Order
         {
-            get => NewestFirst ? OrderNewest : OrderBest;
+            get => NewestFirst ? OrderNewest : RankSetting.Current == RankMetric.Accuracy ? OrderAcc : OrderRepro;
             set { }
         }
 
@@ -281,12 +290,27 @@ namespace JumpDrillMod.UI.Leaderboard
         [UIAction("order-changed")]
         public void OrderChanged(object value)
         {
-            bool newest = (value as string) == OrderNewest;
-            if (newest == NewestFirst) return;
+            string order = value as string ?? OrderRepro;
+            NewestFirst = order == OrderNewest;
+            if (order != OrderNewest)
+                RankSetting.Set(order == OrderAcc ? RankMetric.Accuracy : RankMetric.Reproducibility);
 
+            // 基準が変わったときは Changed から Rerank が呼ばれているが、並べ方だけのときのためにもう一度
+            Rerank();
+        }
+
+        /// <summary>
+        /// 今の基準と並べ方で並べ直す。選んでいた記録は選んだまま、その記録のページを出す。
+        /// </summary>
+        private void Rerank()
+        {
             var current = selected < scores.Count ? scores[selected] : null;
 
-            NewestFirst = newest;
+            // 1回押した Delete の確かめの文は順位を出しているので、並べ直したら取り消す
+            DisarmDelete();
+
+            rankedMetric = RankSetting.Current;
+            ranked = RankSetting.Rank(ranked, rankedMetric);
             scores = Arrange(ranked);
 
             selected = 0;
@@ -294,6 +318,7 @@ namespace JumpDrillMod.UI.Leaderboard
                 if (ReferenceEquals(scores[i], current)) selected = i;
             page = selected / Rows;
 
+            orderDropdown?.ReceiveValue();
             Fill();
         }
 
@@ -346,6 +371,7 @@ namespace JumpDrillMod.UI.Leaderboard
         protected override void DidDeactivate(bool removedFromHierarchy, bool screenSystemDisabling)
         {
             base.DidDeactivate(removedFromHierarchy, screenSystemDisabling);
+            RankSetting.Changed -= Rerank;
             RestoreCovered();
             gameObject.SetActive(false);
         }
@@ -354,7 +380,24 @@ namespace JumpDrillMod.UI.Leaderboard
         {
             base.DidActivate(firstActivation, addedToHierarchy, screenSystemEnabling);
             HideCovered();
+
+            // 基準は Jump Drill 画面のプルダウンからも変わる。出ていない間に変わっていれば合わせる。
+            // 変わっていなければ並べ直さない（▼ で見ていたページを、出し直すたびに戻さない）。
+            // 外す前に出し直しが来ても二重にならないよう、いったん外してから付ける
+            RankSetting.Changed -= Rerank;
+            RankSetting.Changed += Rerank;
+            if (rankedMetric != RankSetting.Current) Rerank();
         }
+
+        /// <summary>DidDeactivate を通らずに消えたときも、基準の知らせを受けないようにする。</summary>
+        protected override void OnDestroy()
+        {
+            RankSetting.Changed -= Rerank;
+            base.OnDestroy();
+        }
+
+        /// <summary><see cref="ranked"/> を並べた基準。</summary>
+        private RankMetric rankedMetric = RankSetting.Current;
 
         /// <summary>曲選択の枠に出している間だけ退けたものと、元の位置。離れるときに戻す。</summary>
         private readonly Dictionary<Transform, Vector3> covered = new Dictionary<Transform, Vector3>();
@@ -552,9 +595,9 @@ namespace JumpDrillMod.UI.Leaderboard
 
             var ci = CultureInfo.InvariantCulture;
             label.text = "<color=" + color + ">"
-                + FigureLine("Repro", hand.Reproducibility.ToString("0.0", ci), "/100") + "\n"
-                + FigureLine("Cut", hand.AverageCut.ToString("0.0", ci), "/115") + "\n"
-                + FigureLine("Angle", hand.AnglePercent.ToString("0.0", ci), "/100");
+                + FigureLine("Repro", ScoreFormat.Floor(hand.Reproducibility, 1), "/100") + "\n"
+                + FigureLine("Cut", ScoreFormat.Floor(hand.AverageCut, 1), "/115") + "\n"
+                + FigureLine("Angle", ScoreFormat.Floor(hand.AnglePercent, 1), "/100");
         }
 
         private static string FigureLine(string caption, string value, string max)
@@ -584,7 +627,7 @@ namespace JumpDrillMod.UI.Leaderboard
         {
             var ci = CultureInfo.InvariantCulture;
             return "<alpha=#99>" + caption + "  <alpha=#FF>"
-                + side.PreSwing.ToString("0", ci) + " / " + side.PostSwing.ToString("0", ci);
+                + ScoreFormat.Floor(side.PreSwing, 0) + " / " + ScoreFormat.Floor(side.PostSwing, 0);
         }
 
         private void FillUnderlines()
@@ -689,7 +732,7 @@ namespace JumpDrillMod.UI.Leaderboard
         private static string Hand(double? percent)
         {
             return percent.HasValue
-                ? percent.Value.ToString("0.0", CultureInfo.InvariantCulture)
+                ? ScoreFormat.Floor(percent.Value, 1)
                 : "-";
         }
 
@@ -744,10 +787,10 @@ namespace JumpDrillMod.UI.Leaderboard
                 text.text = Columns(text,
                     score.CountsAsRecord ? RankOf(score).ToString(ci) : "-",
                     score.PlayedAt.ToString("MM/dd HH:mm", ci) + Mark(score),
-                    score.ReproducibilityPercent.ToString("0.0", ci),
+                    ScoreFormat.Floor(score.ReproducibilityPercent, 1),
                     Hand(score.LeftReproducibilityPercent),
                     Hand(score.RightReproducibilityPercent),
-                    score.Accuracy.ToString("0.00", ci),
+                    ScoreFormat.Floor(score.Accuracy, 2),
                     Hand(score.LeftAccuracy),
                     Hand(score.RightAccuracy),
                     score.MissCount.ToString(ci),

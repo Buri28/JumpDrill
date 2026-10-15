@@ -18,6 +18,7 @@ namespace JumpDrill.Gui
     ///
     /// 主指標は<b>再現精度 %</b>。振りの綺麗さ（再現、100点満点）に本数を掛けて、
     /// <b>譜面が要求する振りの数</b>で割ったもの。<b>順位はこれで付ける。</b>
+    /// 「基準」のプルダウン（<see cref="MetricPicker"/>）で、順位とベストを精度 %（ゲームの Acc）で付け直せる。
     ///
     /// <b>再現</b>は往路と復路のずれを RMS で取り、跳び幅で割って 100点満点に載せたもの。
     /// <b>割合ではないので % とは書かない。</b>
@@ -48,7 +49,7 @@ namespace JumpDrill.Gui
         };
 
         /// <summary>
-        /// 2段目。1段目で選んだ譜面のプレイを並べる。既定は<b>再現精度 % の高い順</b>。
+        /// 2段目。1段目で選んだ譜面のプレイを並べる。既定は<b>順位の順</b>（基準の数字の高い順）。
         ///
         /// 既定が日付順ではなく順位順なのは、伸びたかどうかを知りたいのは「今までの自分より上に行けたか」
         /// なので、上から読めばそれが分かるから。何回目かは「回目」の列に出る。
@@ -165,7 +166,7 @@ namespace JumpDrill.Gui
             /// <summary>古い順。並びがそのまま「何回目」になる。</summary>
             public readonly List<ReplayScore> Plays = new List<ReplayScore>();
 
-            /// <summary>この譜面のベスト。</summary>
+            /// <summary>この譜面のベスト（いまの基準で選んだもの）。</summary>
             public ReplayScore Best;
 
             /// <summary>いちばん新しいプレイの日時。譜面の並び順に使う。</summary>
@@ -219,6 +220,9 @@ namespace JumpDrill.Gui
         /// <summary>記録を読む Beat Saber。</summary>
         private InstallPicker _install;
 
+        /// <summary>順位とベストを再現精度 % で付けるか、精度 % で付けるか。</summary>
+        private MetricPicker _metric;
+
         /// <summary>読んでいる間に見る版が変わった。読み終えたら読み直す。</summary>
         private bool _reloadPending;
 
@@ -227,6 +231,7 @@ namespace JumpDrill.Gui
             _workspaceRoot = workspaceRoot;
             _settings = settings;
             _install = new InstallPicker(settings) { Margin = new Padding(3, 4, 8, 3) };
+            _metric = new MetricPicker(settings) { Margin = new Padding(3, 4, 8, 3) };
             _initialId = selectId;
 
             Text = Lang.T("JumpDrill — スコア", "JumpDrill — Scores");
@@ -277,11 +282,21 @@ namespace JumpDrill.Gui
                 await ScanAsync();
             };
             InstallPicker.Changed += reload;
-            Load += (s, e) => _install.FitWidth(DeviceDpi);
+            Load += (s, e) => { _install.FitWidth(DeviceDpi); _metric.FitWidth(DeviceDpi); };
+
+            // 基準を変えたら、読んである記録でベストと順位を付け直す（メダル画面で変えたときも）。
+            // 読んでいる最中なら、読み終えたときに今の基準で並ぶ
+            Action remetric = () =>
+            {
+                if (IsDisposed || !_rescan.Enabled) return;
+                Rerank();
+            };
+            MetricPicker.Changed += remetric;
 
             FormClosed += (s, e) =>
             {
                 InstallPicker.Changed -= reload;
+                MetricPicker.Changed -= remetric;
                 if (_server != null) _server.Dispose();
             };
 
@@ -432,7 +447,7 @@ namespace JumpDrill.Gui
             // 残りは全部 2段目に回す。並べても比べられない譜面どうしの数字が並ぶだけなので。
             _list.Columns.Add("ID", 56);
             _list.Columns.Add(Caption("譜面"), 240);
-            _list.Columns.Add(Caption("再現精度 %"), 70, HorizontalAlignment.Right);
+            _list.Columns.Add(MetricPicker.Caption, 70, HorizontalAlignment.Right);
 
             // 2段目は ID と譜面を除いた全部。どれも同じ譜面の中での比較になる。
             _plays.Columns.Add(Caption("順位"), 52, HorizontalAlignment.Right);
@@ -455,6 +470,8 @@ namespace JumpDrill.Gui
 
             var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
             actions.Controls.Add(_install);
+            actions.Controls.Add(new Label { Text = Lang.T("基準", "Rank by"), AutoSize = true, Margin = new Padding(3, 8, 0, 3) });
+            actions.Controls.Add(_metric);
             actions.Controls.Add(_rescan);
             actions.Controls.Add(_openBeatLeader);
             actions.Controls.Add(_openReplay);
@@ -713,13 +730,68 @@ namespace JumpDrill.Gui
             foreach (var map in _maps)
             {
                 map.Plays.Sort((a, b) => PlayedAt(a).CompareTo(PlayedAt(b)));
-                map.Best = DrillRecords.PickBest(map.Plays);
+                map.Best = DrillRecords.PickBest(map.Plays, MetricPicker.Current);
                 map.Latest = PlayedAt(map.Plays[map.Plays.Count - 1]);
             }
 
             // 譜面どうしは速さも並びも違って比べられないので、点ではなく直近に叩いた順。
             // いま練習している譜面が上に来る。
             _maps.Sort((a, b) => b.Latest.CompareTo(a.Latest));
+        }
+
+        /// <summary>
+        /// 基準を切り替えた。読み直さずに、ベストと順位だけ付け直す。
+        /// 選んでいる譜面はそのまま、2段目はその譜面の新しいベストを選ぶ。
+        /// </summary>
+        private void Rerank()
+        {
+            foreach (var map in _maps) map.Best = DrillRecords.PickBest(map.Plays, MetricPicker.Current);
+            RebuildRows(_shownMap == null ? null : _shownMap.Key);
+
+            // 列の見出しが替わって広くなったら、譜面の一覧も広げる（横スクロールが出て数字が切れる）。
+            // プレイの一覧を削らないよう、広げた分だけ窓も広げる（画面に入る分まで）。
+            // 狭くなったときは、掴んで動かした位置を残すためそのままにする
+            if (_stages != null && _list.Items.Count > 0)
+            {
+                int need = ContentWidth(_list);
+                int grow = need - _stages.SplitterDistance;
+                if (grow > 0)
+                {
+                    // 窓を広げる間はプレイの一覧の幅を止めて、広がった分を譜面の一覧に回す
+                    Rectangle area = Screen.FromControl(this).WorkingArea;
+                    if (WindowState == FormWindowState.Normal)
+                    {
+                        var fixedPanel = _stages.FixedPanel;
+                        _stages.FixedPanel = FixedPanel.Panel2;
+                        Width = Math.Min(Width + grow, area.Width);
+                        if (Right > area.Right) Left = Math.Max(area.Left, area.Right - Width);
+                        PerformLayout();
+                        _stages.FixedPanel = fixedPanel;
+                    }
+
+                    // 画面の端で止まって広げきれなかったときは、プレイの一覧を詰めて譜面の一覧に回す
+                    int room = _stages.Width - _stages.SplitterWidth - PlaysMinimum;
+                    if (_stages.SplitterDistance < need && room >= MapMinimum)
+                        _stages.SplitterDistance = Math.Max(MapMinimum, Math.Min(need, room));
+
+                    // 幅が動いた後の横スクロールバーが残ることがあるので、列を合わせ直して出し直させる
+                    ListColumns.FitAll(_plays, 0);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 順位の並び。記録として数えるものを先に、その中で基準の数字の高い順、同じなら新しい順。
+        /// MOD のリーダーボードの # と同じ決め方。整理で残すものもこの並びの上位なので、
+        /// 画面の順位と消すものがずれない。
+        /// </summary>
+        private List<ReplayScore> RankOrder(MapEntry map, RankMetric metric)
+        {
+            return map.Plays
+                .OrderBy(p => !p.Replay.Info.CountsAsRecord)
+                .ThenByDescending(p => DrillRecords.ValueOf(p, metric))
+                .ThenByDescending(PlayedAt)
+                .ToList();
         }
 
         /// <summary>プレイした日時。リプレイの更新時刻で見る。</summary>
@@ -742,6 +814,7 @@ namespace JumpDrill.Gui
             _rebuilding = true;
             _list.BeginUpdate();
             _list.Items.Clear();
+            _list.Columns[2].Text = MetricPicker.Caption;
 
             foreach (var map in _maps) _list.Items.Add(MapRow(map));
 
@@ -777,7 +850,9 @@ namespace JumpDrill.Gui
             if (!info.CountsAsRecord) item.ForeColor = SystemColors.GrayText;
 
             item.SubItems.Add((map.Name ?? "") + NotCountedMark(info));
-            item.SubItems.Add(map.Best.ReproducibilityPercent.ToString("0.0", CultureInfo.InvariantCulture));
+            item.SubItems.Add(MetricPicker.Current == RankMetric.Accuracy
+                ? ScoreFormat.Floor(map.Best.Accuracy, 2)
+                : ScoreFormat.Floor(map.Best.ReproducibilityPercent, 1));
 
             item.Tag = map;
             return item;
@@ -785,13 +860,13 @@ namespace JumpDrill.Gui
 
         /// <summary>2段目の 1 行。</summary>
         /// <param name="index">古い方から数えた位置。0 始まり。「何回目か」になる。</param>
-        /// <param name="rank">再現精度 % の順位。1 始まり。</param>
+        /// <param name="rank">基準の数字（再現精度 % か精度 %）の順位。1 始まり。</param>
         private ListViewItem RankingRow(MapEntry map, int index, int rank)
         {
             var score = map.Plays[index];
 
-            // ★ は一覧に出しているベスト。自動プレイや速度を変えたプレイは順位の上に来ても
-            // ベストには選ばないので、1位と ★ がずれることがある。
+            // ★ は一覧に出しているベスト。順位は記録として数えるものを先に並べるので、ふつうは 1位と同じ。
+            // 数えるものが無い譜面だけ、ベストが速度を変えたプレイを自動プレイより先に選ぶぶん 1位とずれることがある。
             var item = new ListViewItem(string.Format(CultureInfo.CurrentCulture,
                 "{0}{1}", rank, score == map.Best ? " ★" : ""));
 
@@ -818,11 +893,8 @@ namespace JumpDrill.Gui
 
             if (map != null)
             {
-                // 順位は再現精度 % の高い順で決まる。どの列で並べても順位の数字は変わらない。
-                var byRank = new List<int>();
-                for (int i = 0; i < map.Plays.Count; i++) byRank.Add(i);
-                byRank.Sort((a, b) => map.Plays[b].ReproducibilityPercent
-                    .CompareTo(map.Plays[a].ReproducibilityPercent));
+                // 順位は RankOrder の並び。どの列で並べても順位の数字は変わらない。
+                var byRank = RankOrder(map, MetricPicker.Current).Select(p => map.Plays.IndexOf(p)).ToList();
 
                 var rankOf = new Dictionary<int, int>();
                 for (int r = 0; r < byRank.Count; r++) rankOf[byRank[r]] = r + 1;
@@ -952,11 +1024,11 @@ namespace JumpDrill.Gui
             if (!score.Replay.Info.CountsAsRecord) item.ForeColor = SystemColors.GrayText;
 
             // 順位を決めている値を先頭に置く。
-            item.SubItems.Add(score.ReproducibilityPercent.ToString("0.0", ci));
-            item.SubItems.Add(score.Score.ToString("0.0", ci));
-            item.SubItems.Add(score.Accuracy.ToString("0.00", ci));
+            item.SubItems.Add(ScoreFormat.Floor(score.ReproducibilityPercent, 1));
+            item.SubItems.Add(ScoreFormat.Floor(score.Score, 1));
+            item.SubItems.Add(ScoreFormat.Floor(score.Accuracy, 2));
 
-            item.SubItems.Add(score.AverageCut.ToString("0.00", ci));
+            item.SubItems.Add(ScoreFormat.Floor(score.AverageCut, 2));
             item.SubItems.Add(score.TimeDependence.ToString("0.000", ci));
             item.SubItems.Add(PercentPair(score, h => h.PreSwing));
             item.SubItems.Add(PercentPair(score, h => h.PostSwing));
@@ -975,8 +1047,8 @@ namespace JumpDrill.Gui
             var left = score.Hand(0);
             var right = score.Hand(1);
 
-            return (left == null ? "—" : value(left).ToString("0", ci)) + " / " +
-                   (right == null ? "—" : value(right).ToString("0", ci)) + "%";
+            return (left == null ? "—" : ScoreFormat.Floor(value(left), 0)) + " / " +
+                   (right == null ? "—" : ScoreFormat.Floor(value(right), 0)) + "%";
         }
 
         /// <summary>選んだ行の左右の内訳を埋める。</summary>
@@ -992,26 +1064,26 @@ namespace JumpDrill.Gui
                 var right = score.Hand(1);
 
                 // まず BeatLeader の成績画面と同じ並び。
-                AddSplit(Lang.T("総合 /115", "Total /115"), score, left, right, d => d.AverageCut.ToString("0.00", ci));
+                AddSplit(Lang.T("総合 /115", "Total /115"), score, left, right, d => ScoreFormat.Floor(d.AverageCut, 2));
                 // 振りの順に並べる。振りかぶり → 振り抜き → 当たり所。
-                AddSplit(Lang.T("振りかぶり /70", "Pre-swing /70"), score, left, right, d => d.BeforeCutScore.ToString("0.00", ci));
-                AddSplit(Lang.T("振り抜き /30", "Post-swing /30"), score, left, right, d => d.AfterCutScore.ToString("0.00", ci));
-                AddSplit(Lang.T("中心 /15", "Center /15"), score, left, right, d => d.CutDistanceScore.ToString("0.00", ci));
+                AddSplit(Lang.T("振りかぶり /70", "Pre-swing /70"), score, left, right, d => ScoreFormat.Floor(d.BeforeCutScore, 2));
+                AddSplit(Lang.T("振り抜き /30", "Post-swing /30"), score, left, right, d => ScoreFormat.Floor(d.AfterCutScore, 2));
+                AddSplit(Lang.T("中心 /15", "Center /15"), score, left, right, d => ScoreFormat.Floor(d.CutDistanceScore, 2));
                 AddSplit("TD", score, left, right, d => d.TimeDependence.ToString("0.000", ci));
                 // 単位は他の行と同じく見出し側に置く。
-                AddSplit("PRE %", score, left, right, d => d.PreSwing.ToString("0.00", ci));
-                AddSplit("POST %", score, left, right, d => d.PostSwing.ToString("0.00", ci));
+                AddSplit("PRE %", score, left, right, d => ScoreFormat.Floor(d.PreSwing, 2));
+                AddSplit("POST %", score, left, right, d => ScoreFormat.Floor(d.PostSwing, 2));
 
                 // ここから JumpDrill 独自。
                 // 行きと帰りを突き合わせて出す値なので、片側だけでは定義できない。
-                AddHand(Lang.T("再現 /100", "Repro /100"), score.Score.ToString("0.0", ci), left, right, h => h.Score.ToString("0.0", ci));
+                AddHand(Lang.T("再現 /100", "Repro /100"), ScoreFormat.Floor(score.Score, 1), left, right, h => ScoreFormat.Floor(h.Score, 1));
                 // 再現 /100 × 有効振りに掛かった倍率の合計。振れた本数ぶんの素点なので、ここは残す。
-                AddHand(Lang.T("再現スコア", "Repro score"), score.ReproducibilityScore.ToString("0", ci), left, right, h => h.ReproducibilityScore.ToString("0", ci));
+                AddHand(Lang.T("再現スコア", "Repro score"), ScoreFormat.Floor(score.ReproducibilityScore, 0), left, right, h => ScoreFormat.Floor(h.ReproducibilityScore, 0));
                 // 再現の元になる生の値。行きと帰りが何 m 離れているか。
                 AddHand(Lang.T("往復ずれ cm", "Round-trip gap cm"), (score.RoundTripGap * 100.0).ToString("0.00", ci), left, right, h => (h.RoundTripGap * 100.0).ToString("0.00", ci));
 
                 AddSplit(Lang.T("束の幅 cm", "Path spread cm"), score, left, right, d => (d.PathScatter * 100.0).ToString("0.00", ci));
-                AddSplit(Lang.T("角度 /100", "Angle /100"), score, left, right, d => d.AnglePercent.ToString("0.0", ci));
+                AddSplit(Lang.T("角度 /100", "Angle /100"), score, left, right, d => ScoreFormat.Floor(d.AnglePercent, 1));
                 AddSplit(Lang.T("角度ずれ °", "Angle error °"), score, left, right, d => d.AngleErrorMean.ToString("0.0", ci));
                 AddSplit(Lang.T("中心ずれ cm", "Center offset cm"), score, left, right, d => (d.CutDistanceMean * 100.0).ToString("0.0", ci));
 
@@ -1312,17 +1384,17 @@ namespace JumpDrill.Gui
             var copies = ReplayLibrary.SamePlayFiles(score.Replay.Path);
             if (MessageBox.Show(this,
                     string.Format(CultureInfo.CurrentCulture,
-                        Lang.T("このリプレイを削除しますか？\r\n\r\n{0}\r\n{1}   再現精度 {2:0.0}%\r\nファイル {3} 個 / {4}\r\n\r\n削除したリプレイは元に戻せません。",
-                               "Delete this replay?\r\n\r\n{0}\r\n{1}   Reproducibility {2:0.0}%\r\n{3} file(s) / {4}\r\n\r\nThis cannot be undone."),
-                        DrillNaming.StripId(score.Replay.Info.SongName ?? ""), WhenText(score), score.ReproducibilityPercent,
-                        copies.Count, Megabytes(copies.Sum(SizeOf))),
+                        Lang.T("このリプレイを削除しますか？\r\n\r\n{0}\r\n{1}   再現精度 {2}%   精度 {5}%\r\nファイル {3} 個 / {4}\r\n\r\n削除したリプレイは元に戻せません。",
+                               "Delete this replay?\r\n\r\n{0}\r\n{1}   Repro acc {2}%   Acc {5}%\r\n{3} file(s) / {4}\r\n\r\nThis cannot be undone."),
+                        DrillNaming.StripId(score.Replay.Info.SongName ?? ""), WhenText(score), ScoreFormat.Floor(score.ReproducibilityPercent, 1),
+                        copies.Count, Megabytes(copies.Sum(SizeOf)), ScoreFormat.Floor(score.Accuracy, 2)),
                     "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
 
             await DeleteAsync(copies, 1);
         }
 
         /// <summary>
-        /// 譜面ごとに、順位（再現精度 % の高い順）の上位 N 件とベストを残してほかを消す。
+        /// 譜面ごとに、再現精度 % の上位 N 件・精度 % の上位 N 件・ベストを残してほかを消す。
         /// 対象は今の一覧（見ているバージョンのもの）。
         /// </summary>
         private async Task CleanupAsync()
@@ -1358,8 +1430,8 @@ namespace JumpDrill.Gui
             var files = FilesOf(targets, copies);
             if (MessageBox.Show(this,
                     string.Format(CultureInfo.CurrentCulture,
-                        Lang.T("{0}、上位 {1} 件以外の {2} 件のリプレイ（ファイル {3} 個 / {4}）を削除します。\r\n削除したリプレイは元に戻せません。よろしいですか？",
-                               "Delete {2} replay(s) ({3} file(s) / {4}) other than the top {1} for {0}?\r\nThis cannot be undone."),
+                        Lang.T("{0}、再現精度・精度のどちらでも上位 {1} 件に入らない {2} 件のリプレイ（ファイル {3} 個 / {4}）を削除します。\r\n削除したリプレイは元に戻せません。よろしいですか？",
+                               "Delete {2} replay(s) ({3} file(s) / {4}) outside the top {1} by both Repro acc and Acc for {0}?\r\nThis cannot be undone."),
                         allMaps ? Lang.T("すべての譜面で", "all maps") : Lang.T("選んでいる譜面で", "the selected map"),
                         keep, targets.Count, files.Count, Megabytes(files.Sum(SizeOf))),
                     "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
@@ -1368,9 +1440,10 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 消すプレイ。譜面ごとに、順位の上位 <paramref name="keep"/> 件は残す。
+        /// 消すプレイ。譜面ごとに、再現精度 % の上位 <paramref name="keep"/> 件と
+        /// 精度 % の上位 <paramref name="keep"/> 件は残す（どちらかに入っていれば残る）。
         /// ベスト（★）はふつう上位に入っているが、自動プレイや速度変更のプレイは順位の上に来ても
-        /// ベストにならないので、それが上位を埋めたときのためにベストも念のため残す。
+        /// ベストにならないので、それが上位を埋めたときのためにベストも念のため残す（両方の基準のベスト）。
         /// </summary>
         private List<ReplayScore> PlanCleanup(int keep, bool allMaps)
         {
@@ -1379,9 +1452,11 @@ namespace JumpDrill.Gui
 
             foreach (var map in maps)
             {
-                // 順位は 2段目の「順位」と同じ並び（再現精度 % の高い順）
-                var kept = new HashSet<ReplayScore>(map.Plays.OrderByDescending(p => p.ReproducibilityPercent).Take(keep));
-                if (map.Best != null) kept.Add(map.Best);
+                // 順位は 2段目の「順位」と同じ並び（RankOrder）。基準は2つとも見る
+                var kept = new HashSet<ReplayScore>(RankOrder(map, RankMetric.Reproducibility).Take(keep));
+                kept.UnionWith(RankOrder(map, RankMetric.Accuracy).Take(keep));
+                foreach (var best in new[] { DrillRecords.PickBest(map.Plays, RankMetric.Reproducibility), DrillRecords.PickBest(map.Plays, RankMetric.Accuracy) })
+                    if (best != null) kept.Add(best);
                 targets.AddRange(map.Plays.Where(p => !kept.Contains(p)));
             }
 
@@ -1447,9 +1522,9 @@ namespace JumpDrill.Gui
                 update();
 
                 var keepRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
-                keepRow.Controls.Add(new Label { Text = Lang.T("譜面ごとに、順位の上位", "For each map, keep the top"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) });
+                keepRow.Controls.Add(new Label { Text = Lang.T("譜面ごとに、再現精度・精度それぞれの上位", "For each map, keep the top"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) });
                 keepRow.Controls.Add(count);
-                keepRow.Controls.Add(new Label { Text = Lang.T("件を残します。", "replays."), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) });
+                keepRow.Controls.Add(new Label { Text = Lang.T("件を残します。", "replays by Repro acc and by Acc."), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) });
 
                 var cancel = new Button { Text = Lang.T("キャンセル", "Cancel"), DialogResult = DialogResult.Cancel, AutoSize = true, Padding = new Padding(16, 2, 16, 2) };
                 var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, Margin = new Padding(0, 10, 0, 0) };

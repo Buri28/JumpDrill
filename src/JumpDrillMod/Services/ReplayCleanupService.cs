@@ -18,7 +18,7 @@ namespace JumpDrillMod.Services
     ///   <item>ごみ箱は通さず、すぐに消す（元に戻せない）。押すのは2回（1回目で何を消すかを出す）</item>
     ///   <item>同じプレイが BeatLeader・LocalLeaderboard・このMODの置き場にあれば全部消す
     ///         （1つでも残ると、読み直したときに一覧へ戻ってくる。JumpDrill.Core の <c>ReplayLibrary.SamePlayGroups</c>）</item>
-    ///   <item>残すのは順位（リーダーボードの # と同じ並び）の上位 N 件。N は 10 以上</item>
+    ///   <item>残すのは順位（リーダーボードの # と同じ並び、REPRO）の上位 N 件と、ACC の上位 N 件。N は 10 以上</item>
     /// </list>
     /// 自動削除は、ドリルを叩いてリプレイを書き終えたときに、そのドリルだけを整理する。
     /// <b>叩いたばかりの記録は、順位が下でも次に叩くまで残す。</b>終えてすぐに一覧から消えると、
@@ -91,11 +91,19 @@ namespace JumpDrillMod.Services
         }
 
         /// <summary>
-        /// 順位の上位 <paramref name="keep"/> 件より下の記録。<paramref name="protect"/> と同じプレイは残す。
+        /// REPRO の順位の上位 <paramref name="keep"/> 件にも、ACC の順位の上位 <paramref name="keep"/> 件にも入らない記録。
+        /// <paramref name="protect"/> と同じプレイは残す。
         /// </summary>
-        internal static List<DrillScore> Below(IReadOnlyList<DrillScore> ranked, int keep, string? protect = null)
+        /// <remarks>
+        /// 渡された並び（画面の基準で変わる）には頼らず、2つの基準それぞれで並べ直して決める（<see cref="RankSetting.Rank"/>）。
+        /// </remarks>
+        internal static List<DrillScore> Below(IReadOnlyList<DrillScore> scores, int keep, string? protect = null)
         {
-            return ranked.Skip(keep)
+            var kept = new HashSet<DrillScore>(RankSetting.Rank(scores, RankMetric.Reproducibility).Take(keep));
+            kept.UnionWith(RankSetting.Rank(scores, RankMetric.Accuracy).Take(keep));
+
+            return scores
+                .Where(s => !kept.Contains(s))
                 .Where(s => protect == null ||
                             (!string.Equals(s.ReplayPath, protect, StringComparison.OrdinalIgnoreCase) &&
                              ReplayLibrary.SamePlayGap(s.ReplayPath, protect) < 0))

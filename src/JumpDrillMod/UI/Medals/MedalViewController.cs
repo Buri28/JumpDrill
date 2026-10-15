@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using BeatSaberMarkupLanguage.Attributes;
 using BeatSaberMarkupLanguage.Components;
+using BeatSaberMarkupLanguage.Components.Settings;
 using BeatSaberMarkupLanguage.Parser;
 using BeatSaberMarkupLanguage.ViewControllers;
 using HMUI;
@@ -57,8 +58,11 @@ namespace JumpDrillMod.UI.Medals
         /// <summary>方向ごとの成績。読み込み前は全部空で出す（どこを埋めればいいかが見える）。</summary>
         private List<MedalRow> rows = DrillSetMedals.Evaluate(new Dictionary<string, double>());
 
-        /// <summary>ID ごとのベスト再現精度 %。Other の数字もここから引く。</summary>
-        private Dictionary<string, double> bestById = new Dictionary<string, double>();
+        /// <summary>ID ごとのベスト（REPRO と ACC）。基準を切り替えても読み直さずに済むよう両方持つ。</summary>
+        private ReplayScoreReader.BestRecords bests = new ReplayScoreReader.BestRecords();
+
+        /// <summary>今の基準での ID ごとのベスト。Other の数字もここから引く。</summary>
+        private Dictionary<string, double> bestById => bests.For(RankSetting.Current);
 
         /// <summary>Other に出せるドリルの曲名（読み込まれている譜面のうち、ドリルセット以外も含む全部）。</summary>
         private List<string> otherNames = new List<string>();
@@ -166,24 +170,38 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("<bg><vertical pref-width='").Append(width)
               .Append("' spacing='0.3' pad='2' child-expand-height='false' child-align='UpperCenter'>");
 
-            // 総合と切り替え
-            // 総合とメダル数は縦に重ねる。右にボタンが4つ並ぶので、横に並べると重なる
-            sb.Append("<horizontal pref-height='7' spacing='1.5'>");
-            sb.Append("<vertical spacing='0' child-expand-height='false' child-align='MiddleLeft'>");
-            sb.Append("<text id='total' text='' font-size='4.2' align='Left'/>");
+            // 総合と切り替え。2段に分ける（ユーザー指定の並び）。
+            // 1段目: 総合とメダル数（左端）・ステージ（Standard / Other / カスタム）・New、右端に Make drill。
+            // 2段目: 基準（REPRO / ACC）・Rescan を左寄せ。
+            // 基準とステージは2択でもボタンにはしない（今どちらか読めない）。
+            // 総合は入れ物いっぱいに広げて左寄せにする。広げないと入れ物の真ん中に出た（ゲーム内で確認）。
+            // 1段目の幅: 総合 30 + Standard 30 + New 12 + 空き + Make drill 24、間 1×4 で表の内側（TableWidth - 4）。
+            // 画面を移るボタンは色ではなく字の後ろの「→」で示す（ユーザー指定。→ は ▲▼ と同じく JIS の記号で、本体の日本語フォントで出る見込み）
+            sb.Append("<horizontal pref-height='7' spacing='1' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>");
+            // 入れ物は Box と同じだが、幅も中身に合わせて広げる（child-control-width）。広げないと文字が真ん中に寄る
+            sb.Append("<horizontal pref-width='30' min-width='30' child-align='MiddleLeft' child-expand-width='true' child-control-width='true'")
+              .Append(" child-expand-height='true' child-control-height='true' pad='0'>");
+            sb.Append("<vertical spacing='0' child-expand-height='false' child-expand-width='true' child-control-width='true' child-align='MiddleLeft'>");
+            sb.Append("<text id='total' text='' font-size='3.4' align='Left' word-wrapping='false'/>");
             sb.Append("<text id='count' text='' font-size='2.6' align='Left' color='#8899AA'/>");
-            sb.Append("</vertical>");
-            // ステージの切り替え（Standard / Other / カスタムステージ）と、カスタムステージの追加
+            sb.Append("</vertical></horizontal>");
             sb.Append("<dropdown-list-setting id='stage-dropdown' text='' value='stage' options='stage-options'");
             sb.Append(" apply-on-change='true' bind-value='true' on-change='stage-changed' pref-width='30' pref-height='6'");
             sb.Append(" hover-hint='Standard: the 112 drills. Other: drills not in any stage. CUSTOM: stages you made.'/>");
             sb.Append("<button text='New' on-click='stage-new' pref-width='12' pref-height='6'");
             sb.Append(" hover-hint='Make a new custom stage. You can rename it later.'/>");
+            Box(sb, TableWidth - 4 - 30 - 30 - 12 - 24 - 4, "MiddleLeft", "<text text='' font-size='2.6'/>");
+            sb.Append("<button text='Make drill →' on-click='make-drill' pref-width='24' pref-height='6'");
+            sb.Append(" hover-hint='Make a new drill with the grid, the same as in the Mods tab.'/>");
+            sb.Append("</horizontal>");
+
+            // プルダウンは指定の幅より広く出ることがあるので、Rescan との間を広めに空ける
+            sb.Append("<horizontal pref-height='6' spacing='3' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>");
+            sb.Append("<dropdown-list-setting id='rank-dropdown' text='' value='rank' options='rank-options'");
+            sb.Append(" apply-on-change='true' bind-value='true' on-change='rank-changed' pref-width='30' pref-height='6'");
+            sb.Append(" hover-hint='The number for medals, Lv and the rank. REPRO: reproducibility accuracy. ACC: the game accuracy. Medals are 70 / 80 / 90 for both.'/>");
             sb.Append("<button text='Rescan' on-click='rescan' pref-width='15' pref-height='6'");
             sb.Append(" hover-hint='Read the replays again.'/>");
-            // ドリルを組む画面（Mods タブと同じもの）。作ってすぐカスタムステージに足せるように
-            sb.Append("<action-button text='Make drill' on-click='make-drill' pref-width='22' pref-height='6'");
-            sb.Append(" hover-hint='Make a new drill with the grid, the same as in the Mods tab.'/>");
             sb.Append("</horizontal>");
 
             // ───── Drill ─────
@@ -261,18 +279,18 @@ namespace JumpDrillMod.UI.Medals
 
             sb.Append("</vertical>");
 
-            // 選んだものの内訳と Play
-            sb.Append("<horizontal pref-height='9' spacing='3' pad-top='1'>");
-            sb.Append("<text id='detail' text='' font-size='3' align='Left' pref-width='")
-              .Append(TableWidth - 35).Append("'/>");
+            // 選んだものの内訳と Play。
+            // 文字は幅を固定した入れ物で包む。文字に直接 pref-width を書いても効かず、
+            // 内訳の長さで Play が左右に動いた（ゲーム内で確認）。入れ物 + 間 3 + Play 32 で表の内側の幅（TableWidth - 4）
+            sb.Append("<horizontal pref-height='9' spacing='3' pad-top='1' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>");
+            Box(sb, TableWidth - 4 - 3 - 32, "MiddleLeft", "<text id='detail' text='' font-size='3' align='Left'/>", fill: true);
             sb.Append("<action-button text='Play' on-click='play' pref-width='32' pref-height='9'");
             sb.Append(" hover-hint='Play this drill now (practice mode; scores are not submitted). If it is not generated yet, it is generated first. You come back here when it ends.'/>");
             sb.Append("</horizontal>");
 
-            // 状態の行。生成の進み具合もここに出る
-            sb.Append("<horizontal pref-height='4'>");
-            sb.Append("<text id='status' text='' font-size='2.6' align='Left' color='#8899AA' pref-width='")
-              .Append(TableWidth).Append("'/>");
+            // 状態の行。生成の進み具合もここに出る。文字は内訳と同じく幅を固定した入れ物で包む
+            sb.Append("<horizontal pref-height='4' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>");
+            Box(sb, TableWidth - 4, "MiddleLeft", "<text id='status' text='' font-size='2.6' align='Left' color='#8899AA'/>", fill: true);
             sb.Append("</horizontal>");
 
             // 一番下に生成のボタン。叩くつもりで開いて譜面が無いと分かったとき、この画面を離れずに作れるように。
@@ -490,7 +508,7 @@ namespace JumpDrillMod.UI.Medals
                     }
                     else
                     {
-                        bestById = task.Result;
+                        bests = task.Result;
                         rows = DrillSetMedals.Evaluate(bestById);
 
                         // GUI で組み替えたかもしれないので、ステージも読み直す
@@ -668,10 +686,66 @@ namespace JumpDrillMod.UI.Medals
         protected override void DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling)
         {
             base.DidActivate(firstActivation, addedToHierarchy, screenSystemEnabling);
+
+            // 基準はリーダーボードの並べ方からも変わる。閉じている間に変わっていれば合わせる。
+            // 外す前に出し直しが来ても二重にならないよう、いったん外してから付ける
+            RankSetting.Changed -= OnRankChanged;
+            RankSetting.Changed += OnRankChanged;
+            if (shownMetric != RankSetting.Current) OnRankChanged();
+
             if (firstActivation) return;
 
             Overwrite = false;
             parserParams?.EmitEvent("overwrite-reset");
+        }
+
+        protected override void DidDeactivate(bool removedFromHierarchy, bool screenSystemDisabling)
+        {
+            base.DidDeactivate(removedFromHierarchy, screenSystemDisabling);
+            RankSetting.Changed -= OnRankChanged;
+        }
+
+        /// <summary>DidDeactivate を通らずに消えたときも、基準の知らせを受けないようにする。</summary>
+        protected override void OnDestroy()
+        {
+            RankSetting.Changed -= OnRankChanged;
+            base.OnDestroy();
+        }
+
+        // ───────── 基準（REPRO / ACC） ─────────
+
+        private const string RankRepro = "By REPRO";
+        private const string RankAcc = "By ACC";
+
+        /// <summary>表を作った基準。違っていれば作り直す。</summary>
+        private RankMetric shownMetric = RankSetting.Current;
+
+        [UIComponent("rank-dropdown")] private DropDownListSetting? rankDropdown = null;
+
+        [UIValue("rank-options")]
+        public List<object> RankOptions => new List<object> { RankRepro, RankAcc };
+
+        [UIValue("rank")]
+        public string Rank
+        {
+            get => RankSetting.Current == RankMetric.Accuracy ? RankAcc : RankRepro;
+            set { }
+        }
+
+        [UIAction("rank-changed")]
+        public void RankChanged(object value)
+        {
+            RankSetting.Set((value as string) == RankAcc ? RankMetric.Accuracy : RankMetric.Reproducibility);
+        }
+
+        /// <summary>基準が変わった。読んである記録でメダルと Lv を出し直す。</summary>
+        private void OnRankChanged()
+        {
+            shownMetric = RankSetting.Current;
+            rows = DrillSetMedals.Evaluate(bestById);
+            EvaluateOthers();
+            rankDropdown?.ReceiveValue();
+            if (parserParams != null) Fill();
         }
 
         /// <summary>
@@ -960,9 +1034,9 @@ namespace JumpDrillMod.UI.Medals
                 number = "○";
             else if (medal != Medal.None)
                 number = "<color=#" + ColorUtility.ToHtmlStringRGB(MedalColor(medal)) + ">●</color>" +
-                         percent.Value.ToString("0.0", ci);
+                         CellNumber(percent.Value);
             else
-                number = "○" + percent.Value.ToString("0.0", ci);
+                number = "○" + CellNumber(percent.Value);
 
             string body = label == null ? number : label + "   " + number;
             text.text = picked ? "[" + body + "]" : body;
@@ -977,6 +1051,14 @@ namespace JumpDrillMod.UI.Medals
             text.DefaultColor = color;
             text.HighlightColor = Picked;
             text.color = color;
+        }
+
+        /// <summary>
+        /// マスの数字。小数は切り捨て。マスは「●85.7」の幅に詰めてあるので、満点（100 以上）は「100」と出す。
+        /// </summary>
+        private static string CellNumber(double percent)
+        {
+            return percent >= 100 ? "100" : ScoreFormat.Floor(percent, 1);
         }
 
         /// <summary>選んだものの内訳。どの速さ・どの尺のドリルかを出す。</summary>
@@ -994,7 +1076,9 @@ namespace JumpDrillMod.UI.Medals
 
             double bestValue;
             bool played = bestById.TryGetValue(selectedId, out bestValue);
-            string best = played ? string.Format(ci, "best {0:0.0}%", bestValue) : "not played";
+            string best = !played ? "not played"
+                : RankSetting.Current == RankMetric.Accuracy ? "best ACC " + ScoreFormat.Floor(bestValue, 2) + "%"
+                : "best REPRO " + ScoreFormat.Floor(bestValue, 1) + "%";
             var medal = played ? DrillSetMedals.MedalOf(bestValue) : Medal.None;
             string medalText = medal == Medal.None ? string.Empty : "  " + medal;
 

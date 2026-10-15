@@ -178,7 +178,8 @@ namespace JumpDrillMod.Services
         }
 
         /// <summary>
-        /// ID ごとの、人のプレイのベスト再現精度 %。メダルを決める値。
+        /// ID ごとの、人のプレイのベスト（REPRO と ACC の両方）。メダルを決める値。
+        /// 基準を切り替えても読み直さずに済むよう、両方を一度に集める。
         /// </summary>
         /// <remarks>
         /// JumpDrill.Core の <c>DrillSetMedals.BestById</c> と同じ決め方（自動プレイと、速度を変えたものは入れない）。
@@ -190,9 +191,9 @@ namespace JumpDrillMod.Services
         /// <remarks>
         /// 別スレッドから呼んでよい。先にメインスレッドで <see cref="RefreshLevelFolders"/> を呼んでおくこと。
         /// </remarks>
-        internal Dictionary<string, double> BestById()
+        internal BestRecords BestById()
         {
-            var best = new Dictionary<string, double>(StringComparer.Ordinal);
+            var best = new BestRecords();
 
             foreach (var file in ListReplayFiles())
             {
@@ -207,12 +208,27 @@ namespace JumpDrillMod.Services
                 string? id = DrillNaming.ExtractId(score.SongName);
                 if (id == null) continue;
 
-                double current;
-                if (!best.TryGetValue(id, out current) || score.ReproducibilityPercent > current)
-                    best[id] = score.ReproducibilityPercent;
+                Keep(best.Reproducibility, id, score.ReproducibilityPercent);
+                Keep(best.Accuracy, id, score.Accuracy);
             }
 
             return best;
+        }
+
+        private static void Keep(Dictionary<string, double> best, string id, double value)
+        {
+            double current;
+            if (!best.TryGetValue(id, out current) || value > current) best[id] = value;
+        }
+
+        /// <summary>ID ごとのベスト。REPRO と ACC は別のプレイのことがある。</summary>
+        internal sealed class BestRecords
+        {
+            public readonly Dictionary<string, double> Reproducibility = new Dictionary<string, double>(StringComparer.Ordinal);
+            public readonly Dictionary<string, double> Accuracy = new Dictionary<string, double>(StringComparer.Ordinal);
+
+            public Dictionary<string, double> For(RankMetric metric) =>
+                metric == RankMetric.Accuracy ? Accuracy : Reproducibility;
         }
 
         /// <summary>

@@ -537,9 +537,9 @@ namespace JumpDrill.Replays
         public string Describe()
         {
             return string.Format(CultureInfo.InvariantCulture,
-                Lang.T("再現性 {0:0.0} %   角度点 {1:0.0}/100   中心点 {2:0.0}/15   打点ずれ {3:+0.0;-0.0;0.0} ms",
-                       "Reproducibility {0:0.0} %   angle {1:0.0}/100   center {2:0.0}/15   timing {3:+0.0;-0.0;0.0} ms"),
-                Score, SwingAngleScore, CutDistanceScore, TimeDeviationMean);
+                Lang.T("再現性 {0} %   角度点 {1}/100   中心点 {2}/15   打点ずれ {3:+0.0;-0.0;0.0} ms",
+                       "Reproducibility {0} %   angle {1}/100   center {2}/15   timing {3:+0.0;-0.0;0.0} ms"),
+                ScoreFormat.Floor(Score, 1), ScoreFormat.Floor(SwingAngleScore, 1), ScoreFormat.Floor(CutDistanceScore, 1), TimeDeviationMean);
         }
     }
 
