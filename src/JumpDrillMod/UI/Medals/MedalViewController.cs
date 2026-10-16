@@ -255,8 +255,8 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("</horizontal>");
             sb.Append("<horizontal id='stage-buttons' active='false' pref-width='40' spacing='1' child-expand-width='false' child-align='MiddleRight'>");
             sb.Append("<button text='Rename' on-click='stage-rename' pref-width='18' pref-height='5' hover-hint='Rename this stage.'/>");
-            sb.Append("<button text='Delete' on-click='stage-delete' pref-width='18' pref-height='5'");
-            sb.Append(" hover-hint='Delete this stage. Press twice. Maps and records are kept.'/>");
+            sb.Append("<button text='").Append(Danger("Delete")).Append("' on-click='stage-delete' pref-width='18' pref-height='5'");
+            sb.Append(" hover-hint='Delete this stage. Maps and records are kept.'/>");
             sb.Append("</horizontal>");
             sb.Append("</horizontal>");
 
@@ -322,6 +322,13 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("</bg>");
             return sb.ToString();
         }
+
+        /// <summary>
+        /// 削除のボタンの字。橙赤（警告の文と同じ #FF8060）にして、押す前に目に入るようにする（ユーザー指定）。
+        /// 押せば確かめずに消えるので、見た目で注意させる。字の色はリッチテキストで付ける
+        /// （マークアップの属性に書くので &lt; &gt; はエスケープする）。
+        /// </summary>
+        internal static string Danger(string text) => "&lt;color=#FF8060&gt;" + text + "&lt;/color&gt;";
 
         /// <summary>行頭の絵の幅。格子は 4x3 なので高さ 4 に対して横長に取る。</summary>
         private const double IconWidth = 5.3;
@@ -643,7 +650,6 @@ namespace JumpDrillMod.UI.Medals
         {
             int index = ListOffset + row;
             var list = ListRows;
-            DisarmDelete();
 
             if (mode == ViewMode.Custom && index < list.Count && column == list[index].Cells.Count &&
                 column < CustomStage.MaxDrillsPerRow)
@@ -665,7 +671,6 @@ namespace JumpDrillMod.UI.Medals
         private void PickLabel(int row)
         {
             if (mode != ViewMode.Custom) return;
-            DisarmDelete();
 
             int index = ListOffset + row;
             if (index == customRows.Count && index < CustomStage.MaxRows)

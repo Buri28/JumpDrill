@@ -81,7 +81,6 @@ namespace JumpDrillMod.UI.Leaderboard
             this.diagrams = diagrams;
 
             // 譜面が変われば選び直し。前の譜面の3位を選んでいた、を持ち越さない
-            DisarmDelete();
             selected = 0;
             page = 0;
             SelectJustPlayed();
@@ -215,18 +214,13 @@ namespace JumpDrillMod.UI.Leaderboard
             });
         }
 
-        /// <summary>1回押した Delete の相手。もう1回押すと消す。選び直したら取り消す。</summary>
-        private DrillScore? deleteArmed;
-
-        /// <summary>1回目で押したときに出す確かめの文。出している間は図の下の文の代わりに出す。</summary>
-        private string? deleteNote;
-
         /// <summary>
-        /// 選んでいる記録を消す。1回目は何を消すかを出すだけで、もう1回押すと消す。
+        /// 選んでいる記録を消す。押したらすぐ消す（2回押す形は慣れないとのことでやめた、ユーザー指定）。
         /// </summary>
         /// <remarks>
         /// ごみ箱は通さない（元に戻せない）。同じプレイの BeatLeader・LocalLeaderboard のコピーも消す
         /// （<see cref="ReplayCleanupService"/>）。消したら、この枠を出している画面が読み直す。
+        /// 何を消したかは図の下の文に出す。
         /// </remarks>
         [UIAction("delete-record")]
         public void DeleteRecord()
@@ -234,29 +228,12 @@ namespace JumpDrillMod.UI.Leaderboard
             var score = selected < scores.Count ? scores[selected] : null;
             if (score == null) return;
 
-            if (!ReferenceEquals(deleteArmed, score))
-            {
-                var files = ReplayCleanupService.FilesOf(score);
-                deleteArmed = score;
-                deleteNote = string.Format(CultureInfo.InvariantCulture,
-                    "<color=#FF8060>Press Delete again: {0} ({1}, {2}). It cannot be undone.</color>",
-                    score.CountsAsRecord ? "#" + RankOf(score) : "this record",
-                    score.PlayedAt.ToString("MM/dd HH:mm", CultureInfo.InvariantCulture),
-                    ReplayCleanupService.Megabytes(files.Sum(ReplayCleanupService.SizeOf)));
-                Fill();
-                return;
-            }
-
-            DisarmDelete();
+            string what = string.Format(CultureInfo.InvariantCulture, "{0} ({1})",
+                score.CountsAsRecord ? "#" + RankOf(score) : "the record",
+                score.PlayedAt.ToString("MM/dd HH:mm", CultureInfo.InvariantCulture));
             var result = ReplayCleanupService.Delete(new[] { score });
             if (diagramNote != null)
-                diagramNote.text = result.Failed > 0 ? "Could not delete some files. See the log." : "Deleted.";
-        }
-
-        private void DisarmDelete()
-        {
-            deleteArmed = null;
-            deleteNote = null;
+                diagramNote.text = result.Failed > 0 ? "Could not delete some files. See the log." : "Deleted " + what + ".";
         }
 
         [UIAction("open-drill-set")]
@@ -306,9 +283,6 @@ namespace JumpDrillMod.UI.Leaderboard
         {
             var current = selected < scores.Count ? scores[selected] : null;
 
-            // 1回押した Delete の確かめの文は順位を出しているので、並べ直したら取り消す
-            DisarmDelete();
-
             rankedMetric = RankSetting.Current;
             ranked = RankSetting.Rank(ranked, rankedMetric);
             scores = Arrange(ranked);
@@ -354,7 +328,6 @@ namespace JumpDrillMod.UI.Leaderboard
             if (index < 0 || index >= scores.Count) return;
 
             selected = index;
-            DisarmDelete();
             justPlayedDone = Gameplay.DrillReplayRecorder.LastSavedPath;
             Fill();
         }
@@ -860,8 +833,7 @@ namespace JumpDrillMod.UI.Leaderboard
 
             if (diagramNote != null)
             {
-                diagramNote.text = deleteNote != null ? deleteNote
-                    : sprite == null
+                diagramNote.text = sprite == null
                     ? string.Empty
                     : score!.CountsAsRecord
                         ? string.Format(CultureInfo.InvariantCulture, "#{0}  swing paths", RankOf(score!))

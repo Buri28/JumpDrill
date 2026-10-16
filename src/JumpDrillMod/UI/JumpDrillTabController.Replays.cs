@@ -24,9 +24,6 @@ namespace JumpDrillMod.UI
         [UIComponent("replay-usage")] private TextMeshProUGUI? replayUsage = null;
         [UIComponent("replay-note")] private TextMeshProUGUI? replayNote = null;
 
-        /// <summary>1回目の Delete now で決めた、消すもの。2回目で消す。</summary>
-        private ReplayCleanupService.Plan? armed;
-
         /// <summary>消すものを数えている最中。</summary>
         private bool planning;
 
@@ -37,7 +34,6 @@ namespace JumpDrillMod.UI
             set
             {
                 if (Config != null) Config.ReplayKeep = Math.Max(ReplayCleanupService.MinKeep, value);
-                Disarm();
             }
         }
 
@@ -66,58 +62,44 @@ namespace JumpDrillMod.UI
             }
         }
 
+        /// <summary>
+        /// 全部のドリルについて、上位より下の記録を消す。押したらすぐ消す
+        /// （2回押す形は慣れないとのことでやめた、ユーザー指定）。消したものは下の文に出す。
+        /// </summary>
         [UIAction("replay-delete")]
         public void DeleteReplays()
         {
             if (planning) return;
 
-            if (armed == null)
+            planning = true;
+            SetReplayNote("Deleting...");
+            cleanup.Prepare();
+            int keep = ReplayCleanupService.Keep;
+
+            Task.Run(() => cleanup.PlanAll(keep)).ContinueWith(task =>
             {
-                planning = true;
-                SetReplayNote("Counting the records...");
-                cleanup.Prepare();
-                int keep = ReplayCleanupService.Keep;
-
-                Task.Run(() => cleanup.PlanAll(keep)).ContinueWith(task =>
+                planning = false;
+                if (task.IsFaulted)
                 {
-                    planning = false;
-                    if (task.IsFaulted)
-                    {
-                        Plugin.Log?.Error("could not count the replays: " + task.Exception);
-                        SetReplayNote("Could not read the replays. See the log.");
-                        return;
-                    }
+                    Plugin.Log?.Error("could not count the replays: " + task.Exception);
+                    SetReplayNote("Could not read the replays. See the log.");
+                    return;
+                }
 
-                    var plan = task.Result;
-                    if (plan.Targets.Count == 0)
-                    {
-                        SetReplayNote(string.Format(CultureInfo.InvariantCulture, "Nothing to delete. Every drill has {0} records or fewer.", keep));
-                        return;
-                    }
+                var plan = task.Result;
+                if (plan.Targets.Count == 0)
+                {
+                    SetReplayNote(string.Format(CultureInfo.InvariantCulture, "Nothing to delete. Every drill has {0} records or fewer.", keep));
+                    return;
+                }
 
-                    armed = plan;
-                    SetReplayNote(string.Format(CultureInfo.InvariantCulture,
-                        "<color=#FF8060>Press Delete now again to delete {0} record(s) outside the top {1} by REPRO and ACC ({2} file(s), {3}). It cannot be undone.</color>",
-                        plan.Targets.Count, keep, plan.Files.Count, ReplayCleanupService.Megabytes(plan.Bytes)));
-                }, UnityMainThreadTaskScheduler.Default);
-                return;
-            }
-
-            var target = armed;
-            armed = null;
-            var result = ReplayCleanupService.DeleteFiles(target.Files, target.Targets.Count);
-            SetReplayNote(string.Format(CultureInfo.InvariantCulture,
-                "Deleted {0} record(s) ({1} file(s), {2}).{3}",
-                result.Plays, result.Files, ReplayCleanupService.Megabytes(result.Bytes),
-                result.Failed > 0 ? " Some files could not be deleted. See the log." : string.Empty));
-            RefreshReplayUsage();
-        }
-
-        private void Disarm()
-        {
-            if (armed == null) return;
-            armed = null;
-            SetReplayNote(string.Empty);
+                var result = ReplayCleanupService.DeleteFiles(plan.Files, plan.Targets.Count);
+                SetReplayNote(string.Format(CultureInfo.InvariantCulture,
+                    "Deleted {0} record(s) outside the top {1} by REPRO and ACC ({2} file(s), {3}).{4}",
+                    result.Plays, keep, result.Files, ReplayCleanupService.Megabytes(result.Bytes),
+                    result.Failed > 0 ? " Some files could not be deleted. See the log." : string.Empty));
+                RefreshReplayUsage();
+            }, UnityMainThreadTaskScheduler.Default);
         }
 
         private void SetReplayNote(string text)

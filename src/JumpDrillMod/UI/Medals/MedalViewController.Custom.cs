@@ -45,11 +45,6 @@ namespace JumpDrillMod.UI.Medals
         private int selectedRow = -1;
         private int selectedColumn = -1;
 
-        /// <summary>
-        /// 1回押した削除。もう1回押すと消す（"stage" か "row"）。ほかの操作をしたら取り消す。
-        /// </summary>
-        private string? deleteArmed;
-
         private const string StandardOption = "Standard";
         private const string OtherOption = "Other";
 
@@ -74,7 +69,7 @@ namespace JumpDrillMod.UI.Medals
             Button(sb, "Row ▲", "row-up", 13, "Move the selected row up.");
             Button(sb, "Row ▼", "row-down", 13, "Move the selected row down.");
             Button(sb, "Rename row", "row-rename", 20, "Rename the selected row.");
-            Button(sb, "Delete row", "row-delete", 20, "Delete the selected row. Press twice if it has drills.");
+            Button(sb, Danger("Delete row"), "row-delete", 20, "Delete the selected row. Maps and records are kept.");
             sb.Append("</horizontal>");
         }
 
@@ -85,8 +80,8 @@ namespace JumpDrillMod.UI.Medals
         private static void AppendDrillRow(StringBuilder sb)
         {
             sb.Append("<horizontal id='drill-row' active='false' pref-height='6' spacing='1'>");
-            Button(sb, "Delete drill", "drill-delete", 24,
-                "Delete the map of the selected drill. Press twice. Records are kept. It is also removed from custom stages.");
+            Button(sb, Danger("Delete drill"), "drill-delete", 24,
+                "Delete the map of the selected drill. Records are kept. It is also removed from custom stages.");
             sb.Append("</horizontal>");
         }
 
@@ -117,13 +112,7 @@ namespace JumpDrillMod.UI.Medals
                 return;
             }
 
-            if (deleteArmed != "drill:" + id)
-            {
-                deleteArmed = "drill:" + id;
-                SetStatus("Press Delete drill again to delete the map of " + DisplayName(songName) + ". Records are kept.");
-                return;
-            }
-            deleteArmed = null;
+            // 押したらすぐ消す（2回押す形は慣れないとのことでやめた、ユーザー指定）。記録は残る
 
             var folders = launcher.FoldersOf(id);
             if (!bookBroken)
@@ -268,7 +257,6 @@ namespace JumpDrillMod.UI.Medals
             mode = newMode;
             customName = newMode == ViewMode.Custom ? name : null;
             selectedRow = selectedColumn = -1;
-            DisarmDelete();
 
             if (PluginConfig.Instance != null)
                 PluginConfig.Instance.MedalStage = mode == ViewMode.Other ? "other" : mode == ViewMode.Custom ? "custom:" + name : string.Empty;
@@ -301,7 +289,6 @@ namespace JumpDrillMod.UI.Medals
         {
             var stage = CurrentStage;
             if (stage == null || bookBroken) return;
-            DisarmDelete();
             AskName(stage.Name, name =>
             {
                 if (name == stage.Name) return;
@@ -324,25 +311,12 @@ namespace JumpDrillMod.UI.Medals
             var stage = CurrentStage;
             if (stage == null || bookBroken) return;
 
-            if (deleteArmed != "stage")
-            {
-                deleteArmed = "stage";
-                SetStatus("Press Delete again to delete " + stage.Name + ". Maps and records are kept.");
-                return;
-            }
-
+            // 押したらすぐ消す（2回押す形は慣れないとのことでやめた、ユーザー指定）。譜面と記録は残る
             book.Stages.Remove(stage);
             if (!SaveBook()) return;
             SetMode(ViewMode.Standard, null);
             RefreshDropdown();
             SetStatus(stage.Name + " was deleted.");
-        }
-
-        private void DisarmDelete()
-        {
-            if (deleteArmed == null) return;
-            deleteArmed = null;
-            SetStatus(string.Empty);
         }
 
         // ───────── 組み替え ─────────
@@ -375,7 +349,6 @@ namespace JumpDrillMod.UI.Medals
 
         private void MoveCell(int step)
         {
-            DisarmDelete();
             var row = SelectedRow();
             if (row == null || !HasSelectedCell(row)) return;
 
@@ -390,7 +363,6 @@ namespace JumpDrillMod.UI.Medals
         [UIAction("cell-remove")]
         public void RemoveCell()
         {
-            DisarmDelete();
             var row = SelectedRow();
             if (row == null || !HasSelectedCell(row)) return;
 
@@ -407,7 +379,6 @@ namespace JumpDrillMod.UI.Medals
 
         private void MoveRow(int step)
         {
-            DisarmDelete();
             var stage = CurrentStage;
             if (SelectedRow() == null || stage == null) return;
 
@@ -422,7 +393,6 @@ namespace JumpDrillMod.UI.Medals
         [UIAction("row-rename")]
         public void RenameRow()
         {
-            DisarmDelete();
             var row = SelectedRow();
             if (row == null) return;
 
@@ -440,17 +410,10 @@ namespace JumpDrillMod.UI.Medals
             var row = SelectedRow();
             if (row == null || stage == null) return;
 
-            if (row.Drills.Count > 0 && deleteArmed != "row")
-            {
-                deleteArmed = "row";
-                SetStatus("Press Delete row again to delete " + row.Name + ".");
-                return;
-            }
-
-            deleteArmed = null;
+            // 押したらすぐ消す（2回押す形は慣れないとのことでやめた、ユーザー指定）。ドリルの譜面と記録は残る
             stage.Rows.Remove(row);
             selectedRow = selectedColumn = -1;
-            SetStatus(string.Empty);
+            SetStatus(row.Name + " was deleted.");
             Edited();
         }
 

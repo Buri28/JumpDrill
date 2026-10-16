@@ -106,9 +106,10 @@
            Mods タブの Drill・Jump Drill 画面の Make drill と同じく、画面を移るボタンは字の後ろの「→」で示す -->
       <button id='drill-set-button' text='Drill →' on-click='open-drill-set' pref-width='20' pref-height='5'
               hover-hint='Open the Jump Drill screen.'/>
-      <!-- 選んでいる記録を消す。元に戻せないので2回押す（1回目で何を消すかを出す） -->
-      <button id='delete-button' text='Delete' on-click='delete-record' pref-width='16' pref-height='5'
-              hover-hint='Delete the selected record. Press twice. This cannot be undone.'/>
+      <!-- 選んでいる記録を消す。押したらすぐ消す（元に戻せない）。何を消したかは図の下の文に出す。
+           字は橙赤（#FF8060）にして注意させる -->
+      <button id='delete-button' text='&lt;color=#FF8060&gt;Delete&lt;/color&gt;' on-click='delete-record' pref-width='16' pref-height='5'
+              hover-hint='Delete the selected record. This cannot be undone.'/>
 
     </horizontal>
 

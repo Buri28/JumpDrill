@@ -200,7 +200,7 @@
       </tab>
 
       <!-- リプレイの整理。ドリルごとに順位の上位 N 件を残す（N は 10 以上、既定 20）。
-           Delete now は2回押す（1回目で何件・何 MB 消えるかを出す）。
+           Delete now は押したらすぐ消す（消した件数・MB は下の文に出す）。字は橙赤（#FF8060）にして注意させる。
            自動削除は叩いたドリルだけを整理し、叩いたばかりの記録は次に叩くまで残す -->
       <tab tags='jd-tabs' tab-name='Replays'>
         <vertical spacing='0.5' pad='1' pref-width='104' child-expand-height='false' child-align='UpperCenter'>
@@ -221,8 +221,8 @@
                           hover-hint='After each play, delete the records of that drill below the top. The play you just made is kept until you play that drill again.'/>
 
           <horizontal pref-height='7' spacing='2'>
-            <button text='Delete now' on-click='replay-delete' pref-width='30' pref-height='7'
-                    hover-hint='Delete the records below the top for every drill. Press twice. This cannot be undone.'/>
+            <button text='&lt;color=#FF8060&gt;Delete now&lt;/color&gt;' on-click='replay-delete' pref-width='30' pref-height='7'
+                    hover-hint='Delete the records below the top for every drill. This cannot be undone.'/>
           </horizontal>
 
           <horizontal pref-height='8'>
