@@ -580,10 +580,11 @@ namespace JumpDrill.Replays
             ResolveTempo(replay, result);
 
             var combo = CountCombo(replay);
+            var multipliers = owners == null ? combo.Multipliers : GameMultipliers(combo.Multipliers, full.Multipliers, owners);
 
             foreach (var saberType in new[] { 0, 1 })
             {
-                var hand = AnalyzeHand(replay, saberType, combo.Multipliers, original, owners, shares);
+                var hand = AnalyzeHand(replay, saberType, multipliers, original, owners, shares);
                 if (hand != null) result.PerHand.Add(hand);
             }
 
@@ -710,6 +711,32 @@ namespace JumpDrill.Replays
             }
 
             return tally;
+        }
+
+        /// <summary>
+        /// タワー・スタックの振りに掛ける倍率。まとめた後のノーツで数えた倍率と、
+        /// 本体が実際に掛けた倍率（全ノーツで数えたもの）の小さい方。
+        /// </summary>
+        /// <remarks>
+        /// まとめた後で数えるだけだと、間のノーツのミスでコンボが切れても倍率が下がらない。
+        /// 本体の倍率だけにすると、ノーツが3倍の速さで倍率を上げるので、序盤の振りが満点（まとめた後で数える）を超える。
+        /// 小さい方を採れば、ミスなしでは今までどおり、間のミスのあとは本体と同じく軽く数える。
+        /// 本体の倍率は、その振りの切ったノーツ（端か、端を落としたときは代わりに使った間のノーツ）のもの。
+        /// </remarks>
+        private static Dictionary<ReplayNote, int> GameMultipliers(Dictionary<ReplayNote, int> collapsed,
+            Dictionary<ReplayNote, int> game, Dictionary<ReplayNote, ReplayNote> owners)
+        {
+            var result = new Dictionary<ReplayNote, int>(collapsed);
+            foreach (var pair in owners)
+            {
+                var source = pair.Key;
+                var kept = pair.Value;
+                int own, actual;
+                if (source.Cut == null || !ReferenceEquals(source.Cut, kept.Cut)) continue;
+                if (!collapsed.TryGetValue(kept, out own) || !game.TryGetValue(source, out actual)) continue;
+                result[kept] = Math.Min(own, actual);
+            }
+            return result;
         }
 
         /// <summary><see cref="CountCombo"/> の結果。</summary>

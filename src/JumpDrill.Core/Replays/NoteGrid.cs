@@ -85,7 +85,7 @@ namespace JumpDrill.Replays
             if (replay == null) return new NoteGrid(0f, 0f);
 
             var cuts = replay.Notes
-                .Where(n => n.EventType == NoteEventType.Good && n.Cut != null)
+                .Where(n => n.EventType == NoteEventType.Good && n.Cut != null && !n.IsStandIn)
                 .ToList();
 
             if (cuts.Count == 0) return new NoteGrid(0f, 0f);
@@ -119,7 +119,7 @@ namespace JumpDrill.Replays
             if (replay == null) return result;
 
             var groups = replay.Notes
-                .Where(n => n.EventType == NoteEventType.Good && n.Cut != null)
+                .Where(n => n.EventType == NoteEventType.Good && n.Cut != null && !n.IsStandIn)
                 .GroupBy(n => new NotePlacement
                 {
                     ColorType = n.ColorType,

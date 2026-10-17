@@ -204,7 +204,8 @@ namespace JumpDrillMod.UI.Medals
                     : "Add a row";
 
             // 足せるものが無くても開く。右上の Make drill → から作りに行ける
-            string? note = pickerChosen.Count == 0 && hiddenMade != null ? HiddenMadeNote(stage, hiddenMade)
+            // 作ったうちの一部だけが出ているときも、出ない訳を知らせる（件数はマスを触れば出る）
+            string? note = hiddenMade != null ? HiddenMadeNote(stage, hiddenMade)
                 : pickerNames.Count == 0 ? "No drills to add. Make one with Make drill →."
                 : null;
             FillPicker(note);

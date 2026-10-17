@@ -143,6 +143,12 @@ namespace JumpDrill.Replays
         public NoteCutInfo Cut;
 
         /// <summary>
+        /// タワー・スタックで端を落とし、間のノーツを切ったときに端の代わりに置いたノーツ（<see cref="TowerReplay"/>）。
+        /// 位置は端のマスだが、<see cref="Cut"/> の切った位置は間のノーツのもの。切った位置からマスを測るところでは使わない。
+        /// </summary>
+        public bool IsStandIn;
+
+        /// <summary>
         /// noteID には配置が埋め込まれている。
         /// scoringType*10000 + lineIndex*1000 + lineLayer*100 + colorType*10 + cutDirection
         /// （古い形式では先頭の scoringType が無い）。

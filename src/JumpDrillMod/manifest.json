@@ -5,7 +5,7 @@
   "gameVersion": "1.40.8",
   "id": "JumpDrillMod",
   "name": "JumpDrillMod",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "dependsOn": {
     "BSIPA": "^4.3.0",
     "BeatSaberMarkupLanguage": "^1.12.0",

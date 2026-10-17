@@ -282,7 +282,32 @@ namespace JumpDrill.Core.Tests
 
             Assert.Equal(clean.SwingCount, missed.SwingCount);
             Assert.Equal(clean.Hand(1).Score, missed.Hand(1).Score, 6);
-            Assert.Equal(8 * (1 - share), clean.Hand(1).SwingMultiplierSum - missed.Hand(1).SwingMultiplierSum, 6);
+            Assert.Equal(share, ShareAt(replay, tower[0].SpawnTime), 6);
+
+            // その振りの割合ぶんに加え、本体と同じくミスでコンボが切れたあとの振りも軽くなる
+            Assert.True(clean.Hand(1).SwingMultiplierSum - missed.Hand(1).SwingMultiplierSum > 8 * (1 - share));
+        }
+
+        /// <summary>その時刻のタワー（右手）の、切れたノーツの割合。</summary>
+        private static double ShareAt(Replay replay, float spawnTime)
+        {
+            System.Collections.Generic.Dictionary<ReplayNote, ReplayNote> owners;
+            System.Collections.Generic.Dictionary<ReplayNote, double> shares;
+            var kept = TowerReplay.Collapse(replay, out owners, out shares).Notes.Single(n => n.SpawnTime == spawnTime);
+            return shares[kept];
+        }
+
+        [Fact]
+        public void Without_misses_a_tower_scores_full_marks()
+        {
+            var map = Generate("R3b", true);
+            var plainMap = Generate("R3b", false);
+
+            // 本体の倍率はノーツが3倍の速さで上がるが、満点（端だけで数えた倍率）を超えない
+            var tower = Analyze(map, Play(map));
+            var plain = Analyze(plainMap, Play(plainMap));
+            Assert.Equal(plain.Hand(1).SwingMultiplierSum, tower.Hand(1).SwingMultiplierSum, 6);
+            Assert.True(tower.Hand(1).SwingMultiplierSum <= tower.Hand(1).MaxMultiplierSum);
         }
 
         [Fact]
@@ -313,7 +338,8 @@ namespace JumpDrill.Core.Tests
             var missed = Analyze(map, replay);
 
             Assert.Equal(clean.SwingCount, missed.SwingCount);
-            Assert.Equal(8 * 0.5, clean.Hand(1).SwingMultiplierSum - missed.Hand(1).SwingMultiplierSum, 6);
+            Assert.Equal(0.5, ShareAt(replay, stack[0].SpawnTime), 6);
+            Assert.True(clean.Hand(1).SwingMultiplierSum - missed.Hand(1).SwingMultiplierSum > 8 * 0.5);
         }
 
         [Fact]

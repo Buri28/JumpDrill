@@ -52,7 +52,8 @@ namespace JumpDrill.Core.Tests
             Assert.Equal(2, skipped);
             Assert.Equal(new[] { "R8bL5a", "R4cL19" }, stage.Rows.Select(r => r.Name));
             Assert.Equal(8, stage.Rows[0].Drills.Count);
-            Assert.Equal(2, stage.AddDrills(1, picked.Take(9).ToList()));   // 1本入っているので残り7本
+            var more = Enumerable.Range(1, 9).Select(i => "[CCC" + i.ToString("00") + "] Drill R4c L19 axis " + (i * 50 + 25) + " BPM 11s").ToList();
+            Assert.Equal(2, stage.AddDrills(1, more));   // 1本入っているので残り7本
             Assert.Equal("R8bL5a", CustomStage.DirectionOf(stage.Rows[0]));
 
             var fast = CustomStage.PickBySpeed(picked, "R8bL5a", highest: true, limit: 3);
@@ -84,6 +85,29 @@ namespace JumpDrill.Core.Tests
             Assert.Equal(new[] { "R8bL5a", "R4cL19", "R8bL5a", "R3bL2a" }, stage.Rows.Select(r => r.Name));
             Assert.Equal(8, stage.Rows[0].Drills.Count);
             Assert.Equal(new[] { "[CCC03] Drill R8b L5a axis 500 BPM 11s" }, stage.Rows[2].Drills);
+        }
+
+        [Fact]
+        public void Adding_skips_drills_already_in_the_stage_and_keeps_the_speed_order()
+        {
+            var stage = new CustomStage();
+            stage.Rows.Add(new CustomStageRow
+            {
+                Name = "R8bL5a",
+                Drills = { "[AAA01] Drill R8b L5a axis 100 BPM 11s", "[AAA02] Drill R8b L5a axis 300 BPM 11s" },
+            });
+
+            var picked = new List<string>
+            {
+                "[AAA02] Drill R8b L5a axis 300 BPM 11s",   // 既にある
+                "[CCC01] Drill R8b L5a axis 200 BPM 11s",
+                "[CCC02] Drill R8b L5a axis 50 BPM 11s",
+            };
+
+            Assert.Equal(0, stage.AddDrills(stage.Rows.Count, picked));
+
+            Assert.Single(stage.Rows);
+            Assert.Equal(new double?[] { 50, 100, 200, 300 }, stage.Rows[0].Drills.Select(DrillNaming.ParseBpm));
         }
 
         [Fact]

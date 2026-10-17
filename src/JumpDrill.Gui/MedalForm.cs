@@ -515,8 +515,9 @@ namespace JumpDrill.Gui
 
         /// <summary>
         /// 行にドリルを足す。既にドリルのある行には、その方向のドリルだけを選ばせる。
-        /// <paramref name="row"/> が行の数と同じなら新しい行を作る。違う方向を混ぜて選んだら、
-        /// 方向ごとに行を分ける。行の名前は方向（<c>R8bL5a</c>）、読めなければ連番。
+        /// <paramref name="row"/> が行の数と同じなら新しい行に足す。同じ方向の行に空きがあればまずそこへ入れ、
+        /// 残りで行を作る。違う方向を混ぜて選んだら、方向ごとに行を分ける。行の名前は方向（<c>R8bL5a</c>）、読めなければ連番。
+        /// 既にある行へは BPM の順の位置に入る。ステージに既にあるドリルは足さない（<see cref="CustomStage.AddDrills"/>）。
         /// </summary>
         private void AddDrills(int row)
         {

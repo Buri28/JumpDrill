@@ -150,6 +150,7 @@ namespace JumpDrill.Replays
                 EventTime = cut.EventTime,
                 EventType = cut.EventType,
                 Cut = cut.Cut,
+                IsStandIn = true,
             };
         }
 

@@ -41,21 +41,26 @@ namespace JumpDrill.Model
         /// ドリルを足す。<paramref name="row"/> が行の数と同じなら新しい行に足す。
         /// 新しい行に足すときは、同じ方向の行があればまずその空きに入れ、残りで行を作る（同じ方向の行が増えないように）。
         /// 違う方向を混ぜて選んだら、方向ごとに行を分ける。行の名前は方向（<c>R8bL5a</c>）。
-        /// 行と1行の本数の上限を超える分は足さない。足せなかった本数を返す。
+        /// 既にある行に入れるときは BPM の順の位置に差し込む（並べ替えた行の順はそのまま）。
+        /// ステージに既にあるドリル（ID で比べる）は足さない。同じ行に同じドリルが2つ並ぶのを防ぐ。
+        /// 行と1行の本数の上限を超える分は足さない。上限で足せなかった本数を返す（既にあって外したものは数えない）。
         /// </summary>
         /// <remarks>既にある行への方向の絞り込みは、選ばせる側でやる（<see cref="DirectionOf"/>）。</remarks>
         public int AddDrills(int row, IReadOnlyList<string> picked)
         {
+            var placed = new HashSet<string>(Rows.SelectMany(r => r.Drills).Select(Key), StringComparer.Ordinal);
+            var fresh = picked.Where(n => placed.Add(Key(n))).ToList();
+
             int skipped = 0;
             if (row < Rows.Count)
             {
                 var drills = Rows[row].Drills;
                 int room = Math.Max(0, MaxDrillsPerRow - drills.Count);
-                drills.AddRange(picked.Take(room));
-                return Math.Max(0, picked.Count - room);
+                foreach (var name in fresh.Take(room)) InsertBySpeed(drills, name);
+                return Math.Max(0, fresh.Count - room);
             }
 
-            foreach (var group in picked.GroupBy(DrillNaming.DirectionOf))
+            foreach (var group in fresh.GroupBy(DrillNaming.DirectionOf))
             {
                 var rest = group.ToList();
 
@@ -68,7 +73,7 @@ namespace JumpDrill.Model
                         if (DirectionOf(existing) != group.Key) continue;
 
                         int room = Math.Max(0, MaxDrillsPerRow - existing.Drills.Count);
-                        existing.Drills.AddRange(rest.Take(room));
+                        foreach (var name in rest.Take(room)) InsertBySpeed(existing.Drills, name);
                         rest = rest.Skip(room).ToList();
                     }
                 }
@@ -76,11 +81,28 @@ namespace JumpDrill.Model
 
                 if (Rows.Count >= MaxRows) { skipped += rest.Count; continue; }
 
-                string name = group.Key.Length > 0 ? group.Key : "Row " + (Rows.Count + 1);
-                Rows.Add(new CustomStageRow { Name = name, Drills = rest.Take(MaxDrillsPerRow).ToList() });
+                string rowName = group.Key.Length > 0 ? group.Key : "Row " + (Rows.Count + 1);
+                Rows.Add(new CustomStageRow { Name = rowName, Drills = rest.Take(MaxDrillsPerRow).ToList() });
                 skipped += Math.Max(0, rest.Count - MaxDrillsPerRow);
             }
             return skipped;
+        }
+
+        /// <summary>同じドリルかを見る鍵。曲名の付け方が変わっても拾えるよう ID で比べる。</summary>
+        private static string Key(string songName) => DrillNaming.ExtractId(songName) ?? songName;
+
+        /// <summary>
+        /// 行の中の、BPM が自分より大きい最初のドリルの前に差し込む。BPM が読めなければ末尾。
+        /// 既にあるドリルどうしの順は動かさない（手で並べ替えた行を崩さない）。
+        /// </summary>
+        private static void InsertBySpeed(List<string> drills, string name)
+        {
+            double? bpm = DrillNaming.ParseBpm(name);
+            int at = bpm.HasValue
+                ? drills.FindIndex(d => DrillNaming.ParseBpm(d) is double other && other > bpm.Value)
+                : -1;
+            if (at < 0) drills.Add(name);
+            else drills.Insert(at, name);
         }
 
         /// <summary>
