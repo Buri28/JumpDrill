@@ -126,7 +126,7 @@ PCから使う **アプリ（JumpDrill）** と、BeatSaberで使う **MOD（Jum
 - 並び順は **Best**（順位）と **Newest**（新しい順）を切り替えられます
 - 自動プレイの記録には `AUTO`、曲の速さを変えた記録には `SPEED` と表示されます。どちらも順位とメダルには数えません
 
-MOD は、プレイしたリプレイを `UserData\JumpDrillMod\Replays` にも保存します。BeatLeader が入っていなくても記録が残ります。
+MOD は、プレイしたリプレイを `UserData\JumpDrill\Replays` にも保存します。BeatLeader が入っていなくても記録が残ります。0.1.0 で `UserData\JumpDrillMod\Replays` に保存したリプレイは、MOD か GUI を起動したときに自動で移します。
 
 ## 配置の書き方
 

@@ -17,7 +17,7 @@ namespace JumpDrill.Cli
     {
         private static readonly HashSet<string> KnownOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "seq","interval","div","sec","dir","tower","flick","hands","mirror","order","sets",
+            "seq","interval","div","sec","dir","tower","tight","hands","mirror","order","sets",
             "njs","jd","rt","offset","bpm",
             "click","count-in","tail","lead-in","gap",
             "name","out","install","register-pack","zip","wav","quality","rate",
@@ -227,7 +227,7 @@ namespace JumpDrill.Cli
             options.Direction = ParseDirectionMode(cmd.GetString(new[] { "dir" }));
             options.HandPattern = ParseHandPattern(cmd.GetString(new[] { "hands" }));
             options.Tower = cmd.Has("tower");
-            options.FlickPercent = cmd.GetDouble("flick") ?? 0.0;
+            options.FlickPercent = cmd.GetDouble("tight") ?? 0.0;
             options.Bpm = cmd.GetDouble("bpm") ?? options.Bpm;
             options.Njs = cmd.GetDouble("njs") ?? options.Njs;
             options.JumpDistance = cmd.GetDouble("jd");
@@ -424,10 +424,10 @@ namespace JumpDrill.Cli
                        R14    1 2 3 4 の横4つ
                        R37    隣り合う2点はスタックになる
                      4→b のように一直線でない遷移はそのまま
-  --flick <%>        フリック。往復の行き→戻りの間をノーツ間隔のこの割合だけ狭め、
-                     戻り→次の行きをその分広げる（0〜50、既定 0 = 無し）
-                       200ms で 25 なら 行き→戻り 150ms、戻り→行き 250ms
-                     alt では使えない。2点の遷移だけ
+  --tight <%>        間隔を詰める。次のノーツとの間隔をノーツ間隔のこの割合だけ狭め、
+                     その次との間隔をその分広げる（0〜50、既定 0 = 無し）
+                       200ms で 25 なら 1→2 が 150ms、2→3 が 250ms
+                     alt では1つ目の手→2つ目の手、sync では左右そろったノーツと次のノーツの間が狭まる。2点の遷移だけ
   --mirror           片手指定を左右反転して反対の手にも同じ形を組む
   --hands <mode>     sync   両手同時（既定）
                      split  片手ずつ。右で1本叩いてから左で1本叩く。

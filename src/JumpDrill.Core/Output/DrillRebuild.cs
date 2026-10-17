@@ -16,7 +16,7 @@ namespace JumpDrill.Output
     /// <remarks>
     /// 指定は譜面から読み戻す。
     /// <list type="bullet">
-    /// <item>遷移・切る方向・タワー・配置・フリック・BPM・尺・セット数は曲名から（ID もここから決まる）。</item>
+    /// <item>遷移・切る方向・タワー・配置・間隔を詰める割合・BPM・尺・セット数は曲名から（ID もここから決まる）。</item>
     /// <item>NJS・オフセット（ジャンプ距離）・譜面の BPM は Info.dat から。</item>
     /// <item>クリック・カウントイン・末尾の余白・ブロックの間は、Info.dat の <c>_jumpDrill</c> に書いてあればそこから。
     ///   それより前に作った譜面には無いので既定値（Down・8 発・1.5 秒）で作る。</item>

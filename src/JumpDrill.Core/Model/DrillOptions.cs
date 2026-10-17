@@ -34,14 +34,15 @@ namespace JumpDrill.Model
         public bool Tower { get; set; }
 
         /// <summary>
-        /// フリック (%)。0 なら無し。往復の「行き → 戻り」の間をノーツ間隔のこの割合だけ狭め、
-        /// 「戻り → 次の行き」をその分だけ広げる。平均の間隔（速さ）は変わらない。
-        /// 200ms・25% なら 行き→戻り 150ms、戻り→行き 250ms。
-        /// 1ステップごとの交互（alt）では往復が続かないので使えない。2点の遷移だけ。
+        /// 間隔を詰める (%)。0 なら無し。ノーツを2つずつ組にして、組の中の間隔（1→2）をノーツ間隔のこの割合だけ狭め、
+        /// 組の間（2→3）をその分だけ広げる。平均の間隔（速さ）は変わらない。
+        /// 200ms・25% なら 1→2 が 150ms、2→3 が 250ms。
+        /// 片手ずつ・往復ごとに交互では往復の行き→戻り、同時では左右そろったノーツどうし、
+        /// 1ステップごとの交互（alt）では1つ目の手 → 2つ目の手が狭まる。2点の遷移だけ。
         /// </summary>
         public double FlickPercent { get; set; }
 
-        /// <summary>フリックの上限 (%)。これより狭めると戻りが行きにほぼ重なる。</summary>
+        /// <summary>間隔を詰める割合の上限 (%)。これより狭めると戻りが行きにほぼ重なる。</summary>
         public const double MaxFlickPercent = 50.0;
 
         /// <summary>
@@ -107,16 +108,12 @@ namespace JumpDrill.Model
             if (Sets < 1)
                 throw new InvalidOperationException(Lang.T("セット数は 1 以上。", "Sets must be 1 or more."));
             if (FlickPercent < 0 || FlickPercent > MaxFlickPercent)
-                throw new InvalidOperationException(Lang.T("フリック度は 0〜50 %。", "Flick must be 0-50 %."));
-            if (FlickPercent > 0 && HandPattern == HandPattern.Alternate)
-                throw new InvalidOperationException(Lang.T(
-                    "フリックは配置パターンが 1ステップごとに交互（alt）のときは使えません。往復が続かないためです。",
-                    "Flick cannot be used with alternate (no back-to-back round trip)."));
+                throw new InvalidOperationException(Lang.T("間隔を詰める割合は 0〜50 %。", "Tighten must be 0-50 %."));
             if (FlickPercent > 0)
                 foreach (var seq in Sequences)
                     if (seq.Length != 2)
                         throw new InvalidOperationException(Lang.T(
-                            "フリックは2点の遷移でだけ使えます。", "Flick works only with two-point sequences."));
+                            "間隔を詰めるのは2点の遷移でだけ使えます。", "Tighten works only with two-point sequences."));
 
             int specified = 0;
             if (JumpDistance.HasValue) specified++;

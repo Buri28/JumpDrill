@@ -22,10 +22,19 @@ namespace JumpDrill.Replays
         /// リプレイを置いているMOD。<c>UserData\&lt;名前&gt;\Replays</c> にある。
         /// 同じプレイが複数あれば、この並びで前にあるものを採る。
         /// </summary>
-        public static readonly string[] ReplayMods = { "BeatLeader", "LocalLeaderboard", OwnReplayMod };
+        public static readonly string[] ReplayMods = { "BeatLeader", "LocalLeaderboard", OwnReplayMod, LegacyOwnReplayMod };
 
-        /// <summary>JumpDrillMod が自分で残すリプレイの置き場の名前。</summary>
-        public const string OwnReplayMod = "JumpDrillMod";
+        /// <summary>
+        /// JumpDrillMod が自分で残すリプレイの置き場の名前（<c>UserData\JumpDrill\Replays</c>）。
+        /// カスタムステージ（<c>UserData\JumpDrill\stages.json</c>）と同じフォルダにまとめる。
+        /// </summary>
+        public const string OwnReplayMod = "JumpDrill";
+
+        /// <summary>
+        /// 0.1.0 の置き場（<c>UserData\JumpDrillMod\Replays</c>）。MOD と GUI の起動時に
+        /// <see cref="MoveLegacyRecordings"/> で今の置き場へ移す。移せなかったものも読めるよう、読む先には残す。
+        /// </summary>
+        public const string LegacyOwnReplayMod = "JumpDrillMod";
 
         /// <summary>
         /// JumpDrillMod が自分で残したリプレイの、ファイル名の先頭。
@@ -341,12 +350,79 @@ namespace JumpDrill.Replays
             }
         }
 
-        /// <summary>JumpDrillMod が自分で残したリプレイか（置き場のフォルダで見る）。</summary>
+        /// <summary>JumpDrillMod が自分で残したリプレイか（置き場のフォルダで見る。0.1.0 の置き場も含む）。</summary>
         public static bool IsOwnRecording(string file)
         {
             string replays = Path.GetDirectoryName(file);
             string mod = replays == null ? null : Path.GetFileName(Path.GetDirectoryName(replays));
-            return string.Equals(mod, OwnReplayMod, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(mod, OwnReplayMod, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mod, LegacyOwnReplayMod, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 0.1.0 の置き場（<c>UserData\JumpDrillMod\Replays</c>）のリプレイを、今の置き場（<c>UserData\JumpDrill\Replays</c>）へ移す。
+        /// 移した本数を返す。
+        /// </summary>
+        /// <remarks>
+        /// 同じ名前が今の置き場に既にあれば、大きい方を今の置き場に残し、もう片方は消す
+        /// （同じ名前は同じプレイ。読むときも名前で重複を落とすので、両方置いても片方しか読まれない。小さい方は書きかけ）。
+        /// 書き出しの途中で止まった一時ファイル（<c>.bsor.tmp</c>）は、1分より古ければ消す。
+        /// 1本移せなくても（ゲームが読んでいるなど）止めずに次へ進み、残りは次の起動で移す。
+        /// 空になったら古いフォルダを消す。MOD の設定（<c>UserData\JumpDrillMod.json</c>）は BSIPA のものなので触らない。
+        /// </remarks>
+        /// <param name="installRoot">Beat Saber のフォルダ（Beat Saber.exe のあるところ）。</param>
+        public static int MoveLegacyRecordings(string installRoot)
+        {
+            if (string.IsNullOrEmpty(installRoot)) return 0;
+
+            string legacyRoot = Path.Combine(installRoot, "UserData", LegacyOwnReplayMod);
+            string from = Path.Combine(legacyRoot, "Replays");
+            if (!Directory.Exists(from)) return 0;
+
+            string to = Path.Combine(installRoot, "UserData", OwnReplayMod, "Replays");
+            Directory.CreateDirectory(to);
+
+            int moved = 0;
+            foreach (string file in Directory.GetFiles(from, "*.bsor"))
+            {
+                try
+                {
+                    string target = Path.Combine(to, Path.GetFileName(file));
+                    if (File.Exists(target))
+                    {
+                        if (new FileInfo(file).Length <= new FileInfo(target).Length)
+                        {
+                            File.Delete(file);
+                            continue;
+                        }
+                        File.Delete(target);
+                    }
+                    File.Move(file, target);
+                    moved++;
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+
+            foreach (string temp in Directory.GetFiles(from, "*.bsor.tmp"))
+            {
+                try
+                {
+                    if (DateTime.Now - File.GetLastWriteTime(temp) > TimeSpan.FromMinutes(1)) File.Delete(temp);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+
+            try
+            {
+                if (!Directory.EnumerateFileSystemEntries(from).Any()) Directory.Delete(from);
+                if (!Directory.EnumerateFileSystemEntries(legacyRoot).Any()) Directory.Delete(legacyRoot);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+
+            return moved;
         }
 
         /// <summary>

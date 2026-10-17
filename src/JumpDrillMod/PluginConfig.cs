@@ -50,7 +50,7 @@ namespace JumpDrillMod
         /// <summary>セットの繰り返し回数。</summary>
         public virtual int Sets { get; set; } = 1;
 
-        /// <summary>フリック (%)。0 で無し（CLI の <c>--flick</c>）。</summary>
+        /// <summary>間隔を詰める (%)。0 で無し（CLI の <c>--tight</c>）。</summary>
         public virtual int FlickPercent { get; set; }
 
         /// <summary>切る方向の指定。JumpDrill.Core の <c>DirectionMode</c> の名前をそのまま入れる。</summary>

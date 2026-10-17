@@ -41,7 +41,7 @@ namespace JumpDrill.Gui
 
         private static readonly Color RightColor = Color.FromArgb(0x2E, 0x86, 0xD8);
 
-        /// <summary>行名の下に出す印（tower・alt-trip・flick25）の色。方向の名前と見分けが付くように色を変える。</summary>
+        /// <summary>行名の下に出す印（tower・alt-trip・tight25）の色。方向の名前と見分けが付くように色を変える。</summary>
         private static readonly Color TagColor = Color.FromArgb(0xE0, 0xB0, 0x60);
         private static readonly Color LeftColor = Color.FromArgb(0xD0, 0x3A, 0x3A);
 
@@ -272,7 +272,7 @@ namespace JumpDrill.Gui
 
                     g.DrawLine(line, 0, y, width, y);
 
-                    // 行名は「方向 + 印（tower・alt-trip・flick25）」。1行に並べると印が切れて見えないので、
+                    // 行名は「方向 + 印（tower・alt-trip・tight25）」。1行に並べると印が切れて見えないので、
                     // 印は方向の下に小さく分けて出す。
                     string name, tags;
                     DrillNaming.SplitTags(row.Direction, out name, out tags);

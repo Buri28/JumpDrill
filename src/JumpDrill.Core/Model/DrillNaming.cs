@@ -16,7 +16,7 @@ namespace JumpDrill.Model
     ///   [Q7K3M] Drill R8b L5a axis sync 300 BPM 30s    両手同時（片手ずつ以外の配置は印が付く）
     ///   [Q7K3M] Drill R3b L2a axis tower 300 BPM 30s    タワー
     ///   [Q7K3M] Drill R3b L2a axis alt-trip 300 BPM 30s 往復ごとに交互
-    ///   [Q7K3M] Drill R3b L2a axis flick25 300 BPM 30s  フリック 25%
+    ///   [Q7K3M] Drill R3b L2a axis tight25 300 BPM 30s  間隔を詰める 25%
     ///   {R8bL5a 300} [Q7K3M] Drill R8b L5a axis 300 BPM 10s   一括生成の1本
     /// </code>
     ///
@@ -89,13 +89,13 @@ namespace JumpDrill.Model
             // タワーは別のドリルなので名前（と ID）を分ける。
             // 両手の配置（同時・交互・往復ごとに交互）は叩き方が別物なので名前を分ける。
             // 片手ずつは名前に入れない（標準のステージの名前と ID、今までの記録をそのまま保つ）。
-            // フリックも叩き方が違うので名前を分ける（flick25 のように割合を添える）。
+            // 間隔を詰めるのも叩き方が違うので名前を分ける（tight25 のように割合を添える）。
             string body = explicitBody ?? string.Format(ci, "{0} {1}{2}{3}{4}",
                 string.Join(" ", options.Sequences.Select(s => s.ToString()).ToArray()),
                 DirectionWord(options.Direction),
                 options.Tower ? TowerWord : "",
                 PatternWord(options),
-                options.FlickPercent > 0 ? string.Format(ci, " {0}{1:0.#}", FlickPrefix, options.FlickPercent) : "");
+                options.FlickPercent > 0 ? string.Format(ci, " {0}{1:0.#}", TightPrefix, options.FlickPercent) : "");
 
             // 速さは 1 桁だけ小数を残す。整数に丸めると 171ms が 175 BPM = 171.4ms に戻り、
             // 「片手 171 ms」と出したいところが 171.4 ms になる。
@@ -385,7 +385,7 @@ namespace JumpDrill.Model
         /// <summary>
         /// 譜面名から読んだ方向（遷移を詰めたもの、<c>R8bL5a</c>）。読めなければ空文字。
         /// カスタムステージの1行に同じ方向のドリルだけを並べるのに使う。
-        /// 切る方向（axis 以外）・タワー・配置・フリックも振り方が違うので別の方向として扱う
+        /// 切る方向（axis 以外）・タワー・配置・間隔を詰めるのも振り方が違うので別の方向として扱う
         /// （<c>R3b dot tower</c>）。axis は印なし（今までの行をそのまま保つ）。
         /// 切る方向は短く書く（perp / perp-outer / dot / explicit）。行名に出るので長いと切れる。
         /// </summary>
@@ -398,14 +398,14 @@ namespace JumpDrill.Model
             if (IsTower(songName)) direction += TowerWord;
             foreach (var word in PatternWords)
                 if (HasWord(songName, word.Trim())) direction += word;
-            string flick = FlickWord(songName);
-            if (flick != null) direction += " " + flick;
+            string tight = TightWord(songName);
+            if (tight != null) direction += " " + tight;
             return direction;
         }
 
         /// <summary>
-        /// 行名（<see cref="DirectionOf"/> の形、<c>R3bL2a tower flick25</c>）を、方向と後ろの印に分ける。
-        /// 印は切る方向（perp・perp-outer・dot・explicit）・tower・sync・alt・alt-trip・flick〈数字〉だけ。ほかの語（ユーザーが付けた「My jumps」など）は分けずに名前のまま返す。
+        /// 行名（<see cref="DirectionOf"/> の形、<c>R3bL2a tower tight25</c>）を、方向と後ろの印に分ける。
+        /// 印は切る方向（perp・perp-outer・dot・explicit）・tower・sync・alt・alt-trip・tight〈数字〉だけ。ほかの語（ユーザーが付けた「My jumps」など）は分けずに名前のまま返す。
         /// 両手の方向（<c>R8bL5a</c>）で配置の印が無ければ片手ずつなので、表示用に <c>split</c> を足す
         /// （譜面名には書かない。標準のステージの名前と ID を保つため）。
         /// </summary>
@@ -421,8 +421,8 @@ namespace JumpDrill.Model
             var tagWords = words.Skip(first).ToList();
             if (first == 1 && IsBothHands(words[0]) && !tagWords.Any(w => PatternWords.Any(p => p.Trim() == w)))
             {
-                // 配置の印と同じ位置（フリックの前）に入れる
-                int at = tagWords.FindIndex(w => w.StartsWith(FlickPrefix, StringComparison.Ordinal));
+                // 配置の印と同じ位置（間隔を詰める印の前）に入れる
+                int at = tagWords.FindIndex(w => w.StartsWith(TightPrefix, StringComparison.Ordinal));
                 tagWords.Insert(at < 0 ? tagWords.Count : at, SplitWord);
             }
             if (tagWords.Count == 0) return;
@@ -448,24 +448,24 @@ namespace JumpDrill.Model
                 if (word == pair[1]) return true;
             foreach (var pattern in PatternWords)
                 if (word == pattern.Trim()) return true;
-            if (!word.StartsWith(FlickPrefix, StringComparison.Ordinal) || word.Length == FlickPrefix.Length) return false;
+            if (!word.StartsWith(TightPrefix, StringComparison.Ordinal) || word.Length == TightPrefix.Length) return false;
 
             double percent;
-            return double.TryParse(word.Substring(FlickPrefix.Length), NumberStyles.Float, CultureInfo.InvariantCulture, out percent);
+            return double.TryParse(word.Substring(TightPrefix.Length), NumberStyles.Float, CultureInfo.InvariantCulture, out percent);
         }
 
-        /// <summary>フリックの印の頭。後ろに割合が付く（<c>flick25</c>）。</summary>
-        private const string FlickPrefix = "flick";
+        /// <summary>間隔を詰める印の頭。後ろに割合が付く（<c>tight25</c>）。</summary>
+        private const string TightPrefix = "tight";
 
-        /// <summary>名前の <c>BPM</c> より前にあるフリックの印（<c>flick25</c>）。無ければ null。</summary>
-        private static string FlickWord(string songName)
+        /// <summary>名前の <c>BPM</c> より前にある間隔を詰める印（<c>tight25</c>）。無ければ null。</summary>
+        private static string TightWord(string songName)
         {
             if (string.IsNullOrEmpty(songName)) return null;
 
             foreach (var word in StripId(songName).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 if (word == "BPM") return null;
-                if (word.StartsWith(FlickPrefix, StringComparison.Ordinal) && word.Length > FlickPrefix.Length) return word;
+                if (word.StartsWith(TightPrefix, StringComparison.Ordinal) && word.Length > TightPrefix.Length) return word;
             }
             return null;
         }

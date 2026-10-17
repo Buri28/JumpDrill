@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using JumpDrill.Model;
 using JumpDrill.Output;
+using System.Threading.Tasks;
+using JumpDrill.Replays;
 
 namespace JumpDrill.Gui
 {
@@ -15,6 +17,8 @@ namespace JumpDrill.Gui
     /// <item>stages.json → 1つの Beat Saber の UserData\JumpDrill（<see cref="StagesInstall"/>）</item>
     /// <item>out・zip（古い出力） → アプリの workspace の out・zip</item>
     /// <item>mod（取ってきた DLL） → 消す。要るときにまた取ってくる</item>
+    /// <item>MOD のリプレイ（Beat Saber の UserData\JumpDrillMod\Replays） → UserData\JumpDrill\Replays
+    ///   （<see cref="ReplayLibrary.MoveLegacyRecordings"/>。見つかった Beat Saber 全部。こちらは毎回見る）</item>
     /// </list>
     /// 移し終えたら %LOCALAPPDATA%\JumpDrill を消す。
     /// 0.1.0 の Update.exe が %TEMP% に残した作業フォルダと、新しい Update.exe がアプリのフォルダに残した .update も消す。
@@ -28,6 +32,15 @@ namespace JumpDrill.Gui
         public static void Migrate()
         {
             Try(CleanUpdateFolders);
+
+            // 0.1.0 の MOD が UserData\JumpDrillMod\Replays に残したリプレイを、UserData\JumpDrill\Replays へ移す。
+            // MOD も起動時に移すが、GUI だけ新しくしてゲームを起動していないこともある。
+            // Beat Saber を探すのに全ドライブを見る（ネットワークドライブなどで数秒かかる）ので、窓を出すのを待たせない
+            Task.Run(() =>
+            {
+                foreach (var install in LevelWriter.FindInstalls())
+                    Try(() => ReplayLibrary.MoveLegacyRecordings(install.Root));
+            });
 
             string root = LegacyRoot;
             if (!Directory.Exists(root)) return;

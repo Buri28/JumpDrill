@@ -499,7 +499,7 @@ namespace JumpDrill.Gui
                 Group(Lang.T("時間", "Timing"), Rows(
                     Row(Lang.T("BPM (1拍に2ノーツ)", "BPM (2 notes per beat)"), _interval),
                     Row(Lang.T("尺 (秒)", "Length (s)"), _seconds),
-                    Row(Lang.T("フリック度 (%)", "Flick (%)"), _flick))),
+                    Row(Lang.T("間隔を詰める (%)", "Tighten (%)"), _flick))),
                 Group(Lang.T("切る方向 / 手", "Direction / hands"), Rows(
                     Row(Lang.T("切る方向", "Cut direction"), _direction),
                     Row(Lang.T("タワー／スタック", "Tower / stack"), _tower),
@@ -875,6 +875,9 @@ namespace JumpDrill.Gui
             _scoreboard.Click += (s, e) => ShowScoreboard();
             _medals.Click += (s, e) => ShowMedals();
             _tips.SetToolTip(_language, "言語 / Language");
+            _tips.SetToolTip(_flick, Lang.T(
+                "次のノーツとの間隔を、ノーツ間隔のこの割合だけ狭めます。その次との間隔は同じだけ広がります（1・2 が狭まり、2・3 が広がる）。\r\n0 で無し。2点の遷移だけで使えます。",
+                "Shortens the gap to the next note by this share of the interval, and widens the gap after that by the same amount (1-2 closer, 2-3 farther).\r\n0 is off. Two-point transitions only."));
             _language.SelectedIndexChanged += (s, e) => SwitchLanguage();
         }
 
@@ -1139,7 +1142,7 @@ namespace JumpDrill.Gui
             if (_mirror.Checked) sb.Append(" --mirror");
             if (_order.Enabled) sb.Append(_order.SelectedIndex == 1 ? " --order lr" : " --order rl");
             if (_sets.Value != 1m) sb.AppendFormat(ci, " --sets {0:0}", _sets.Value);
-            if (_flick.Value != 0m) sb.AppendFormat(ci, " --flick {0:0}", _flick.Value);
+            if (_flick.Value != 0m) sb.AppendFormat(ci, " --tight {0:0}", _flick.Value);
 
             if (_njs.Value != 16m) sb.AppendFormat(ci, " --njs {0:0.##}", _njs.Value);
             if (_jumpMode.SelectedIndex == 1) sb.AppendFormat(ci, " --jd {0:0.##}", _jumpValue.Value);

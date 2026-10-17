@@ -173,6 +173,8 @@ namespace JumpDrill.Core.Tests
         [InlineData(DirectionMode.Dot, 50.0, HandPattern.Split)]
         [InlineData(DirectionMode.Dot, 0.0, HandPattern.AlternateRoundTrip)]
         [InlineData(DirectionMode.Perpendicular, 50.0, HandPattern.AlternateRoundTrip)]
+        [InlineData(DirectionMode.Dot, 25.0, HandPattern.Alternate)]
+        [InlineData(DirectionMode.Perpendicular, 50.0, HandPattern.Alternate)]
         public void Uneven_spacing_keeps_alternating_without_the_name(DirectionMode mode, double flick, HandPattern pattern)
         {
             // 名前から最初の点が読めなくても、前の行き先から決め続けられる（間隔が2種類交互でも切れ目と見なさない）。

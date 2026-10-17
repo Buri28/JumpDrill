@@ -162,7 +162,8 @@ namespace JumpDrill.Tests
 
         private static string Bl(string name) => Path.Combine("I", "UserData", "BeatLeader", "Replays", name);
         private static string Ll(string name) => Path.Combine("I", "UserData", "LocalLeaderboard", "Replays", name);
-        private static string Own(string name) => Path.Combine("I", "UserData", "JumpDrillMod", "Replays", name);
+        private static string Own(string name) => Path.Combine("I", "UserData", "JumpDrill", "Replays", name);
+        private static string LegacyOwn(string name) => Path.Combine("I", "UserData", "JumpDrillMod", "Replays", name);
 
         [Fact]
         public void Own_recording_is_dropped_when_BeatLeader_kept_the_same_play()
@@ -228,9 +229,9 @@ namespace JumpDrill.Tests
 
                 string bl = Make("BeatLeader", "7656-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706284.bsor");
                 string ll = Make("LocalLeaderboard", "7656-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706284_639243006966333586.bsor");
-                string own = Make("JumpDrillMod", "JumpDrill-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706285.bsor");
+                string own = Make("JumpDrill", "JumpDrill-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706285.bsor");
                 // 別のプレイ（すぐにやり直したもの・別の譜面）は巻き込まない
-                Make("JumpDrillMod", "JumpDrill-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706287.bsor");
+                Make("JumpDrill", "JumpDrill-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788706287.bsor");
                 Make("BeatLeader", "7656-practice-[8M0XZ] Drill R_8_b-ExpertPlus-Standard-ABC WIP-1788709999.bsor");
                 Make("BeatLeader", "7656-practice-[AAAAA] Drill L_1_a-ExpertPlus-Standard-DEF WIP-1788706284.bsor");
 
@@ -253,6 +254,55 @@ namespace JumpDrill.Tests
             };
 
             Assert.Equal(files, ReplayLibrary.RemoveDuplicates(files));
+        }
+
+        [Fact]
+        public void Recordings_in_the_old_folder_are_still_own()
+        {
+            Assert.True(ReplayLibrary.IsOwnRecording(Own("a.bsor")));
+            Assert.True(ReplayLibrary.IsOwnRecording(LegacyOwn("a.bsor")));
+            Assert.False(ReplayLibrary.IsOwnRecording(Bl("a.bsor")));
+        }
+
+        [Fact]
+        public void Old_recordings_move_to_the_new_folder()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "jumpdrill-move-" + System.Guid.NewGuid().ToString("N"));
+            try
+            {
+                string from = Path.Combine(root, "UserData", "JumpDrillMod", "Replays");
+                string to = Path.Combine(root, "UserData", "JumpDrill", "Replays");
+                Directory.CreateDirectory(from);
+                Directory.CreateDirectory(to);
+                File.WriteAllBytes(Path.Combine(from, "a.bsor"), new byte[] { 1 });
+                File.WriteAllBytes(Path.Combine(from, "same.bsor"), new byte[] { 1, 2 });
+                File.WriteAllBytes(Path.Combine(to, "same.bsor"), new byte[] { 1, 2 });
+                File.WriteAllBytes(Path.Combine(from, "bigger.bsor"), new byte[] { 1, 2, 3 });
+                File.WriteAllBytes(Path.Combine(to, "bigger.bsor"), new byte[] { 9 });
+                File.WriteAllBytes(Path.Combine(from, "smaller.bsor"), new byte[] { 1 });
+                File.WriteAllBytes(Path.Combine(to, "smaller.bsor"), new byte[] { 9, 9 });
+                string temp = Path.Combine(from, "c.bsor.tmp");
+                File.WriteAllBytes(temp, new byte[] { 1 });
+                File.SetLastWriteTime(temp, System.DateTime.Now.AddMinutes(-5));
+                // MOD の設定は BSIPA のもの。触らない
+                File.WriteAllText(Path.Combine(root, "UserData", "JumpDrillMod.json"), "{}");
+
+                Assert.Equal(2, ReplayLibrary.MoveLegacyRecordings(root));
+
+                Assert.True(File.Exists(Path.Combine(to, "a.bsor")));
+                // 同じ名前は大きい方を今の置き場に残す（小さい方は書きかけ）
+                Assert.Equal(new byte[] { 1, 2 }, File.ReadAllBytes(Path.Combine(to, "same.bsor")));
+                Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(Path.Combine(to, "bigger.bsor")));
+                Assert.Equal(new byte[] { 9, 9 }, File.ReadAllBytes(Path.Combine(to, "smaller.bsor")));
+                Assert.True(File.Exists(Path.Combine(root, "UserData", "JumpDrillMod.json")));
+
+                // 古い一時ファイルも消え、空になった古いフォルダは消す
+                Assert.False(Directory.Exists(Path.Combine(root, "UserData", "JumpDrillMod")));
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
         }
     }
 }

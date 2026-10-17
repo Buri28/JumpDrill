@@ -290,6 +290,7 @@ namespace JumpDrill.Tests
         [InlineData(HandPattern.Sync)]
         [InlineData(HandPattern.Split)]
         [InlineData(HandPattern.AlternateRoundTrip)]
+        [InlineData(HandPattern.Alternate)]
         public void Flick_shortens_the_return_and_lengthens_the_rest(HandPattern pattern)
         {
             // 200ms・25%：行き→戻り 150ms、戻り→次の行き 250ms。
@@ -310,29 +311,38 @@ namespace JumpDrill.Tests
             Assert.Equal('b', right[0].Position.ToToken());
             Assert.Equal('3', right[1].Position.ToToken());
 
+            // alt では右（1つ目）→ 左（2つ目）が狭まる
+            if (pattern == HandPattern.Alternate)
+            {
+                Assert.Equal(Hand.Right, steps[0].Hand);
+                Assert.Equal(Hand.Left, steps[1].Hand);
+            }
+
             // クリックはノーツと同じ時刻（ブロックの間のカウントインは除く）。
             foreach (var click in map.Clicks.Where(c => c.TimeSeconds >= steps[0].TimeSeconds - 1e-9 && c.TimeSeconds <= steps[4].TimeSeconds + 1e-9))
                 Assert.Contains(map.Notes, n => Math.Abs(n.TimeSeconds - click.TimeSeconds) < 1e-9);
         }
 
         [Fact]
-        public void Flick_is_a_separate_drill_and_not_for_alternate()
+        public void Flick_is_a_separate_drill_and_works_with_alternate()
         {
             var plain = Options("R3b, L2a");
             var flick = Options("R3b, L2a");
             flick.FlickPercent = 25;
 
             string name = DrillNaming.Compose(flick);
-            Assert.Contains(" axis sync flick25 ", name);
+            Assert.Contains(" axis sync tight25 ", name);
             Assert.NotEqual(DrillNaming.ExtractId(DrillNaming.Compose(plain)), DrillNaming.ExtractId(name));
-            Assert.Equal("R3bL2a sync flick25", DrillNaming.DirectionOf(name));
+            Assert.Equal("R3bL2a sync tight25", DrillNaming.DirectionOf(name));
 
             flick.HandPattern = HandPattern.Alternate;
-            Assert.Throws<InvalidOperationException>(() => DrillGenerator.Generate(flick));
+            flick.Name = DrillNaming.Compose(flick);
+            Assert.Contains(" axis alt tight25 ", flick.Name);
+            Assert.NotEmpty(DrillGenerator.Generate(flick).Notes);
         }
 
         [Theory]
-        [InlineData("R3bL2a tower flick25", "R3bL2a", "tower split flick25")]
+        [InlineData("R3bL2a tower tight25", "R3bL2a", "tower split tight25")]
         [InlineData("R3bL2a alt-trip", "R3bL2a", "alt-trip")]
         [InlineData("R3bL2a", "R3bL2a", "split")]
         [InlineData("R3b", "R3b", "")]

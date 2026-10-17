@@ -464,7 +464,7 @@ namespace JumpDrillMod.UI.Medals
         private static string Key(int row, int column) => row + "-" + column;
 
         /// <summary>
-        /// 行名の「方向 + 印（tower・alt-trip・flick25）」の印を、色と大きさを変えて方向と見分けが付くようにする。
+        /// 行名の「方向 + 印（tower・alt-trip・tight25）」の印を、色と大きさを変えて方向と見分けが付くようにする。
         /// 行名はカスタムステージで自由に付けられるので、タグとして読まれないよう &lt;noparse&gt; で囲む。
         /// </summary>
         private static string RowName(string? direction)

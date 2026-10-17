@@ -71,7 +71,7 @@ namespace JumpDrill.Generation
                 AddCountIn(clicks, blockStart, clickPeriodSec, options.CountInClicks, previousEnd);
             }
 
-            // クリックもノーツと同じ時刻に鳴らす（フリックの戻りで鳴らすなら前へ寄せる）。
+            // クリックもノーツと同じ時刻に鳴らす（間隔を詰めて戻りで鳴らすなら前へ寄せる）。
             foreach (var entry in plan)
                 clicks.Add(new ClickEvent(StepTime(entry.StepIndex, stepsPerBlock, intervalSec, leadIn, gapSec, flickSec), entry.Accent));
 
@@ -201,7 +201,7 @@ namespace JumpDrill.Generation
 
         /// <summary>ブロック番号ぶんの間を足した実時刻。</summary>
         /// <param name="flickSec">
-        /// フリックで戻りを前へ寄せる秒数。戻りはブロックの中の奇数番目のステップ
+        /// 間隔を詰めるときに戻りを前へ寄せる秒数。戻りはブロックの中の奇数番目のステップ
         /// （同時・片手ずつは往復の2つ目、往復ごとに交互は手番の2つ目。どれもブロックの頭から数えて奇数）。
         /// </param>
         private static double StepTime(int stepIndex, int stepsPerBlock, double intervalSec, double leadIn, double gapSec,

@@ -42,6 +42,18 @@ namespace JumpDrillMod
             // 別スレッドからは取れないので、ここで1度だけ取る
             InstallPaths.Capture();
 
+            // 0.1.0 が UserData\JumpDrillMod\Replays に残したリプレイを UserData\JumpDrill\Replays へ移す。
+            // まだ何も読んでいないうちにやる
+            try
+            {
+                int moved = JumpDrill.Replays.ReplayLibrary.MoveLegacyRecordings(InstallPaths.Root);
+                if (moved > 0) Log.Info("moved " + moved + " replay(s) to UserData/JumpDrill/Replays");
+            }
+            catch (System.Exception e)
+            {
+                Log.Warn("could not move the old replays: " + e.Message);
+            }
+
             // 曲選択タブの登録は MenuUiRegistrar が行う。
             // BSML のシングルトンはここではまだ取得できない
             zenjector.Install<JumpDrillMenuInstaller>(Location.Menu);

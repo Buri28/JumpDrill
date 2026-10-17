@@ -86,7 +86,7 @@ namespace JumpDrillMod.UI
         }
 
         /// <summary>
-        /// メダル画面の行の方向（<c>R8bL5a tower alt</c>）に合わせて、グリッド・配置・切る方向・タワー・フリックを置き直す。
+        /// メダル画面の行の方向（<c>R8bL5a tower alt</c>）に合わせて、グリッド・配置・切る方向・タワー・間隔を詰める割合を置き直す。
         /// 速さ・尺・NJS は方向に入っていないので今のまま。
         /// </summary>
         /// <returns>
@@ -493,7 +493,7 @@ namespace JumpDrillMod.UI
             set { if (Config != null) Config.Sets = value; }
         }
 
-        /// <summary>フリック (%)。往復の行き→戻りを狭め、戻り→次の行きを広げる。</summary>
+        /// <summary>間隔を詰める (%)。次のノーツとの間隔を狭め、その次との間隔を広げる。</summary>
         [UIValue("flick")]
         public int Flick
         {

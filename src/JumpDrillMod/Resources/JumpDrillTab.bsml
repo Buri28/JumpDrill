@@ -173,12 +173,12 @@
                              min='1' max='10' increment='1'
                              hover-hint='How many times the whole thing repeats.'/>
 
-          <increment-setting text='Flick (%)'
+          <increment-setting text='Tighten (%)'
                              value='flick'
                              apply-on-change='true' get-event='jd-get'
                              integer-only='true'
                              min='0' max='50' increment='5'
-                             hover-hint='Shortens the gap from each note to its return by this share of the interval, and lengthens the gap to the next pair by the same amount. 0 is off. Not for Alternate.'/>
+                             hover-hint='Shortens the gap to the next note by this share of the interval, and widens the gap after that by the same amount (notes 1-2 closer, 2-3 farther). 0 is off. Two-point transitions only.'/>
         </vertical>
       </tab>
 

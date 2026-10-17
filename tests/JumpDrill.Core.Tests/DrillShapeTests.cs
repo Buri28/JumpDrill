@@ -9,7 +9,7 @@ namespace JumpDrill.Tests
         [Fact]
         public void Reads_back_the_row_direction()
         {
-            var shape = DrillShape.Parse("R8bL5a perp tower alt flick25");
+            var shape = DrillShape.Parse("R8bL5a perp tower alt tight25");
             Assert.NotNull(shape);
             Assert.Equal("R8b", shape.Sequences[0].ToString());
             Assert.Equal("L5a", shape.Sequences[1].ToString());

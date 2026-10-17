@@ -7,7 +7,7 @@ using JumpDrill.Parsing;
 namespace JumpDrill.Model
 {
     /// <summary>
-    /// 行の方向（<see cref="DrillNaming.DirectionOf"/> の形、<c>R8bL5a tower alt flick25</c>）から読み戻した生成の指定。
+    /// 行の方向（<see cref="DrillNaming.DirectionOf"/> の形、<c>R8bL5a tower alt tight25</c>）から読み戻した生成の指定。
     /// 速さ・尺・NJS は方向に入っていないので持たない。
     /// </summary>
     public sealed class DrillShape
@@ -57,7 +57,7 @@ namespace JumpDrill.Model
                     case "split": shape.HandPattern = HandPattern.Split; break;
                     default:
                         double flick;
-                        if (w.StartsWith("flick", StringComparison.Ordinal) &&
+                        if (w.StartsWith("tight", StringComparison.Ordinal) &&
                             double.TryParse(w.Substring(5), NumberStyles.Float, CultureInfo.InvariantCulture, out flick))
                             shape.FlickPercent = flick;
                         else
