@@ -75,6 +75,8 @@ namespace JumpDrill.Serialization
             w.Property("_noteJumpStartBeatOffset", Round(map.NoteJumpStartBeatOffset));
             w.Name("_customData").StartObject();
             w.Property("_difficultyLabel", DifficultyLabel(map));
+            // 曲名に入らない指定。作り直すときに読み戻す（Output.DrillRebuild）
+            if (map.Options != null) Output.DrillRebuild.WriteSaved(w, map.Options);
             w.EndObject();
             w.EndObject();
             w.EndArray();

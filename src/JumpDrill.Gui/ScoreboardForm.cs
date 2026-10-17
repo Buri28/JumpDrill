@@ -719,7 +719,7 @@ namespace JumpDrill.Gui
                 string key = id ?? name;
                 if (!byKey.TryGetValue(key, out map))
                 {
-                    map = new MapEntry { Key = key, Id = id ?? "", Name = DrillNaming.StripId(name) };
+                    map = new MapEntry { Key = key, Id = id ?? "", Name = DrillNaming.DisplayName(name) };
                     byKey.Add(key, map);
                     _maps.Add(map);
                 }
@@ -1320,12 +1320,13 @@ namespace JumpDrill.Gui
             // 幅に収まる範囲に留める。細かい数字は右の表にある。
             _viewInfo.Text = string.Format(CultureInfo.CurrentCulture,
                 Lang.T("{0}{1}   振り {2} 本{3}", "{0}{1}   {2} swings{3}"),
-                DrillNaming.StripId(score.Replay.Info.SongName),
+                DrillNaming.DisplayName(score.Replay.Info.SongName),
                 NotCountedMark(score.Replay.Info),
                 _view.SwingCount,
                 score.HandIntervalMs > 0
                     ? string.Format(CultureInfo.InvariantCulture, Lang.T("   {0:0} BPM (片手 {1:0} ms)", "   {0:0} BPM (per hand {1:0} ms)"),
-                        Tempo.EbpmFromHandIntervalMs(score.HandIntervalMs), score.HandIntervalMs)
+                        DrillNaming.ParseBpm(score.Replay.Info.SongName) ?? Tempo.EbpmFromHandIntervalMs(score.HandIntervalMs),
+                        score.HandIntervalMs)
                     : "");
         }
 
@@ -1386,7 +1387,7 @@ namespace JumpDrill.Gui
                     string.Format(CultureInfo.CurrentCulture,
                         Lang.T("このリプレイを削除しますか？\r\n\r\n{0}\r\n{1}   再現精度 {2}%   精度 {5}%\r\nファイル {3} 個 / {4}\r\n\r\n削除したリプレイは元に戻せません。",
                                "Delete this replay?\r\n\r\n{0}\r\n{1}   Repro acc {2}%   Acc {5}%\r\n{3} file(s) / {4}\r\n\r\nThis cannot be undone."),
-                        DrillNaming.StripId(score.Replay.Info.SongName ?? ""), WhenText(score), ScoreFormat.Floor(score.ReproducibilityPercent, 1),
+                        DrillNaming.DisplayName(score.Replay.Info.SongName ?? ""), WhenText(score), ScoreFormat.Floor(score.ReproducibilityPercent, 1),
                         copies.Count, Megabytes(copies.Sum(SizeOf)), ScoreFormat.Floor(score.Accuracy, 2)),
                     "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
 

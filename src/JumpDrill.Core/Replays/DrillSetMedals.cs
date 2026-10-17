@@ -23,7 +23,7 @@ namespace JumpDrill.Replays
         /// <summary>曲名。</summary>
         public string SongName { get; internal set; }
 
-        /// <summary>片手の速さ（BPM 1/2）。カスタムステージで曲名から読めなければ null。</summary>
+        /// <summary>BPM（ノーツ間隔を 1/2 で数えた値、<see cref="DrillNaming.ParseBpm"/>）。曲名から読めなければ null。</summary>
         public double? Bpm { get; internal set; }
 
         /// <summary>譜面の ID。記録はこれで引く。</summary>

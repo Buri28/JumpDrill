@@ -227,6 +227,52 @@ namespace JumpDrill.Tests
 
             // 指定は 300ms でも、その手にとっては 600ms 間隔になる。
             Assert.Equal(0.600, right[1] - right[0], 9);
+            Assert.Equal(0.300, map.Notes[1].TimeSeconds - map.Notes[0].TimeSeconds, 9);
+        }
+
+        [Fact]
+        public void Alternate_clicks_on_every_note_of_the_first_hand()
+        {
+            var map = DrillGenerator.Generate(Options(HandPattern.Alternate));
+            var body = map.Clicks.Where(c => c.TimeSeconds >= map.Notes[0].TimeSeconds - 1e-9).ToList();
+
+            // 左右の2発が詰まらないよう、右手のノーツごと（2ステップ＝600ms）に揃える。
+            for (int i = 1; i < body.Count; i++)
+                Assert.Equal(0.600, body[i].TimeSeconds - body[i - 1].TimeSeconds, 9);
+            Assert.Equal(0.600, map.ClickPeriodSeconds, 9);
+        }
+
+        [Fact]
+        public void Alternate_clicks_stay_on_the_first_hand_in_every_set()
+        {
+            // 1ブロックのステップ数が奇数（6.3 秒 / 300ms = 21）でも、2セット目の頭から右手に鳴らす
+            var options = Options(HandPattern.Alternate);
+            options.DurationSeconds = 6.3;
+            options.Sets = 2;
+            var map = DrillGenerator.Generate(options);
+
+            var rightTimes = new System.Collections.Generic.HashSet<long>(
+                map.Notes.Where(n => n.Hand == Hand.Right).Select(n => (long)System.Math.Round(n.TimeSeconds * 1e6)));
+            var body = map.Clicks.Where(c => c.TimeSeconds >= map.Notes[0].TimeSeconds - 1e-9).ToList();
+            var onNotes = body.Where(c => map.Notes.Any(n => System.Math.Abs(n.TimeSeconds - c.TimeSeconds) < 1e-6)).ToList();
+            Assert.NotEmpty(onNotes);
+            Assert.All(onNotes, c => Assert.Contains((long)System.Math.Round(c.TimeSeconds * 1e6), rightTimes));
+        }
+
+        [Theory]
+        [InlineData(HandPattern.Alternate, 0.600)]
+        [InlineData(HandPattern.AlternateRoundTrip, 0.600)]
+        [InlineData(HandPattern.Sync, 0.600)]
+        [InlineData(HandPattern.Split, 0.600)]
+        public void Count_in_follows_the_click(HandPattern pattern, double expected)
+        {
+            var map = DrillGenerator.Generate(Options(pattern));
+            var countIn = map.Clicks.Where(c => c.TimeSeconds < map.Notes[0].TimeSeconds - 1e-9).ToList();
+
+            Assert.Equal(8, countIn.Count);
+            for (int i = 1; i < countIn.Count; i++)
+                Assert.Equal(expected, countIn[i].TimeSeconds - countIn[i - 1].TimeSeconds, 9);
+            Assert.Equal(expected, map.Notes[0].TimeSeconds - countIn[countIn.Count - 1].TimeSeconds, 9);
         }
 
         [Fact]

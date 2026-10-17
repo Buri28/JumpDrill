@@ -111,15 +111,24 @@ namespace JumpDrill.Core.Tests
         }
 
         [Fact]
-        public void Alternating_hands_halve_the_bpm_because_each_hand_waits_its_turn()
+        public void Alternating_hands_write_the_note_bpm_but_keep_the_hand_interval_in_the_id()
         {
             // 同時・片手ずつは軸の間隔がそのまま片手の間隔。
             Assert.Equal(100.0, DrillNaming.HandIntervalMs(Options("R:8>b,L:5>a", 100)));
 
-            // 両手交互は自分の番が2つおき。片手から見れば 200ms＝150 BPM。
+            // 両手交互は自分の番が2つおき。片手から見れば 200ms。名前には入れた BPM（ノーツの流れ）を書く。
             var alt = Options("R:8>b,L:5>a", 100, HandPattern.Alternate);
             Assert.Equal(200.0, DrillNaming.HandIntervalMs(alt));
-            Assert.Equal("Drill R8b L5a axis alt 150 BPM 30s", DrillNaming.StripId(DrillNaming.Compose(alt)));
+            string name = DrillNaming.Compose(alt);
+            Assert.Equal("Drill R8b L5a axis alt 300 BPM 30s", DrillNaming.StripId(name));
+            Assert.Equal(300.0, DrillNaming.ParseBpm(name));
+            Assert.Equal(200.0, SwingAnalyzer.DeclaredHandInterval(name), 6);
+
+            // 以前の書き方（片手の速さ 150）でも、同じ ID なら 300 と読む
+            string old = "[" + DrillNaming.ExtractId(name) + "] Drill R8b L5a axis alt 150 BPM 30s";
+            Assert.Equal(300.0, DrillNaming.ParseBpm(old));
+            Assert.Equal("Drill R8b L5a axis alt 300 BPM 30s", DrillNaming.DisplayName(old));
+            Assert.Equal(200.0, SwingAnalyzer.DeclaredHandInterval(old), 6);
         }
 
         [Fact]

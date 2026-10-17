@@ -37,6 +37,8 @@ namespace JumpDrill.Generation
             var notesByStep = BuildSteps(options, stepCount, stepsPerBlock);
 
             var plan = ClickPlanner.Plan(notesByStep, options.Click);
+            if (options.HandPattern == HandPattern.Alternate)
+                plan = FirstHandSteps(plan, options, blockCount, stepsPerBlock);
             double clickPeriodSec = DeriveClickPeriod(plan, intervalSec);
 
             double leadIn = ResolveLeadIn(options, jump, clickPeriodSec);
@@ -150,6 +152,22 @@ namespace JumpDrill.Generation
             }
 
             return byStep;
+        }
+
+        /// <summary>
+        /// 1ステップごとの交互（Down / Up）では、クリックを最初の手のノーツごとに鳴らす（指定の BPM の1拍ごと）。
+        /// 両手の切り下げで鳴らすと、左右の2発が詰まって鳴ったあと長く空き、テンポが取れない。
+        /// </summary>
+        /// <remarks>手番はブロックの中の位置で決まるので、ブロックごとに頭から数える（1ブロックのステップ数が奇数でもずれない）。</remarks>
+        private static List<ClickPlanEntry> FirstHandSteps(List<ClickPlanEntry> plan, DrillOptions options, int blockCount, int stepsPerBlock)
+        {
+            if (options.Click != ClickMode.Down && options.Click != ClickMode.Up) return plan;
+            int hands = options.Sequences.Count;
+            var result = new List<ClickPlanEntry>();
+            for (int block = 0; block < blockCount; block++)
+                for (int inBlock = 0; inBlock < stepsPerBlock; inBlock += hands)
+                    result.Add(new ClickPlanEntry(block * stepsPerBlock + inBlock, false));
+            return result;
         }
 
         /// <summary>往復ごとに交互のときの、1回の手番の長さ。いちばん長い手の循環1周。</summary>

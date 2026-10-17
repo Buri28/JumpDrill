@@ -824,11 +824,12 @@ namespace JumpDrill.Replays
         }
 
         /// <summary>
-        /// 曲名に書いてある片手の速さから出した片手の間隔 (ms)。
+        /// 曲名に書いてある BPM から出した片手の間隔 (ms)。
         /// <c>… axis 300 BPM</c> なら 100。読めなければ 0。
         ///
-        /// 名前の BPM は<b>片手の速さ</b>なので、細分化も手の並べ方も要らずに値が決まる
-        /// （<c>30000 / 片手の間隔(ms)</c>）。以前は同じ値を <c>300 EBPM</c> と書いていたので、
+        /// 名前の BPM はノーツ間隔を 1/2 で数えた値で、片手の間隔は <c>30000 / BPM</c>。
+        /// 今の書き方の alt だけは片手が手の数ぶんおきなので、その数を掛ける
+        /// （<see cref="DrillNaming.NameHandMultiplier"/>）。以前は同じ値を <c>300 EBPM</c> と書いていたので、
         /// そちらも読む。"EBPM" の中にも "BPM" があるので EBPM を先に見る
         /// （BPM で探すと直前が "E" で数字にならず、読めずに終わる）。
         /// </summary>
@@ -836,7 +837,8 @@ namespace JumpDrill.Replays
         {
             double bpm = TrailingNumber(songName, "ebpm");
             if (bpm <= 0) bpm = TrailingNumber(songName, "bpm");
-            return bpm > 0 ? Tempo.HandIntervalMsFromEbpm(bpm) : 0.0;
+            // 今の書き方の alt は BPM がノーツの流れの速さなので、片手の間隔はその手数倍
+            return bpm > 0 ? Tempo.HandIntervalMsFromEbpm(bpm) * DrillNaming.NameHandMultiplier(songName) : 0.0;
         }
 
         /// <summary>

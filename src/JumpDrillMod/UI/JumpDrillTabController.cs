@@ -85,6 +85,39 @@ namespace JumpDrillMod.UI
             RefreshReplayUsage();
         }
 
+        /// <summary>
+        /// メダル画面の行の方向（<c>R8bL5a tower alt</c>）に合わせて、グリッド・配置・切る方向・タワー・フリックを置き直す。
+        /// 速さ・尺・NJS は方向に入っていないので今のまま。
+        /// </summary>
+        /// <returns>
+        /// グリッドに置けなかったら false（反転でない両手の形、Explicit）。そのときは何も変えない。
+        /// グリッドは片手ぶん組んで反転する作りのため。
+        /// </returns>
+        internal bool Preset(JumpDrill.Model.DrillShape shape)
+        {
+            if (Config == null) return false;
+
+            bool both = shape.Sequences.Count == 2;
+            bool grid = (shape.Sequences.Count == 1 || shape.IsMirrored)
+                        && shape.Direction != JumpDrill.Model.DirectionMode.Explicit
+                        && editor.Load(shape.Sequences[0].ToString());
+            if (grid)
+            {
+                keepConfigSequence = false;
+                Config.Sequence = editor.Notation;
+                Config.Mirror = both;
+                Config.Direction = shape.Direction.ToString();
+                Config.Tower = shape.Tower;
+                Config.HandPattern = shape.HandPattern.ToString();
+                Config.FlickPercent = (int)Math.Round(shape.FlickPercent);
+            }
+
+            Reload();
+            SetStatus(grid ? string.Empty : "Could not set this direction on the grid.");
+            ReloadOthers();
+            return grid;
+        }
+
         /// <summary>この実体以外の画面を出し直す。</summary>
         internal void ReloadOthers()
         {

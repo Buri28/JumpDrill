@@ -110,18 +110,40 @@ namespace JumpDrill.Gui
 
         private static string StandardName { get { return Lang.T("標準", "Standard"); } }
         private static string OtherName { get { return Lang.T("その他", "Other"); } }
+        private static string AllName { get { return Lang.T("すべて", "All"); } }
 
-        /// <summary>選んでいるカスタムステージ。標準・その他なら null。</summary>
+        /// <summary>選んでいるカスタムステージ。標準・その他・すべてなら null。</summary>
         private CustomStage CurrentStage
         {
-            get { return _stagePicker.SelectedIndex > 1 ? _book.Find((string)_stagePicker.SelectedItem) : null; }
+            get { return _stagePicker.SelectedIndex > 2 ? _book.Find((string)_stagePicker.SelectedItem) : null; }
         }
 
-        /// <summary>その他（標準以外のドリルを方向ごとに並べた表）を出しているか。</summary>
-        private bool IsOther { get { return _stagePicker.SelectedIndex == 1; } }
+        /// <summary>
+        /// 作ったドリルを方向ごとに並べた表（その他・すべて）を出しているか。
+        /// その他はどのカスタムステージにも入っていないものだけ、すべてはカスタムステージに入っているものも出す。
+        /// </summary>
+        private bool IsOther { get { return _stagePicker.SelectedIndex == 1 || _stagePicker.SelectedIndex == 2; } }
+
+        /// <summary>標準（112曲）を出しているか。</summary>
+        private bool IsStandard { get { return _stagePicker.SelectedIndex == 0; } }
+
+        /// <summary>すべて（カスタムステージに入っているものも含めて、標準以外のドリル全部）を出しているか。</summary>
+        private bool IsAll { get { return _stagePicker.SelectedIndex == 2; } }
 
         /// <summary>その他の表に出すドリルの曲名。再スキャンで探し直す。</summary>
         private List<string> _otherNames;
+
+        /// <summary>作ったばかりのドリルの曲名（新しい順）。<see cref="_otherNames"/> と一緒に探し直す。</summary>
+        private List<string> _justMade = new List<string>();
+
+        /// <summary>次に表を出すとき、いちばん新しく作ったドリルを選んで見せるか（開いたときと、ステージを切り替えたとき）。</summary>
+        private bool _revealNewest = true;
+
+        /// <summary>いま出している表の行。すべて再作成で使う。</summary>
+        private List<MedalRow> _shownRows = new List<MedalRow>();
+
+        /// <summary>再作成で書くときの指定（メイン画面の「zip も出す」など）。無ければ既定。</summary>
+        internal Func<LevelWriteOptions> WriteOptions { get; set; }
 
         internal MedalForm(string workspaceRoot, SettingsStore settings, Action<IWin32Window, string> openPreview, Action<string> openReplay, Action<string> followReplay,
             Func<IWin32Window, IReadOnlyList<DrillSetEntry>, bool, Action<string>, Task<bool>> generateSet,
@@ -236,9 +258,15 @@ namespace JumpDrill.Gui
             _generate.Click += async (s, e) =>
             {
                 var cell = _board.Selected;
-                if (cell != null && cell.Entry != null) await Generate(new[] { cell.Entry });
+                if (cell == null) return;
+                if (IsStandard) { if (cell.Entry != null) await Generate(new[] { cell.Entry }); }
+                else await Rebuild(new[] { cell.SongName });
             };
-            _generateAll.Click += async (s, e) => await Generate(DrillSet.All());
+            _generateAll.Click += async (s, e) =>
+            {
+                if (IsStandard) await Generate(DrillSet.All());
+                else await Rebuild(_shownRows.SelectMany(r => r.Cells).Select(c => c.SongName).ToList());
+            };
             _tips.SetToolTip(_preview, Lang.T("選んだマスの譜面を ArcViewer で開きます。", "Opens the selected map in ArcViewer."));
             _tips.SetToolTip(_generate, Lang.T("選んだマスの譜面を出力先に作成します。", "Writes the selected map to the output folder."));
             _tips.SetToolTip(_generateAll, Lang.T("14方向 × 8 Stage の譜面（112曲）を出力先に作成します。", "Writes 112 maps (14 directions × 8 stages) to the output folder."));
@@ -252,18 +280,25 @@ namespace JumpDrill.Gui
             _board.RowMoved += (s, move) => MoveRow(move.Item1, move.Item2);
 
             // 表の大きさは方向の数と画面の拡大率で決まるので、決め打ちせず中身に合わせる。
-            Load += (s, e) => FitToContent();
+            Load += (s, e) =>
+            {
+                FitToContent();
+                // 開いた時点では表の大きさが決まっていないので、作ったばかりのドリルへのスクロールをやり直す
+                if (IsOther && _justMade.Count > 0 && _board.Selected?.SongName == _justMade[0]) _board.Reveal(_justMade[0]);
+            };
 
             LoadStages();
             _stagePicker.SelectedIndexChanged += (s, e) =>
             {
                 if (_stagePicker.SelectedIndex < 0) return;
                 _settings.Set("medalStage", CurrentStage?.Name ?? "");
-                _settings.Set("medalOther", IsOther);
+                _settings.Set("medalOther", IsOther && !IsAll);
+                _settings.Set("medalAll", IsAll);
                 if (IsOther) _otherNames = null;   // メイン画面で作った分なども拾い直す
                 _board.ClearSelection();
+                _revealNewest = true;
                 ShowStage();
-                _board.AutoScrollPosition = Point.Empty;
+                if (_board.Selected == null) _board.AutoScrollPosition = Point.Empty;
             };
 
             // 叩く前でも空の表は見せる。どこを埋めればいいかがそのまま次の練習になる。
@@ -298,7 +333,7 @@ namespace JumpDrill.Gui
                 _status.Text = Lang.T("ステージの設定ファイルを読み込めませんでした: ", "Could not read the stage file: ") + ex.Message;
             }
 
-            FillStagePicker(_settings.GetString("medalStage", ""), _settings.GetBool("medalOther", false));
+            FillStagePicker(_settings.GetString("medalStage", ""), _settings.GetBool("medalOther", false), _settings.GetBool("medalAll", false));
         }
 
         /// <summary>選んでいる Beat Saber の stages.json。「すべて」なら、Beat Saber が1つだけのときはそれ。</summary>
@@ -331,18 +366,19 @@ namespace JumpDrill.Gui
             }).ToList();
         }
 
-        /// <summary>プルダウンは 標準・その他・カスタムステージの順。</summary>
-        private void FillStagePicker(string select, bool other = false)
+        /// <summary>プルダウンは 標準・その他・すべて・カスタムステージの順。</summary>
+        private void FillStagePicker(string select, bool other = false, bool all = false)
         {
             _stagePicker.BeginUpdate();
             _stagePicker.Items.Clear();
             _stagePicker.Items.Add(StandardName);
             _stagePicker.Items.Add(OtherName);
+            _stagePicker.Items.Add(AllName);
             foreach (var stage in _book.Stages) _stagePicker.Items.Add(stage.Name);
             _stagePicker.EndUpdate();
 
             int custom = _book.Stages.FindIndex(st => st.Name == select);
-            _stagePicker.SelectedIndex = other ? 1 : custom >= 0 ? custom + 2 : 0;
+            _stagePicker.SelectedIndex = all ? 2 : other ? 1 : custom >= 0 ? custom + 3 : 0;
         }
 
         /// <summary>
@@ -353,10 +389,17 @@ namespace JumpDrill.Gui
         {
             if (_otherNames == null)
             {
-                try { _otherNames = _findDrills == null ? new List<string>() : FindDrills().Select(d => d.SongName).ToList(); }
+                try
+                {
+                    var drills = _findDrills == null ? new List<DrillLibrary.DrillLevel>() : FindDrills();
+                    _otherNames = drills.Select(d => d.SongName).ToList();
+                    _justMade = DrillLibrary.JustMade(
+                        drills.Select(d => new KeyValuePair<string, DateTime>(d.SongName, d.Written)), DateTime.Now);
+                }
                 catch (Exception ex)
                 {
                     _otherNames = new List<string>();
+                    _justMade = new List<string>();
                     _status.Text = Lang.T("ドリルを探せませんでした: ", "Could not list the drills: ") + ex.Message;
                 }
             }
@@ -388,7 +431,9 @@ namespace JumpDrill.Gui
         /// <summary>ステージ名に使えなければ理由を返す。</summary>
         private string CheckStageName(string name, CustomStage self)
         {
-            if (name == StandardName || name == OtherName || _book.Stages.Any(st => st != self && st.Name == name))
+            // 表示の言語によらず、標準・その他・すべての名前は使わせない（MOD は英語の名前でプルダウンを選ぶ）
+            var reserved = new[] { "標準", "Standard", "その他", "Other", "すべて", "All" };
+            if (reserved.Contains(name) || _book.Stages.Any(st => st != self && st.Name == name))
                 return Lang.T("同じ名前のステージがあります。", "A stage with this name already exists.");
             return null;
         }
@@ -507,6 +552,8 @@ namespace JumpDrill.Gui
                 var other = new ContextMenuStrip();
                 Theme.Apply(other);
                 other.Closed += (s, e) => BeginInvoke((Action)other.Dispose);
+                other.Items.Add(Lang.T("ドリルを再作成", "Rebuild drill"), null, async (s, e) => await Rebuild(new[] { cell.SongName }));
+                other.Items.Add(new ToolStripSeparator());
                 other.Items.Add(Lang.T("ドリルを削除...", "Delete drill..."), null, (s, e) => DeleteDrill(cell.SongName));
                 other.Show(Cursor.Position);
                 return;
@@ -542,6 +589,10 @@ namespace JumpDrill.Gui
                 menu.Items.Add(new ToolStripSeparator());
                 AddItem(menu, Lang.T("ステージから外す", "Remove from stage"), true, () => { row.Drills.RemoveAt(c); _board.ClearSelection(); return true; });
                 string songName = c < row.Drills.Count ? row.Drills[c] : null;
+                menu.Items.Add(new ToolStripMenuItem(Lang.T("ドリルを再作成", "Rebuild drill"), null, async (s, e) => await Rebuild(new[] { songName }))
+                {
+                    Enabled = !string.IsNullOrEmpty(songName),
+                });
                 menu.Items.Add(new ToolStripMenuItem(Lang.T("ドリルを削除...", "Delete drill..."), null, (s, e) => DeleteDrill(songName))
                 {
                     Enabled = !string.IsNullOrEmpty(songName),
@@ -609,7 +660,7 @@ namespace JumpDrill.Gui
 
             var message = new System.Text.StringBuilder();
             message.AppendLine(string.Format(CultureInfo.CurrentCulture,
-                Lang.T("ドリル「{0}」を削除しますか？", "Delete the drill \"{0}\"?"), DrillNaming.StripId(songName)));
+                Lang.T("ドリル「{0}」を削除しますか？", "Delete the drill \"{0}\"?"), DrillNaming.DisplayName(songName)));
             message.AppendLine();
             if (copies.Count > 0)
             {
@@ -642,7 +693,7 @@ namespace JumpDrill.Gui
             ShowStage();
 
             _status.Text = failed.Count == 0
-                ? string.Format(CultureInfo.CurrentCulture, Lang.T("ドリル「{0}」を削除しました。", "Deleted the drill \"{0}\"."), DrillNaming.StripId(songName))
+                ? string.Format(CultureInfo.CurrentCulture, Lang.T("ドリル「{0}」を削除しました。", "Deleted the drill \"{0}\"."), DrillNaming.DisplayName(songName))
                 : Lang.T("消せなかった譜面があります。", "Some maps could not be deleted.");
             if (failed.Count > 0)
                 MessageBox.Show(this, string.Join(Environment.NewLine, failed), "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -716,16 +767,28 @@ namespace JumpDrill.Gui
         {
             var stage = CurrentStage;
             bool other = IsOther;
-            var rows = other ? DrillSetMedals.Evaluate(CustomStage.Other(OtherNames(), _book.Stages), _best)
+            var rows = other ? DrillSetMedals.Evaluate(CustomStage.Other(OtherNames(), IsAll ? null : _book.Stages), _best)
                 : stage == null ? DrillSetMedals.Evaluate(_best)
                 : DrillSetMedals.Evaluate(stage, _best);
+            // NEW はその他・すべてでだけ出す（作ったばかりの一覧はそこを開いたときに作り直している）
+            _board.NewNames = other ? new HashSet<string>(_justMade, StringComparer.Ordinal) : new HashSet<string>();
             ShowRows(rows, editable: stage != null && !_bookBroken);
             _board.CellMenus = other;
 
-            // 生成は指定を持っている標準だけ。その他・カスタムは作ったドリルを並べたもの
-            bool standard = !other && stage == null;
-            _generate.Visible = standard;
-            _generateAll.Visible = standard;
+            // その他を開いたときは、いちばん新しく作ったドリルを選んで見せる
+            if (other && _revealNewest && _board.Selected == null && _justMade.Count > 0) _board.Reveal(_justMade[0]);
+            _revealNewest = false;
+
+            // 標準は指定から生成する。その他・すべて・カスタムは作ったドリルを並べたものなので、同じ指定で作り直す
+            bool standard = IsStandard;
+            _generate.Text = standard ? Lang.T("生成", "Generate") : Lang.T("再作成", "Rebuild");
+            _generateAll.Text = standard ? Lang.T("すべて生成", "Generate all") : Lang.T("すべて再作成", "Rebuild all");
+            _tips.SetToolTip(_generate, standard
+                ? Lang.T("選んだマスの譜面を出力先に作成します。", "Writes the selected map to the output folder.")
+                : Lang.T("選んだマスの譜面を同じ指定で作り直します。記録は消えません。", "Writes the selected map again with the same settings. Records are kept."));
+            _tips.SetToolTip(_generateAll, standard
+                ? Lang.T("14方向 × 8 Stage の譜面（112曲）を出力先に作成します。", "Writes 112 maps (14 directions × 8 stages) to the output folder.")
+                : Lang.T("この表の譜面をすべて同じ指定で作り直します。記録は消えません。", "Writes every map in this table again with the same settings. Records are kept."));
             _overwrite.Visible = standard;
             UpdateButtons();
         }
@@ -734,7 +797,7 @@ namespace JumpDrill.Gui
         {
             var cell = _board.Selected;
             _preview.Enabled = cell != null;
-            _generate.Enabled = cell != null && cell.Entry != null && !_generating;
+            _generate.Enabled = cell != null && (cell.Entry != null || !IsStandard) && !_generating;
             _replay.Enabled = cell != null && cell.BestPercent.HasValue;
         }
 
@@ -830,6 +893,88 @@ namespace JumpDrill.Gui
             }
         }
 
+        /// <summary>
+        /// ドリルを同じ指定で作り直す（JumpDrill.Core の <c>DrillRebuild</c>）。同じ曲名の譜面が置き場所ごとにあれば全部。
+        /// 生成の決まりを変えたあとで、今の決まりで書き直すのに使う。名前と ID は変わらないので記録はそのまま。
+        /// </summary>
+        private async Task Rebuild(IReadOnlyList<string> songNames)
+        {
+            if (_generating || _findDrills == null) return;
+
+            var names = new HashSet<string>(songNames.Where(n => !string.IsNullOrEmpty(n)), StringComparer.Ordinal);
+            List<DrillLibrary.DrillLevel> copies;
+            try { copies = FindDrills().Where(d => names.Contains(d.SongName)).ToList(); }
+            catch (Exception ex)
+            {
+                _status.Text = Lang.T("ドリルを探せませんでした: ", "Could not list the drills: ") + ex.Message;
+                return;
+            }
+            if (copies.Count == 0)
+            {
+                _status.Text = Lang.T("作り直す譜面が見つかりません。", "No maps to rebuild.");
+                return;
+            }
+
+            if (names.Count > 1 && MessageBox.Show(this,
+                    string.Format(CultureInfo.CurrentCulture, Lang.T(
+                        "{0} 本のドリルを同じ指定で作り直します。記録は消えません。",
+                        "Rebuild {0} drills with the same settings? Records are kept."), names.Count),
+                    "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+
+            _generating = true;
+            _generate.Enabled = false;
+            _generateAll.Enabled = false;
+            var write = WriteOptions?.Invoke();   // 画面の値は UI のスレッドで読む
+            // zip は曲ごとに1つでよい。同じ曲の2つ目以降のコピーでは書かない
+            var noZip = write == null ? null : new LevelWriteOptions { Format = write.Format, SampleRate = write.SampleRate, OggQuality = write.OggQuality };
+            var zipped = new HashSet<string>(StringComparer.Ordinal);
+            var progress = new Progress<string>(text => { if (!IsDisposed) _status.Text = text; });
+            IProgress<string> step = progress;
+            var failures = new List<string>();
+            var renamed = new Dictionary<string, string>(StringComparer.Ordinal);
+            try
+            {
+                await Task.Run(() =>
+                {
+                    for (int i = 0; i < copies.Count; i++)
+                    {
+                        step.Report(string.Format(CultureInfo.CurrentCulture, Lang.T("再作成中... {0}/{1}  {2}", "Rebuilding... {0}/{1}  {2}"),
+                            i + 1, copies.Count, DrillNaming.DisplayName(copies[i].SongName)));
+                        try
+                        {
+                            var result = DrillRebuild.Rewrite(copies[i].Path, zipped.Add(copies[i].SongName) ? write : noZip);
+                            if (result.Renamed) lock (renamed) renamed[result.OldName] = result.NewName;
+                        }
+                        catch (Exception ex) { failures.Add(DrillNaming.DisplayName(copies[i].SongName) + ": " + ex.Message); }
+                    }
+                });
+            }
+            finally
+            {
+                _generating = false;
+                if (!IsDisposed)
+                {
+                    _generateAll.Enabled = true;
+                    UpdateButtons();
+                }
+            }
+            if (IsDisposed) return;
+
+            // 曲名を今の書き方に付け替えたものは、カスタムステージの曲名も付け替える
+            if (!_bookBroken && _book.RenameDrills(renamed)) SaveStages();
+
+            // 置き場所の一覧を読み直して表を出し直す（再作成中の状態の文は下で上書きする）
+            _otherNames = null;
+            ShowStage();
+
+            _status.Text = failures.Count == 0
+                ? string.Format(CultureInfo.CurrentCulture, Lang.T("作り直しました: {0} 本", "Rebuilt: {0}"), copies.Count)
+                : string.Format(CultureInfo.CurrentCulture, Lang.T("作り直しました: {0} 本（失敗 {1} 本）", "Rebuilt: {0} ({1} failed)"),
+                    copies.Count - failures.Count, failures.Count);
+            if (failures.Count > 0)
+                MessageBox.Show(this, string.Join("\r\n", failures.Take(10)), "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
         private void OpenPreview()
         {
             var cell = _board.Selected;
@@ -848,6 +993,7 @@ namespace JumpDrill.Gui
         {
             _total.Text = string.Format(CultureInfo.CurrentCulture, Lang.T("総合 Lv {0} / {1}", "Total Lv {0} / {1}"),
                 rows.Sum(r => r.Level), rows.Sum(r => r.MaxLevel));
+            _shownRows = rows;
             _board.SetRows(rows, editable);
 
             // 生成中は状態の行に進み具合が出ている。消すと生成中だと分からなくなる

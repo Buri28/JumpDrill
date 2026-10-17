@@ -34,6 +34,9 @@ namespace JumpDrillMod.UI.Medals
         /// <summary>Make drill で出す、ドリルを組む画面。</summary>
         private DrillMakerViewController? maker;
 
+        /// <summary>ドリルを組む画面の中身。行の方向に合わせて置き直すのに使う。</summary>
+        private JumpDrillTabController? makerHost;
+
         /// <summary>
         /// 自分を出した親。閉じるときに要る。
         /// HMUI の <c>_parentFlowCoordinator</c> は外から見えないので、出すときに覚えておく。
@@ -48,7 +51,8 @@ namespace JumpDrillMod.UI.Medals
             this.diagrams = diagrams;
 
             if (view == null) view = BeatSaberUI.CreateViewController<MedalViewController>();
-            view.Setup(reader, launcher, icons, drillSet, Play, ShowRecords, makerHost == null ? null : (Action)OpenMaker);
+            this.makerHost = makerHost;
+            view.Setup(reader, launcher, icons, drillSet, Play, ShowRecords, makerHost == null ? null : (Func<string?, bool>)OpenMaker);
 
             if (makerHost != null)
             {
@@ -97,12 +101,22 @@ namespace JumpDrillMod.UI.Medals
 
         private void OnReplaysChanged() => view?.Rescan();
 
-        /// <summary>ドリルを組む画面を表の上に出す。</summary>
-        private void OpenMaker()
+        /// <summary>
+        /// ドリルを組む画面を表の上に出す。<paramref name="direction"/> があれば、
+        /// その方向（カスタムステージの行の方向）にグリッドと設定を合わせてから出す。
+        /// </summary>
+        /// <returns>出せなければ false。</returns>
+        private bool OpenMaker(string? direction)
         {
-            if (maker == null || topViewController != view) return;
+            if (maker == null || topViewController != view) return false;
+            if (direction != null && makerHost != null)
+            {
+                var shape = JumpDrill.Model.DrillShape.Parse(direction);
+                if (shape != null) makerHost.Preset(shape);
+            }
             SetTitle("Make Drill");
             PresentViewController(maker, null, ViewController.AnimationDirection.Vertical);
+            return true;
         }
 
         /// <summary>ドリルを組む画面を閉じて表に戻る。作ったドリルが出るように読み直す。</summary>
@@ -110,7 +124,7 @@ namespace JumpDrillMod.UI.Medals
         {
             if (maker == null || topViewController != maker) return;
             SetTitle("Jump Drill");
-            DismissViewController(maker, ViewController.AnimationDirection.Vertical, () => view?.Rescan());
+            DismissViewController(maker, ViewController.AnimationDirection.Vertical, () => view?.RescanAndRevealNewest());
         }
 
         protected override void BackButtonWasPressed(ViewController topViewController)

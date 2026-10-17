@@ -64,6 +64,25 @@ namespace JumpDrill.Gui
         private int _selectedColumn = -1;
         private string _selectedName;
 
+        /// <summary>作ったばかりのドリルの曲名。マスの BPM の前に NEW を出す。</summary>
+        public ICollection<string> NewNames { get; set; }
+
+        /// <summary>曲名のマスを選び、見える位置までスクロールする。無ければ何もしない。</summary>
+        public bool Reveal(string songName)
+        {
+            for (int r = 0; r < _rows.Count; r++)
+            {
+                int c = _rows[r].Cells.FindIndex(x => x.SongName == songName);
+                if (c < 0) continue;
+                Select(r, c);
+                int top = HeaderHeight + r * RowHeight;
+                AutoScrollPosition = new Point(0, Math.Max(0, top - (ClientSize.Height - RowHeight) / 2));
+                Invalidate();
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>選んでいるマス。無ければ null。</summary>
         public MedalCell Selected
         {
@@ -380,9 +399,16 @@ namespace JumpDrill.Gui
         private void DrawCell(Graphics g, MedalCell cell, bool selected, int x, int y, Font small,
             Brush text, Brush faint, Pen line, StringFormat center)
         {
+            bool isNew = NewNames != null && cell.SongName != null && NewNames.Contains(cell.SongName);
             if (cell.Bpm.HasValue)
-                g.DrawString(string.Format(CultureInfo.InvariantCulture, "{0:0.#} BPM", cell.Bpm.Value), small, faint,
-                    new RectangleF(x, y + Scaled(1), CellWidth, Scaled(14)), center);
+            {
+                string bpm = string.Format(CultureInfo.InvariantCulture, "{0:0.#} BPM", cell.Bpm.Value);
+                if (isNew)
+                    using (var accent = new SolidBrush(TagColor))
+                        g.DrawString("NEW  " + bpm, small, accent, new RectangleF(x, y + Scaled(1), CellWidth, Scaled(14)), center);
+                else
+                    g.DrawString(bpm, small, faint, new RectangleF(x, y + Scaled(1), CellWidth, Scaled(14)), center);
+            }
 
             // 円の中はベストの再現精度。Lv は色で読める（金 3・銀 2・銅 1）。
             var disc = DiscAt(x, y);
@@ -528,7 +554,7 @@ namespace JumpDrill.Gui
             string njs = cell.Entry != null
                 ? string.Format(CultureInfo.CurrentCulture, "NJS {0:0.#}   ", cell.Entry.Options.Njs) : "";
             _tip.SetToolTip(this, string.Format(CultureInfo.CurrentCulture, "{0}\n{1}{2}",
-                DrillNaming.StripId(cell.SongName), njs,
+                DrillNaming.DisplayName(cell.SongName), njs,
                 cell.BestPercent.HasValue
                     ? Lang.T("ベスト ", "Best ") + BestText(cell.BestPercent.Value)
                     : Lang.T("未プレイ", "Not played")));

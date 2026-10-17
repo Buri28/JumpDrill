@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace JumpDrill.Model
 {
@@ -19,10 +20,11 @@ namespace JumpDrill.Model
     ///   {R8bL5a 300} [Q7K3M] Drill R8b L5a axis 300 BPM 10s   一括生成の1本
     /// </code>
     ///
-    /// 速さは<b>片手の速さ</b>を BPM（1/2）で書く。<c>30000 / 片手の間隔(ms)</c>。
-    /// ScoreSaber の「350 BPM」と同じ数え方で、ジャンプ（同時・片手ずつ）なら
-    /// GUI で入れる BPM とも同じ値になる。両手交互だけは自分の番が半分なので、
-    /// 入れた BPM より小さく出る。以前は同じ値を「EBPM」と書いていた。
+    /// 速さは入れた BPM（ノーツ間隔を 1/2 で数えた値）を書く。<c>30000 / ノーツ間隔(ms)</c>。
+    /// ジャンプ（同時・片手ずつ）や往復ごとに交互では片手の速さと同じで、ScoreSaber の「350 BPM」と同じ数え方になる。
+    /// 両手交互（alt）だけは片手の速さがその半分（ID は片手の間隔から作る）。
+    /// 2026-10-17 までの alt は片手の速さを書いていた（<see cref="ParseBpm"/> はどちらも読める）。
+    /// 以前は同じ値を「EBPM」と書いていた。
     ///
     /// 頭の <c>{…}</c> は並び順の印（<see cref="JumpDrill.Model.DrillSet"/>）。
     /// 曲一覧が名前順なら方向ごと・速さ順にまとまるよう、ID より前に置く。
@@ -50,10 +52,11 @@ namespace JumpDrill.Model
         private const string Alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
         /// <summary>
-        /// 片手の間隔 (ms)。<b>ノーツ間隔とは限らない。</b>
+        /// 片手の間隔 (ms)。<b>ノーツ間隔とは限らない。</b> ID はこの値から作る。
         ///
         /// 両手交互（<c>alt</c>）では自分の番が手の数ぶんおきにしか回ってこないので、
         /// 片手の間隔はノーツ間隔の手数倍になる。同時・片手ずつはノーツ間隔と同じ。
+        /// 名前に書く BPM（<see cref="NameBpm"/>）はノーツ間隔から出すので、alt では食い違う。
         /// </summary>
         public static double HandIntervalMs(DrillOptions options)
         {
@@ -64,10 +67,14 @@ namespace JumpDrill.Model
                 : options.IntervalMs;
         }
 
-        /// <summary>片手の速さ（BPM 1/2 で数えた値、いわゆる EBPM）。譜面名に書く値。</summary>
-        public static double Ebpm(DrillOptions options)
+        /// <summary>
+        /// 譜面名に書く BPM。ノーツ間隔を 1/2 で数えた値（入れた BPM）。
+        /// split・sync・alt-trip では片手の速さ（EBPM）と同じ。alt だけは片手の速さの手数倍になる
+        /// （2026-10-17 まで alt は片手の速さを書いていた。<see cref="ParseBpm"/> はどちらも読める）。
+        /// </summary>
+        public static double NameBpm(DrillOptions options)
         {
-            return Tempo.EbpmFromHandIntervalMs(HandIntervalMs(options));
+            return Tempo.EbpmFromHandIntervalMs(options.IntervalMs);
         }
 
         /// <summary>
@@ -92,7 +99,7 @@ namespace JumpDrill.Model
 
             // 速さは 1 桁だけ小数を残す。整数に丸めると 171ms が 175 BPM = 171.4ms に戻り、
             // 「片手 171 ms」と出したいところが 171.4 ms になる。
-            string speed = string.Format(ci, "{0:0.#} BPM", Ebpm(options));
+            string speed = string.Format(ci, "{0:0.#} BPM", NameBpm(options));
             string length = Length(options.DurationSeconds, options.Sets);
 
             return string.Format(ci, "[{0}] {1}{2} {3} {4}",
@@ -221,6 +228,102 @@ namespace JumpDrill.Model
         }
 
         /// <summary>
+        /// 画面に出す名前。ID を落とし、BPM を今の書き方（ノーツ間隔を 1/2 で数えた値）にそろえる。
+        /// 以前の alt の名前は片手の速さ（半分）で書いてあるので、そこだけ直して出す。譜面名と ID は変えない。
+        /// </summary>
+        public static string DisplayName(string songName)
+        {
+            return StripId(CurrentName(songName));
+        }
+
+        /// <summary>
+        /// 今の書き方の曲名。以前の書き方の alt（BPM が片手の速さ）なら BPM をノーツの流れの値に直す。
+        /// ID は片手の間隔から作るので変わらない。それ以外はそのまま返す。
+        /// </summary>
+        public static string CurrentName(string songName)
+        {
+            if (string.IsNullOrEmpty(songName) || !IsPerHandAlternateName(songName)) return songName;
+
+            var words = songName.Split(' ');
+            int bpm = Array.IndexOf(words, "BPM");
+            if (bpm < 1) return songName;
+            words[bpm - 1] = ParseBpm(songName).Value.ToString("0.#", CultureInfo.InvariantCulture);
+            return string.Join(" ", words);
+        }
+
+        /// <summary>
+        /// 名前の BPM から片手の間隔を出すときに掛ける数。今の書き方の alt だけ手の数、ほかは 1。
+        /// </summary>
+        public static int NameHandMultiplier(string songName)
+        {
+            int hands = AlternateHands(songName);
+            return hands >= 2 && !IsPerHandAlternateName(songName) ? hands : 1;
+        }
+
+        /// <summary>両手交互（alt）の手の数。alt でなければ 1。</summary>
+        private static int AlternateHands(string songName)
+        {
+            if (string.IsNullOrEmpty(songName) || !HasWord(songName, AltWord.Trim())) return 1;
+            return Math.Max(1, ParseSequences(songName).Count);
+        }
+
+        /// <summary>
+        /// 以前の書き方の alt の名前（BPM が片手の速さ）か。
+        /// ID は片手の間隔から作っているので、名前の BPM を片手の速さとして読んで ID が合えば以前の書き方。
+        /// </summary>
+        private static bool IsPerHandAlternateName(string songName)
+        {
+            if (AlternateHands(songName) < 2) return false;
+
+            string id = ExtractId(songName);
+            double? raw = RawBpm(songName);
+            string body = NameBody(songName);
+            double seconds;
+            int sets;
+            if (id == null || !raw.HasValue || raw.Value <= 0 || body == null || !ParseLength(songName, out seconds, out sets)) return false;
+
+            return MakeId(body, Tempo.HandIntervalMsFromEbpm(raw.Value), seconds, sets) == id;
+        }
+
+        /// <summary>名前の遷移と向き（<c>R8b L5a axis alt</c>）。ID を作るときの body と同じ。読めなければ null。</summary>
+        private static string NameBody(string songName)
+        {
+            string name = StripId(songName).Trim();
+            if (name.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase)) name = name.Substring(Prefix.Length);
+
+            var words = name.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            int bpm = Array.IndexOf(words, "BPM");
+            if (bpm < 2) return null;
+            return string.Join(" ", words, 0, bpm - 1);
+        }
+
+        /// <summary>曲名の <c>BPM</c> の後ろの尺（<c>30s</c>）とセット数（<c>x3</c>、無ければ 1）。</summary>
+        public static bool ParseLength(string songName, out double seconds, out int sets)
+        {
+            seconds = 0;
+            sets = 1;
+            if (string.IsNullOrEmpty(songName)) return false;
+
+            var words = StripId(songName).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            int bpm = Array.IndexOf(words, "BPM");
+            if (bpm < 0 || bpm + 1 >= words.Length) return false;
+
+            string length = words[bpm + 1];
+            if (!length.EndsWith("s", StringComparison.Ordinal) ||
+                !double.TryParse(length.Substring(0, length.Length - 1), NumberStyles.Float, CultureInfo.InvariantCulture, out seconds) ||
+                seconds <= 0)
+                return false;
+
+            if (bpm + 2 < words.Length && words[bpm + 2].StartsWith("x", StringComparison.Ordinal))
+            {
+                int parsed;
+                if (int.TryParse(words[bpm + 2].Substring(1), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) && parsed > 0)
+                    sets = parsed;
+            }
+            return true;
+        }
+
+        /// <summary>
         /// ID（と並び順の印）を落とした表示用の名前。ID が無ければそのまま返す。
         /// </summary>
         public static string StripId(string songName)
@@ -230,10 +333,19 @@ namespace JumpDrill.Model
         }
 
         /// <summary>
-        /// 譜面名に書いた片手の速さ（<c>300 BPM</c> の 300）。書いていなければ null。
+        /// 譜面名の BPM（<c>300 BPM</c> の 300）。ノーツ間隔を 1/2 で数えた値で、書いていなければ null。
+        /// 以前の書き方の alt（片手の速さ）は手の数を掛けて今の書き方にそろえる。
         /// カスタムステージのように、生成の指定を持たずに名前だけで並べるときに使う。
         /// </summary>
         public static double? ParseBpm(string songName)
+        {
+            double? raw = RawBpm(songName);
+            if (!raw.HasValue) return null;
+            return IsPerHandAlternateName(songName) ? raw.Value * AlternateHands(songName) : raw;
+        }
+
+        /// <summary>譜面名に書いてある BPM の数字そのもの。</summary>
+        private static double? RawBpm(string songName)
         {
             if (string.IsNullOrEmpty(songName)) return null;
 
@@ -294,6 +406,8 @@ namespace JumpDrill.Model
         /// <summary>
         /// 行名（<see cref="DirectionOf"/> の形、<c>R3bL2a tower flick25</c>）を、方向と後ろの印に分ける。
         /// 印は切る方向（perp・perp-outer・dot・explicit）・tower・sync・alt・alt-trip・flick〈数字〉だけ。ほかの語（ユーザーが付けた「My jumps」など）は分けずに名前のまま返す。
+        /// 両手の方向（<c>R8bL5a</c>）で配置の印が無ければ片手ずつなので、表示用に <c>split</c> を足す
+        /// （譜面名には書かない。標準のステージの名前と ID を保つため）。
         /// </summary>
         public static void SplitTags(string rowName, out string name, out string tags)
         {
@@ -303,10 +417,28 @@ namespace JumpDrill.Model
             var words = name.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             int first = words.Length;
             while (first > 1 && IsTagWord(words[first - 1])) first--;
-            if (first == words.Length) return;
+
+            var tagWords = words.Skip(first).ToList();
+            if (first == 1 && IsBothHands(words[0]) && !tagWords.Any(w => PatternWords.Any(p => p.Trim() == w)))
+            {
+                // 配置の印と同じ位置（フリックの前）に入れる
+                int at = tagWords.FindIndex(w => w.StartsWith(FlickPrefix, StringComparison.Ordinal));
+                tagWords.Insert(at < 0 ? tagWords.Count : at, SplitWord);
+            }
+            if (tagWords.Count == 0) return;
 
             name = string.Join(" ", words, 0, first);
-            tags = string.Join(" ", words, first, words.Length - first);
+            tags = string.Join(" ", tagWords);
+        }
+
+        /// <summary>片手ずつの印。表示だけに使う。</summary>
+        private const string SplitWord = "split";
+
+        /// <summary>両手の方向（<c>R8bL5a</c>）か。</summary>
+        private static bool IsBothHands(string direction)
+        {
+            return Regex.IsMatch(direction, "^(?:[RL](?:[1-9a-c]s?){1,2})+$")
+                && direction.IndexOf('R') >= 0 && direction.IndexOf('L') >= 0;
         }
 
         private static bool IsTagWord(string word)

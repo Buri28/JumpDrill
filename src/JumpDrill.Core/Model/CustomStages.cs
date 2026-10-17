@@ -154,6 +154,24 @@ namespace JumpDrill.Model
             return Stages.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.Ordinal));
         }
 
+        /// <summary>並べたドリルの曲名を付け替える（再作成で今の名前にしたとき）。変えたら true。</summary>
+        public bool RenameDrills(IReadOnlyDictionary<string, string> renamed)
+        {
+            bool changed = false;
+            if (renamed == null || renamed.Count == 0) return false;
+            foreach (var row in Stages.SelectMany(s => s.Rows))
+                for (int i = 0; i < row.Drills.Count; i++)
+                {
+                    string to;
+                    if (renamed.TryGetValue(row.Drills[i], out to) && to != row.Drills[i])
+                    {
+                        row.Drills[i] = to;
+                        changed = true;
+                    }
+                }
+            return changed;
+        }
+
         /// <summary>
         /// 設定ファイルの置き場所。Beat Saber ごとの <c>UserData\JumpDrill\stages.json</c>。
         /// GUI と MOD で同じファイルを使い、どちらで作ったステージも両方に出す。

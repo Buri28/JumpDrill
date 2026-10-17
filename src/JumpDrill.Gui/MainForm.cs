@@ -46,7 +46,7 @@ namespace JumpDrill.Gui
 
         // 速さは BPM だけで指定する。ビーセイで速さを言う単位がこれで、
         // ms も EBPM も普段は目にしない。
-        private readonly NumericUpDown _interval = Spin(30, 600, 150, 0);
+        private readonly NumericUpDown _interval = Spin(10, 1000, 150, 0);
 
         /// <summary>
         /// 1拍あたりのノーツ数。<b>1/2 に固定してある。</b>
@@ -1668,6 +1668,7 @@ namespace JumpDrill.Gui
 
             var form = new MedalForm(CurrentWorkspace().Root, _settings, PreviewByName, OpenScoreboard, FollowScoreboard, GenerateSetAsync,
                 () => DrillLibrary.Find(CurrentWorkspace().Root, _outDir.Text.Trim(), _lastOutputFolder));
+            form.WriteOptions = () => new LevelWriteOptions { ZipDirectory = _zip.Checked ? CurrentWorkspace().ZipFolder : null };
             form.FormClosed += (s, e) => _medalForm = null;
             _medalForm = form;
             form.Show(this);
@@ -1889,7 +1890,7 @@ namespace JumpDrill.Gui
 
             var message = new StringBuilder();
             message.AppendLine(string.Format(CultureInfo.CurrentCulture,
-                Lang.T("ドリル「{0}」を削除しますか？", "Delete the drill \"{0}\"?"), DrillNaming.StripId(drill.SongName)));
+                Lang.T("ドリル「{0}」を削除しますか？", "Delete the drill \"{0}\"?"), DrillNaming.DisplayName(drill.SongName)));
             message.AppendLine();
             message.AppendLine(Lang.T("次の譜面のフォルダを消します（元に戻せません）:", "This map folder is deleted (cannot be undone):"));
             message.AppendLine("  " + drill.Path);
@@ -1925,7 +1926,7 @@ namespace JumpDrill.Gui
             if (string.Equals(_lastPreviewFolder, drill.Path, StringComparison.OrdinalIgnoreCase)) _lastPreviewFolder = null;
             FillPreviewList();
             _status.Text = string.Format(CultureInfo.CurrentCulture,
-                Lang.T("ドリル「{0}」を削除しました。", "Deleted the drill \"{0}\"."), DrillNaming.StripId(drill.SongName));
+                Lang.T("ドリル「{0}」を削除しました。", "Deleted the drill \"{0}\"."), DrillNaming.DisplayName(drill.SongName));
         }
 
         /// <summary>カスタムステージ（stages.json）から曲名を外す。読めなければ触らない。</summary>
@@ -1966,7 +1967,7 @@ namespace JumpDrill.Gui
             _previewList.Items.Clear();
             foreach (var drill in drills)
             {
-                var item = new ListViewItem(DrillNaming.StripId(drill.SongName));
+                var item = new ListViewItem(DrillNaming.DisplayName(drill.SongName));
                 item.ImageKey = IconKey(_previewIcons, drill.SongName, iconCell, pad);
                 item.SubItems.Add(drill.Where);
                 item.SubItems.Add(drill.Written == DateTime.MinValue

@@ -47,6 +47,13 @@ namespace JumpDrillMod.UI.Medals
 
         private const string StandardOption = "Standard";
         private const string OtherOption = "Other";
+        private const string AllOption = "All";
+
+        /// <summary>
+        /// Other の表を All（カスタムステージに入っているものも含めて、ドリルセット以外の全部）で出しているか。
+        /// 表の作りは Other と同じなので、ViewMode は Other のままこの印で分ける。
+        /// </summary>
+        private bool allDrills;
 
         [UIObject("page-buttons")] private GameObject? pageButtons = null;
         [UIObject("stage-buttons")] private GameObject? stageButtons = null;
@@ -80,6 +87,10 @@ namespace JumpDrillMod.UI.Medals
         private static void AppendDrillRow(StringBuilder sb)
         {
             sb.Append("<horizontal id='drill-row' active='false' pref-height='6' spacing='1'>");
+            Button(sb, "Rebuild", "drill-rebuild", 20,
+                "Write the selected drill again with the same settings. Records are kept.");
+            Button(sb, "Rebuild all", "drill-rebuild-all", 26,
+                "Write every drill in this table again with the same settings. Records are kept.");
             Button(sb, Danger("Delete drill"), "drill-delete", 24,
                 "Delete the map of the selected drill. Records are kept. It is also removed from custom stages.");
             sb.Append("</horizontal>");
@@ -87,24 +98,75 @@ namespace JumpDrillMod.UI.Medals
 
         [UIObject("drill-row")] private GameObject? drillRow = null;
 
+        /// <summary>選んでいるマスの曲名。カスタムでは行と列で、Other・All では ID で選んでいる。</summary>
+        private string? SelectedSongName()
+        {
+            if (mode == ViewMode.Custom)
+            {
+                var row = SelectedRow();
+                return row != null && HasSelectedCell(row) ? row.Drills[selectedColumn] : null;
+            }
+            return selectedId == null ? null
+                : ListRows.SelectMany(r => r.Cells).FirstOrDefault(c => c.Id == selectedId)?.SongName;
+        }
+
+        /// <summary>選んだドリルを同じ指定で作り直す。</summary>
+        [UIAction("drill-rebuild")]
+        public void RebuildDrill()
+        {
+            string? songName = SelectedSongName();
+            if (songName == null)
+            {
+                SetStatus("Pick a drill first.");
+                return;
+            }
+            Rebuild(new[] { songName });
+        }
+
+        /// <summary>いま出している表のドリルを全部、同じ指定で作り直す。</summary>
+        [UIAction("drill-rebuild-all")]
+        public void RebuildAll() => Rebuild(ListRows.SelectMany(r => r.Cells).Select(c => c.SongName).ToList());
+
+        /// <summary>
+        /// ドリルを作り直す（JumpDrill.Core の <c>DrillRebuild</c>）。同じ ID の譜面が置き場所ごとにあれば全部。
+        /// 生成の決まりを変えたあとで、今の決まりで書き直すのに使う。
+        /// </summary>
+        private void Rebuild(IReadOnlyList<string> songNames)
+        {
+            if (launcher == null || drillSet == null) return;
+
+            var folders = songNames
+                .Select(n => DrillNaming.ExtractId(n))
+                .Where(id => id != null)
+                .Distinct()
+                .SelectMany(id => launcher.FoldersOf(id!))
+                .ToList();
+            if (folders.Count == 0)
+            {
+                SetStatus("No maps to rebuild.");
+                return;
+            }
+
+            SetStatus("Rebuilding...");
+            drillSet.Rebuild(folders,
+                (done, total) => SetStatus(string.Format(CultureInfo.InvariantCulture, "Rebuilding... {0}/{1}", done, total)),
+                (ok, message, renamed) =>
+                {
+                    // 曲名を今の書き方に付け替えたものは、カスタムステージの曲名も付け替える
+                    if (!bookBroken && book.RenameDrills(renamed)) SaveBook();
+                    SetStatus(message);
+                    LoadOthers();
+                    Fill();
+                });
+        }
+
         /// <summary>選んだドリルの譜面を消す。どのカスタムステージからも外す。</summary>
         [UIAction("drill-delete")]
         public void DeleteDrill()
         {
             if (launcher == null || drillSet == null) return;
 
-            // 選んでいるマスの曲名。カスタムでは行と列で、Other では ID で選んでいる
-            string? songName = null;
-            if (mode == ViewMode.Custom)
-            {
-                var row = SelectedRow();
-                if (row != null && HasSelectedCell(row)) songName = row.Drills[selectedColumn];
-            }
-            else if (selectedId != null)
-            {
-                songName = ListRows.SelectMany(r => r.Cells).FirstOrDefault(c => c.Id == selectedId)?.SongName;
-            }
-
+            string? songName = SelectedSongName();
             string? id = songName == null ? null : DrillNaming.ExtractId(songName);
             if (songName == null || id == null)
             {
@@ -150,7 +212,11 @@ namespace JumpDrillMod.UI.Medals
             PostParsePicker();
 
             string saved = PluginConfig.Instance?.MedalStage ?? string.Empty;
-            if (saved == "other") mode = ViewMode.Other;
+            if (saved == "other" || saved == "all")
+            {
+                mode = ViewMode.Other;
+                allDrills = saved == "all";
+            }
             else if (saved.StartsWith("custom:", StringComparison.Ordinal) && book.Find(saved.Substring(7)) != null)
             {
                 mode = ViewMode.Custom;
@@ -220,7 +286,7 @@ namespace JumpDrillMod.UI.Medals
         {
             get
             {
-                var options = new List<object> { StandardOption, OtherOption };
+                var options = new List<object> { StandardOption, OtherOption, AllOption };
                 options.AddRange(book.Stages.Select(s => (object)s.Name));
                 return options;
             }
@@ -229,7 +295,9 @@ namespace JumpDrillMod.UI.Medals
         [UIValue("stage")]
         public string Stage
         {
-            get => mode == ViewMode.Standard ? StandardOption : mode == ViewMode.Other ? OtherOption : customName ?? StandardOption;
+            get => mode == ViewMode.Standard ? StandardOption
+                : mode == ViewMode.Other ? (allDrills ? AllOption : OtherOption)
+                : customName ?? StandardOption;
             set { }
         }
 
@@ -248,20 +316,26 @@ namespace JumpDrillMod.UI.Medals
             string label = value as string ?? StandardOption;
             int index = StageOptions.IndexOf(label);
 
-            SetMode(index <= 0 ? ViewMode.Standard : index == 1 ? ViewMode.Other : ViewMode.Custom,
-                index > 1 ? label : null);
+            SetMode(index <= 0 ? ViewMode.Standard : index <= 2 ? ViewMode.Other : ViewMode.Custom,
+                index > 2 ? label : null, all: index == 2);
         }
 
-        private void SetMode(ViewMode newMode, string? name)
+        private void SetMode(ViewMode newMode, string? name, bool all = false)
         {
             mode = newMode;
+            allDrills = newMode == ViewMode.Other && all;
             customName = newMode == ViewMode.Custom ? name : null;
             selectedRow = selectedColumn = -1;
 
             if (PluginConfig.Instance != null)
-                PluginConfig.Instance.MedalStage = mode == ViewMode.Other ? "other" : mode == ViewMode.Custom ? "custom:" + name : string.Empty;
+                PluginConfig.Instance.MedalStage = mode == ViewMode.Other ? (allDrills ? "all" : "other")
+                    : mode == ViewMode.Custom ? "custom:" + name : string.Empty;
 
             EvaluateOthers();
+
+            // Other を開いたとき何も選んでいなければ、いちばん新しく作ったドリルを選んで見せる
+            if (mode == ViewMode.Other && (selectedId == null || !OtherCells.Any(c => c.Id == selectedId)) && RevealNewest())
+                return;
             ApplyView();
         }
 
@@ -292,7 +366,9 @@ namespace JumpDrillMod.UI.Medals
             AskName(stage.Name, name =>
             {
                 if (name == stage.Name) return;
-                if (name == StandardOption || name == OtherOption || book.Find(name) != null)
+                // GUI の日本語の名前も使わせない（同じ stages.json を GUI でも開く）
+                if (name == StandardOption || name == OtherOption || name == AllOption ||
+                    name == "標準" || name == "その他" || name == "すべて" || book.Find(name) != null)
                 {
                     SetStatus("A stage with this name already exists.");
                     return;

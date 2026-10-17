@@ -142,6 +142,57 @@ namespace JumpDrillMod.Services
             }, fullRefresh: true);
         }
 
+        /// <summary>
+        /// ドリルの譜面を同じ指定で作り直して（JumpDrill.Core の <c>DrillRebuild</c>）、曲一覧を読み直させる。
+        /// 名前と ID は変わらないので記録はそのまま。<paramref name="onProgress"/> と <paramref name="onDone"/> はメインスレッドで呼ばれる。
+        /// </summary>
+        /// <param name="onDone">（成功したか, 画面に出す1行, 曲名を付け替えたもの 旧→新）。</param>
+        internal void Rebuild(IReadOnlyList<string> folders, Action<int, int> onProgress,
+            Action<bool, string, IReadOnlyDictionary<string, string>> onDone)
+        {
+            var renamed = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (IsRunning)
+            {
+                onDone(false, "Generating drills. Try again when it is done.", renamed);
+                return;
+            }
+
+            IsRunning = true;
+            int failed = 0;
+
+            Task.Run(() =>
+            {
+                for (int i = 0; i < folders.Count; i++)
+                {
+                    try
+                    {
+                        var result = DrillRebuild.Rewrite(folders[i], new LevelWriteOptions { Format = AudioFormat.Ogg });
+                        if (result.Renamed) renamed[result.OldName] = result.NewName;
+                    }
+                    catch (Exception e)
+                    {
+                        failed++;
+                        Plugin.Log?.Error($"could not rebuild {folders[i]}: {e}");
+                    }
+                    int done = i + 1;
+                    OnMainThread(() => onProgress(done, folders.Count));
+                }
+            })
+            .ContinueWith(task =>
+            {
+                // 書き直したフォルダは差分の読み込みでは見直されないので、全部読み直す
+                refresher.Refresh(ok =>
+                {
+                    IsRunning = false;
+                    onDone(failed == 0 && ok, failed > 0
+                        ? string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                            "{0} of {1} map(s) could not be rebuilt. See the log.", failed, folders.Count)
+                        : ok ? "Rebuilt. Records are kept." : "Rebuilt, but the song list did not reload. Restart the game.",
+                        renamed);
+                }, fullRefresh: true);
+            }, UnityMainThreadTaskScheduler.Default);
+        }
+
         private static void OnMainThread(Action action)
         {
             Task.Factory.StartNew(action, System.Threading.CancellationToken.None,

@@ -332,9 +332,10 @@ namespace JumpDrill.Tests
         }
 
         [Theory]
-        [InlineData("R3bL2a tower flick25", "R3bL2a", "tower flick25")]
+        [InlineData("R3bL2a tower flick25", "R3bL2a", "tower split flick25")]
         [InlineData("R3bL2a alt-trip", "R3bL2a", "alt-trip")]
-        [InlineData("R3bL2a", "R3bL2a", "")]
+        [InlineData("R3bL2a", "R3bL2a", "split")]
+        [InlineData("R3b", "R3b", "")]
         [InlineData("My jumps", "My jumps", "")]
         [InlineData("My tower", "My", "tower")]
         [InlineData("flick fast", "flick fast", "")]

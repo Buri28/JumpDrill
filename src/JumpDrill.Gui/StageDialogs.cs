@@ -132,7 +132,7 @@ namespace JumpDrill.Gui
                     list.Items.Clear();
                     foreach (var drill in unique)
                     {
-                        string shown = DrillNaming.StripId(drill.Name);
+                        string shown = DrillNaming.DisplayName(drill.Name);
                         if (!words.All(w => drill.Name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0)) continue;
 
                         var item = new ListViewItem(shown) { Tag = drill.Name, ImageKey = iconKey(drill.Name) };

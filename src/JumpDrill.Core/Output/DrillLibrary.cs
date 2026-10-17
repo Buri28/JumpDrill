@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using JumpDrill.Model;
 
 namespace JumpDrill.Output
@@ -32,6 +33,25 @@ namespace JumpDrill.Output
 
             public override string ToString() { return SongName; }
         }
+
+        /// <summary>
+        /// 作ったばかりのドリルの曲名（新しい順）。いちばん新しいものと、それと続けて作ったもの
+        /// （<see cref="JustMadeBatch"/> 以内）。いちばん新しいものが <see cref="JustMadeWithin"/> より前なら空。
+        /// メダル画面で今作ったドリルがどれか分かるようにするのに使う。
+        /// </summary>
+        public static List<string> JustMade(IEnumerable<KeyValuePair<string, DateTime>> written, DateTime now)
+        {
+            var sorted = written.Where(w => !string.IsNullOrEmpty(w.Key)).OrderByDescending(w => w.Value).ToList();
+            if (sorted.Count == 0 || now - sorted[0].Value > JustMadeWithin) return new List<string>();
+            DateTime from = sorted[0].Value - JustMadeBatch;
+            return sorted.TakeWhile(w => w.Value >= from).Select(w => w.Key).Distinct().ToList();
+        }
+
+        /// <summary>これより前に作ったものは「作ったばかり」にしない。</summary>
+        public static readonly TimeSpan JustMadeWithin = TimeSpan.FromHours(24);
+
+        /// <summary>いちばん新しいものからこの間に作ったものを、続けて作ったものとみなす。</summary>
+        public static readonly TimeSpan JustMadeBatch = TimeSpan.FromMinutes(2);
 
         /// <summary>探し場所とその呼び名。</summary>
         public sealed class DrillRoot
@@ -145,6 +165,17 @@ namespace JumpDrill.Output
         {
             if (string.IsNullOrEmpty(songName)) return null;
 
+            // 以前の書き方の alt の曲名（記録に残っている名前など）は、再作成で今の名前に付け替わっている。
+            // 今の名前でも探す（ID は同じなので同じ譜面）
+            string current = DrillNaming.CurrentName(songName);
+            if (current != songName)
+                return FindByNameExact(current, deepSearch, workspaceRoot, extraRoots)
+                    ?? FindByNameExact(songName, deepSearch, workspaceRoot, extraRoots);
+            return FindByNameExact(songName, deepSearch, workspaceRoot, extraRoots);
+        }
+
+        private static string FindByNameExact(string songName, bool deepSearch, string workspaceRoot, string[] extraRoots)
+        {
             string folderName = LevelWriter.SanitizeFolderName(songName);
 
             foreach (var root in Roots(workspaceRoot, extraRoots))

@@ -498,7 +498,7 @@ namespace JumpDrill.Cli
   --name <s>         曲名のうち遷移と向きの部分を差し替える
                      頭の ID と末尾の BPM は付いたまま
                      （曲名 [<ID>] Drill <遷移> <向き> <BPM> BPM <尺>）
-                     BPM は片手の速さ（1/2）。両手交互では入れた値より小さく出る
+                     BPM はノーツ間隔を 1/2 で数えた値（alt では片手の速さの倍）
   --zip [dir]        BeatSaver 形式の zip も書き出す。既定は
                      %LOCALAPPDATA%\JumpDrill\zip
                      BeatLeader のリプレイ表示は譜面を BeatSaver から探すので、

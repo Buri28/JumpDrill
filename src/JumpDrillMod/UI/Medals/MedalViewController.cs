@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -53,7 +54,11 @@ namespace JumpDrillMod.UI.Medals
         private Action<string?>? onSelect;
 
         /// <summary>Make drill を押したとき。ドリルを組む画面を出す。</summary>
-        private Action? onMake;
+        /// <summary>ドリルを組む画面を出す。引数はグリッドを合わせる方向（無ければ null）。出せなければ false。</summary>
+        private Func<string?, bool>? onMake;
+
+        /// <summary>ドリルを組む画面を開いた時刻。戻ったとき、これより後に作ったものがあるときだけ選び直す。</summary>
+        private DateTime makerOpenedAt;
 
         /// <summary>方向ごとの成績。読み込み前は全部空で出す（どこを埋めればいいかが見える）。</summary>
         private List<MedalRow> rows = DrillSetMedals.Evaluate(new Dictionary<string, double>());
@@ -66,6 +71,15 @@ namespace JumpDrillMod.UI.Medals
 
         /// <summary>Other に出せるドリルの曲名（読み込まれている譜面のうち、ドリルセット以外も含む全部）。</summary>
         private List<string> otherNames = new List<string>();
+
+        /// <summary>作ったばかりのドリルの曲名（新しい順、JumpDrill.Core の <c>DrillLibrary.JustMade</c>）。</summary>
+        private List<string> justMade = new List<string>();
+
+        /// <summary>いちばん新しく作ったドリル（<see cref="justMade"/> の先頭）を書いた時刻。</summary>
+        private DateTime justMadeAt = DateTime.MinValue;
+
+        /// <summary>読み直しが終わったら、いちばん新しく作ったドリルを選ぶ（Make drill から戻ったとき）。</summary>
+        private bool revealPending;
 
         /// <summary>
         /// Other の表。方向ごとに遅い順に 8 本ずつ、超えた分は同じ方向の次の行へ
@@ -132,7 +146,7 @@ namespace JumpDrillMod.UI.Medals
 
         /// <summary>外から要るものを渡す。ビューは Zenject を通らない。</summary>
         internal void Setup(ReplayScoreReader reader, LevelLauncher launcher, IconService icons,
-            DrillSetGenerationService drillSet, Action<string> onPlay, Action<string?> onSelect, Action? onMake)
+            DrillSetGenerationService drillSet, Action<string> onPlay, Action<string?> onSelect, Func<string?, bool>? onMake)
         {
             this.onMake = onMake;
             this.reader = reader;
@@ -187,7 +201,7 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("</vertical></horizontal>");
             sb.Append("<dropdown-list-setting id='stage-dropdown' text='' value='stage' options='stage-options'");
             sb.Append(" apply-on-change='true' bind-value='true' on-change='stage-changed' pref-width='30' pref-height='6'");
-            sb.Append(" hover-hint='Standard: the 112 drills. Other: drills not in any stage. CUSTOM: stages you made.'/>");
+            sb.Append(" hover-hint='Standard: the 112 drills. Other: drills not in any stage. All: drills you made, including those in stages. CUSTOM: stages you made.'/>");
             sb.Append("<button text='New' on-click='stage-new' pref-width='12' pref-height='6'");
             sb.Append(" hover-hint='Make a new custom stage. You can rename it later.'/>");
             Box(sb, TableWidth - 4 - 30 - 30 - 12 - 24 - 4, "MiddleLeft", "<text text='' font-size='2.6'/>");
@@ -480,7 +494,11 @@ namespace JumpDrillMod.UI.Medals
         /// Other の一覧（読み込まれている譜面）はメインスレッドでしか引けないので、戻ってから作る。
         /// </remarks>
         [UIAction("make-drill")]
-        public void MakeDrill() => onMake?.Invoke();
+        public void MakeDrill()
+        {
+            makerOpenedAt = DateTime.Now;
+            onMake?.Invoke(null);
+        }
 
         [UIAction("rescan")]
         public void Rescan()
@@ -525,6 +543,21 @@ namespace JumpDrillMod.UI.Medals
                         // 選んでいた Other のドリルが消えていたら選び直させる
                         if (selectedId != null && !IsListed(selectedId)) selectedId = null;
 
+                        if (revealPending)
+                        {
+                            revealPending = false;
+                            // 作る画面で何か作ったときだけ。開いて戻っただけなら今の表のまま
+                            if (justMadeAt >= makerOpenedAt) RevealNewest();
+                        }
+
+                        // 足す窓から Make drill へ行っていたら、窓を開き直して作ったものを選んでおく
+                        if (makeStage != null)
+                        {
+                            string stageName = makeStage;
+                            makeStage = null;
+                            if (mode == ViewMode.Custom && customName == stageName) OpenPicker(makeRow, makeSince);
+                        }
+
                         Fill();
 
                         // 右の記録も同じ時点のものにする
@@ -553,7 +586,12 @@ namespace JumpDrillMod.UI.Medals
             {
                 try
                 {
-                    otherNames = launcher.DrillLevels().Select(d => d.SongName).ToList();
+                    var levels = launcher.DrillLevels();
+                    otherNames = levels.Select(d => d.SongName).ToList();
+                    var written = levels.Select(d => new KeyValuePair<string, DateTime>(d.SongName, WrittenAt(d.Folder))).ToList();
+                    justMade = DrillLibrary.JustMade(written, DateTime.Now);
+                    justMadeAt = justMade.Count == 0 ? DateTime.MinValue
+                        : written.Where(w => w.Key == justMade[0]).Max(w => w.Value);
                 }
                 catch (Exception e)
                 {
@@ -564,13 +602,51 @@ namespace JumpDrillMod.UI.Medals
             EvaluateOthers();
         }
 
+        /// <summary>譜面を書いた時刻（Info.dat の更新時刻）。読めなければ最小値。</summary>
+        private static DateTime WrittenAt(string folder)
+        {
+            try { return File.GetLastWriteTime(Path.Combine(folder, "Info.dat")); }
+            catch (Exception) { return DateTime.MinValue; }
+        }
+
+        /// <summary>読み直して、いちばん新しく作ったドリルを選ぶ。Make drill から戻ったときに使う。</summary>
+        public void RescanAndRevealNewest()
+        {
+            revealPending = true;
+            Rescan();
+        }
+
+        /// <summary>
+        /// いちばん新しく作ったドリルを Other で選び、そのページを出す。選べたら true（表も出し直してある）。
+        /// カスタムステージを見ているときは切り替えない（そこへ足すために作っている途中かもしれない）。
+        /// </summary>
+        private bool RevealNewest()
+        {
+            if (justMade.Count == 0 || mode == ViewMode.Custom) return false;
+
+            int index = otherRows.FindIndex(r => r.Cells.Any(c => c.SongName == justMade[0]));
+            if (index < 0) return false;
+
+            if (mode != ViewMode.Other)
+            {
+                mode = ViewMode.Other;
+                if (PluginConfig.Instance != null) PluginConfig.Instance.MedalStage = "other";
+                RefreshDropdown();
+            }
+            otherPage = index / OtherRows;
+            selectedId = otherRows[index].Cells.First(c => c.SongName == justMade[0]).Id;
+            ApplyView();
+            onSelect?.Invoke(selectedId);
+            return true;
+        }
+
         /// <summary>
         /// Other とカスタムステージの表を今の記録で作り直す。
         /// Other にはどのカスタムステージにも入っていないものだけを出す。
         /// </summary>
         private void EvaluateOthers()
         {
-            otherRows = DrillSetMedals.Evaluate(CustomStage.Other(otherNames, book.Stages), bestById);
+            otherRows = DrillSetMedals.Evaluate(CustomStage.Other(otherNames, allDrills ? null : book.Stages), bestById);
 
             int pages = Math.Max(1, (otherRows.Count + OtherRows - 1) / OtherRows);
             if (otherPage >= pages) otherPage = pages - 1;
@@ -596,7 +672,7 @@ namespace JumpDrillMod.UI.Medals
         /// <summary>ID と頭の "Drill " を落とした名前。行が長くなりすぎないように。</summary>
         private static string DisplayName(string songName)
         {
-            string name = DrillNaming.StripId(songName).Trim();
+            string name = DrillNaming.DisplayName(songName).Trim();
             return name.StartsWith(DrillNaming.Prefix, StringComparison.OrdinalIgnoreCase)
                 ? name.Substring(DrillNaming.Prefix.Length)
                 : name;
@@ -965,8 +1041,8 @@ namespace JumpDrillMod.UI.Medals
                     otherPageText.text = drills == 0
                         ? "No other drills. Make one with the grid in the Mods tab."
                         : pages == 1
-                            ? string.Format(ci, "{0} other drill(s).", drills)
-                            : string.Format(ci, "{0} other drill(s).  Page {1}/{2}", drills, otherPage + 1, pages);
+                            ? string.Format(ci, allDrills ? "{0} drill(s)." : "{0} other drill(s).", drills)
+                            : string.Format(ci, allDrills ? "{0} drill(s).  Page {1}/{2}" : "{0} other drill(s).  Page {1}/{2}", drills, otherPage + 1, pages);
                 }
             }
 
@@ -1101,7 +1177,8 @@ namespace JumpDrillMod.UI.Medals
             var other = OtherCells.Concat(customRows.SelectMany(r => r.Cells)).FirstOrDefault(c => c.Id == selectedId);
             detail.text = other == null
                 ? string.Empty
-                : string.Format(ci, "{0}   {1}{2}", DisplayName(other.SongName), best, medalText);
+                : string.Format(ci, "{0}{1}   {2}{3}", justMade.Contains(other.SongName) ? "<color=#E0B060>NEW</color>  " : string.Empty,
+                    DisplayName(other.SongName), best, medalText);
         }
 
         private static Color MedalColor(Medal medal)

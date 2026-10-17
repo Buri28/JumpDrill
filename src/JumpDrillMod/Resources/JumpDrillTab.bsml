@@ -145,7 +145,7 @@
           <slider-setting text='BPM'
                           value='interval-bpm'
                           apply-on-change='true' get-event='jd-get'
-                          min='60' max='600' increment='5'
+                          min='10' max='1000' increment='5'
                           hover-hint='Note speed, counted as two notes per beat (1/2). This is the one to nudge while playing.'/>
 
           <slider-setting text='NJS'

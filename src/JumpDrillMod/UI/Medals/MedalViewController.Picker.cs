@@ -50,6 +50,15 @@ namespace JumpDrillMod.UI.Medals
         private readonly HashSet<string> pickerChosen = new HashSet<string>(StringComparer.Ordinal);
         private int pickerPage;
 
+        /// <summary>足す窓から Make drill へ行ったときの、戻り先のステージ。行っていなければ null。</summary>
+        private string? makeStage;
+
+        /// <summary>戻り先の行。</summary>
+        private int makeRow;
+
+        /// <summary>Make drill へ行った時刻。これより後に書いたドリルを、戻ったときに選んでおく。</summary>
+        private DateTime makeSince;
+
         private readonly List<ClickableText?> pickerTexts = new List<ClickableText?>();
         private readonly List<ImageView?> pickerIcons = new List<ImageView?>();
 
@@ -66,8 +75,11 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("<vertical pad='2' spacing='0.3' child-expand-height='false' child-align='UpperCenter' pref-width='")
               .Append(width).Append("'>");
 
+            // 右上に、この行の方向でドリルを作りに行くボタン
             sb.Append("<horizontal pref-height='5'>");
-            sb.Append("<text id='picker-title' text='' font-size='3.2' align='Left' pref-width='").Append(width).Append("'/>");
+            sb.Append("<text id='picker-title' text='' font-size='3.2' align='Left' pref-width='").Append(PickerWidth - 26).Append("'/>");
+            sb.Append("<button text='Make drill →' on-click='picker-make' pref-width='26' pref-height='5'");
+            sb.Append(" hover-hint='Make a drill of this row direction, then come back here to add it.'/>");
             sb.Append("</horizontal>");
 
             for (int r = 0; r < PickerRows; r++)
@@ -127,7 +139,8 @@ namespace JumpDrillMod.UI.Medals
         }
 
         /// <summary>別窓を開く。<paramref name="row"/> が行の数と同じなら新しい行に足す。</summary>
-        private void OpenPicker(int row)
+        /// <param name="chooseSince">これより後に作ったドリルを選んだ状態で開く（Make drill から戻ったとき）。</param>
+        private void OpenPicker(int row, DateTime? chooseSince = null)
         {
             var stage = CurrentStage;
             if (stage == null || bookBroken || launcher == null || parserParams == null) return;
@@ -165,23 +178,33 @@ namespace JumpDrillMod.UI.Medals
                 pickerNames = new List<string>();
             }
 
-            if (pickerNames.Count == 0)
-            {
-                SetStatus(pickerDirection == null
-                    ? "No drills to add. Make one with Make drill."
-                    : "No " + pickerDirection + " drills to add. Make one with Make drill.");
-                return;
-            }
-
             pickerChosen.Clear();
+            if (chooseSince.HasValue)
+                foreach (var name in pickerNames)
+                    if (pickerTimes[name] >= chooseSince.Value) pickerChosen.Add(name);
             pickerPage = 0;
             if (pickerTitle != null)
                 pickerTitle.text = row < stage.Rows.Count
                     ? "Add drills to " + stage.Rows[row].Name
                     : "Add a row";
 
-            FillPicker(null);
+            // 足せるものが無くても開く。右上の Make drill → から作りに行ける
+            FillPicker(pickerNames.Count == 0 ? "No drills to add. Make one with Make drill →." : null);
             parserParams.EmitEvent("show-picker");
+        }
+
+        [UIAction("picker-make")]
+        public void PickerMake()
+        {
+            if (CurrentStage == null || onMake == null) return;
+
+            parserParams?.EmitEvent("hide-picker");
+            makeStage = customName;
+            makeRow = pickerTarget;
+            makeSince = DateTime.Now;
+            makerOpenedAt = makeSince;
+            // 作る画面を出せなければ、戻ったときに窓を開き直さない
+            if (!onMake(pickerDirection)) makeStage = null;
         }
 
         /// <summary>譜面を作った日時。読めなければ一番古い扱いにする。</summary>
