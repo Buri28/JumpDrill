@@ -280,9 +280,9 @@ namespace JumpDrill.Replays
 
         /// <summary>
         /// 有効振りに掛かった倍率の合計。振り 1 本ごとに、その振りが行き着いたノーツ（切ったノーツ）に
-        /// 本体が掛けたコンボ倍率を足したもの。
+        /// 本体が掛けたコンボ倍率を足したもの。タワー・スタックで一部ミスした振りは、切れたノーツの割合を掛ける。
         /// </summary>
-        public int SwingMultiplierSum { get; internal set; }
+        public double SwingMultiplierSum { get; internal set; }
 
         /// <summary>
         /// 再現スコア。<c>再現性 % × 有効振りに掛かった倍率の合計</c>。
@@ -570,7 +570,8 @@ namespace JumpDrill.Replays
             var original = replay;
             var full = CountCombo(replay);
             Dictionary<ReplayNote, ReplayNote> owners;
-            replay = TowerReplay.Collapse(replay, out owners);
+            Dictionary<ReplayNote, double> shares;
+            replay = TowerReplay.Collapse(replay, out owners, out shares);
 
             var result = new ReplayScore { Replay = replay };
             result.GoodCount = original.Notes.Count(n => n.EventType == NoteEventType.Good);
@@ -582,7 +583,7 @@ namespace JumpDrill.Replays
 
             foreach (var saberType in new[] { 0, 1 })
             {
-                var hand = AnalyzeHand(replay, saberType, combo.Multipliers, original, owners);
+                var hand = AnalyzeHand(replay, saberType, combo.Multipliers, original, owners, shares);
                 if (hand != null) result.PerHand.Add(hand);
             }
 
@@ -942,8 +943,9 @@ namespace JumpDrill.Replays
 
         /// <param name="original">まとめる前のリプレイ。Good・Miss の数はこちらで数える。</param>
         /// <param name="owners">元のノーツ → 残したノーツ（<see cref="TowerReplay.Collapse(Replay, out Dictionary{ReplayNote, ReplayNote})"/>）。null ならまとめていない。</param>
+        /// <param name="shares">タワー・スタックの振りごとの、切れたノーツの割合。振りの重みに掛ける。null ならまとめていない。</param>
         private static SwingScore AnalyzeHand(Replay replay, int saberType, Dictionary<ReplayNote, int> multipliers,
-            Replay original, Dictionary<ReplayNote, ReplayNote> owners)
+            Replay original, Dictionary<ReplayNote, ReplayNote> owners, Dictionary<ReplayNote, double> shares)
         {
             var cuts = replay.Notes
                 .Where(n => n.EventType == NoteEventType.Good && n.Cut != null && n.Cut.SaberType == saberType)
@@ -976,7 +978,7 @@ namespace JumpDrill.Replays
             var groupFore = new Dictionary<string, bool>();
 
             // 遷移ごとの、振りが行き着いたノーツに掛かった倍率の合計。再現精度 % の重み。
-            var groupMultipliers = new Dictionary<string, int>();
+            var groupMultipliers = new Dictionary<string, double>();
 
             // 打点は間隔ではなくノーツごとの判定ずれで測る。
             var deviations = cuts.Select(c => c.Cut.TimeDeviation * 1000.0).ToList();
@@ -986,11 +988,11 @@ namespace JumpDrill.Replays
             var sequence = HandSequence(replay, saberType);
             var first = VirtualPredecessor(cuts);
             if (first != null && sequence.Count > 0 && sequence[0] == cuts[0])
-                AddTransition(groups, spans, lines, groupFore, groupMultipliers, multipliers, forehand, replay, saberType, first, cuts[0],
+                AddTransition(groups, spans, lines, groupFore, groupMultipliers, multipliers, shares, forehand, replay, saberType, first, cuts[0],
                     cuts[0].EventTime - (float)(MedianGap(cuts) / 1000.0));
 
             foreach (var pair in CleanPairs(sequence, saberType))
-                AddTransition(groups, spans, lines, groupFore, groupMultipliers, multipliers, forehand, replay, saberType, pair.Key, pair.Value,
+                AddTransition(groups, spans, lines, groupFore, groupMultipliers, multipliers, shares, forehand, replay, saberType, pair.Key, pair.Value,
                     pair.Key.EventTime);
 
             // 先に格子の当てはめ誤差を1つ求める。往復で反転する成分だけがそこに入る。
@@ -1012,7 +1014,7 @@ namespace JumpDrill.Replays
             double lengthSum = 0.0;
             double spanSum = 0.0;
             int spreadWeight = 0;
-            int multiplierSum = 0;
+            double multiplierSum = 0.0;
 
             foreach (var pair in groups)
             {
@@ -1178,8 +1180,9 @@ namespace JumpDrill.Replays
             Dictionary<string, double> spans,
             Dictionary<string, Line> lines,
             Dictionary<string, bool> groupFore,
-            Dictionary<string, int> groupMultipliers,
+            Dictionary<string, double> groupMultipliers,
             Dictionary<ReplayNote, int> multipliers,
+            Dictionary<ReplayNote, double> shares,
             Dictionary<ReplayNote, bool> forehand,
             Replay replay, int saberType, ReplayNote from, ReplayNote to, float fromTime)
         {
@@ -1200,12 +1203,15 @@ namespace JumpDrill.Replays
                 spans[key] = GridDistance(from, to);
                 lines[key] = Line.Between(from, to);
                 groupFore[key] = ForehandOf(forehand, to);
-                groupMultipliers[key] = 0;
+                groupMultipliers[key] = 0.0;
             }
             list.Add(path);
 
+            // タワー・スタックで一部ミスしたら、切れた割合だけ数える（2連で1つミスなら 1/2）
             int multiplier;
-            groupMultipliers[key] += multipliers.TryGetValue(to, out multiplier) ? multiplier : 1;
+            double share;
+            groupMultipliers[key] += (multipliers.TryGetValue(to, out multiplier) ? multiplier : 1)
+                * (shares != null && shares.TryGetValue(to, out share) ? share : 1.0);
         }
 
         /// <summary>

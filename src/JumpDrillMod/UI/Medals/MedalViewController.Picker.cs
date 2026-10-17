@@ -62,6 +62,13 @@ namespace JumpDrillMod.UI.Medals
         private readonly List<ClickableText?> pickerTexts = new List<ClickableText?>();
         private readonly List<ImageView?> pickerIcons = new List<ImageView?>();
 
+        /// <summary>選んだドリルの色。ホバーの水色（<see cref="Picked"/>）と見分けが付くようにする。</summary>
+        private static readonly Color Chosen = new Color(0.45f, 0.95f, 0.55f);
+
+        /// <summary>件数の色（マークアップの #8899AA と同じ）と、知らせの色。</summary>
+        private static readonly Color NoteColor = new Color(0.53f, 0.60f, 0.67f);
+        private static readonly Color WarningColor = new Color(1f, 0.7f, 0.3f);
+
         [UIComponent("picker-title")] private TextMeshProUGUI? pickerTitle = null;
         [UIComponent("picker-note")] private TextMeshProUGUI? pickerNote = null;
 
@@ -157,10 +164,18 @@ namespace JumpDrillMod.UI.Medals
                     StringComparer.Ordinal);
 
                 pickerTimes.Clear();
+                hiddenMade = null;
                 foreach (var level in launcher.DrillLevels())
                 {
-                    if (pickerDirection != null && DrillNaming.DirectionOf(level.SongName) != pickerDirection) continue;
-                    if (placed.Contains(level.Id) || placed.Contains(level.SongName)) continue;
+                    bool hidden = (pickerDirection != null && DrillNaming.DirectionOf(level.SongName) != pickerDirection) ||
+                                  placed.Contains(level.Id) || placed.Contains(level.SongName);
+                    if (hidden)
+                    {
+                        // Make drill で作ったのに一覧に出ないもの。何も出ないと作れなかったように見えるので、訳を知らせる
+                        if (chooseSince.HasValue && hiddenMade == null && CreatedAt(level.Folder) >= chooseSince.Value)
+                            hiddenMade = level.SongName;
+                        continue;
+                    }
                     if (pickerTimes.ContainsKey(level.SongName)) continue;
                     pickerTimes[level.SongName] = CreatedAt(level.Folder);
                 }
@@ -189,8 +204,24 @@ namespace JumpDrillMod.UI.Medals
                     : "Add a row";
 
             // 足せるものが無くても開く。右上の Make drill → から作りに行ける
-            FillPicker(pickerNames.Count == 0 ? "No drills to add. Make one with Make drill →." : null);
+            string? note = pickerChosen.Count == 0 && hiddenMade != null ? HiddenMadeNote(stage, hiddenMade)
+                : pickerNames.Count == 0 ? "No drills to add. Make one with Make drill →."
+                : null;
+            FillPicker(note);
             parserParams.EmitEvent("show-picker");
+        }
+
+        /// <summary>Make drill で作ったが一覧に出ないドリル（ステージに既にある・方向が違う）。無ければ null。</summary>
+        private string? hiddenMade;
+
+        /// <summary>作ったドリルが一覧に出ない訳。既にあるなら何行目か（同じ名前の行が2つあることもある）。</summary>
+        private static string HiddenMadeNote(CustomStage stage, string songName)
+        {
+            string id = DrillNaming.ExtractId(songName) ?? songName;
+            int row = stage.Rows.FindIndex(r => r.Drills.Any(n => (DrillNaming.ExtractId(n) ?? n) == id));
+            return row >= 0
+                ? string.Format(CultureInfo.InvariantCulture, "Already in row {0}: {1}", row + 1, DisplayName(songName))
+                : "Other direction: " + DisplayName(songName);
         }
 
         [UIAction("picker-make")]
@@ -256,7 +287,7 @@ namespace JumpDrillMod.UI.Medals
             var chosen = pickerNames.Where(pickerChosen.Contains).ToList();
             if (chosen.Count == 0)
             {
-                FillPicker("Tap drills to pick them.");
+                FillPicker("No drills picked. Tap drills to pick them, then Add.");
                 return;
             }
             AddPicked(chosen);
@@ -298,7 +329,31 @@ namespace JumpDrillMod.UI.Medals
 
             selectedRow = Math.Min(pickerTarget, stage.Rows.Count - 1);
             selectedColumn = -1;
+
+            // 足したドリルの最初の1本を選んでおく（右に記録が出て、そのまま Play できる）。
+            // 新しい行に足すと、同じ方向の行の空きに入ったり方向ごとに行が分かれたりするので、足した先は名前で探す
+            bool found = false;
+            foreach (string name in picked)
+            {
+                for (int r = 0; r < stage.Rows.Count && !found; r++)
+                {
+                    int c = stage.Rows[r].Drills.IndexOf(name);
+                    if (c < 0) continue;
+                    selectedRow = r;
+                    selectedColumn = c;
+                    found = true;
+                }
+                if (found) break;
+            }
+
             Edited();
+
+            if (found && selectedRow < customRows.Count && selectedColumn < customRows[selectedRow].Cells.Count)
+            {
+                selectedId = customRows[selectedRow].Cells[selectedColumn].Id;
+                Fill();
+                onSelect?.Invoke(selectedId);
+            }
 
             SetStatus(skipped > 0
                 ? string.Format(CultureInfo.InvariantCulture,
@@ -347,7 +402,8 @@ namespace JumpDrillMod.UI.Medals
                             : "   <color=#8899AA>best REPRO " + ScoreFormat.Floor(best, 1) + "%</color>";
 
                     text.text = chosen ? "[" + shown + "]" : shown;
-                    Color color = chosen ? Picked : Played;
+                    // 選んだ行はホバー（水色）と違う色にする。同じ色だと選べたのか分からない
+                    Color color = chosen ? Chosen : Played;
                     text.DefaultColor = color;
                     text.HighlightColor = Picked;
                     text.color = color;
@@ -359,6 +415,8 @@ namespace JumpDrillMod.UI.Medals
                 int pages = Math.Max(1, (pickerNames.Count + PickerRows - 1) / PickerRows);
                 pickerNote.text = note ?? string.Format(ci, "{0} drill(s), {1} picked.  Page {2}/{3}",
                     pickerNames.Count, pickerChosen.Count, pickerPage + 1, pages);
+                // 足せなかったときの知らせは件数と同じ灰色だと気付かないので、目立つ色にする
+                pickerNote.color = note == null ? NoteColor : WarningColor;
             }
         }
     }

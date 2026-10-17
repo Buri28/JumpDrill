@@ -13,6 +13,11 @@ namespace JumpDrill.Replays
     /// 同じ手・同じ時刻のノーツを<b>振りの行き先の1つ</b>にまとめる。
     ///
     /// <b>Acc（精度）はまとめる前のノーツで出す。</b>ゲームの Acc は全ノーツから出ているため。
+    ///
+    /// <b>ミスは切れた割合で数える。</b>2連（スタック）なら1つミスで振りの重みが 1/2、
+    /// 3連（タワー）なら1つで 2/3、2つで 1/3 になる。全部ミスしたときだけ振りに数えない。
+    /// 端を落としても間を切っていれば振りはあったので、残した端のノーツを「切れた」ものに置き換える
+    /// （位置は端のまま、切った時刻と切り方は切れたノーツのもの）。
     /// </summary>
     public static class TowerReplay
     {
@@ -45,14 +50,30 @@ namespace JumpDrill.Replays
         /// </param>
         public static Replay Collapse(Replay replay, out Dictionary<ReplayNote, ReplayNote> owners)
         {
+            Dictionary<ReplayNote, double> shares;
+            return Collapse(replay, out owners, out shares);
+        }
+
+        /// <param name="shares">
+        /// まとめた振り（残したノーツ）ごとの、切れたノーツの割合（0〜1）。2つ以上まとめたものだけ入る。
+        /// 振りの重みに掛ける。まとめるものが無ければ null。
+        /// </param>
+        public static Replay Collapse(Replay replay, out Dictionary<ReplayNote, ReplayNote> owners,
+            out Dictionary<ReplayNote, double> shares)
+        {
             if (replay == null) throw new ArgumentNullException(nameof(replay));
             owners = null;
+            shares = null;
             if (!HasStacks(replay.Notes)) return replay;
 
             owners = new Dictionary<ReplayNote, ReplayNote>();
+            shares = new Dictionary<ReplayNote, double>();
 
             var hints = FirstTargets(replay.Info != null ? replay.Info.SongName : null);
             var keep = new HashSet<ReplayNote>();
+
+            // 端を落として間を切ったときの、端の代わりのノーツ（StandIn）
+            var standIns = new Dictionary<ReplayNote, ReplayNote>();
 
             foreach (var hand in new[] { 0, 1 })
             {
@@ -76,10 +97,18 @@ namespace JumpDrill.Replays
                     if (time - previousTime > blockGap) previous = null;
 
                     var chosen = group.Count == 1 ? group[0] : Destination(group, previous, previous == null ? hint : null);
+                    var position = PositionOf(chosen);
                     keep.Add(chosen);
+                    if (group.Count > 1)
+                    {
+                        var standIn = StandIn(group, chosen, hand);
+                        if (standIn != chosen) standIns[chosen] = standIn;
+                        chosen = standIn;
+                        shares[chosen] = (double)group.Count(n => IsCut(n, hand)) / group.Count;
+                    }
                     foreach (var n in group) owners[n] = chosen;
 
-                    previous = PositionOf(chosen);
+                    previous = position;
                     previousTime = time;
                 }
             }
@@ -90,7 +119,37 @@ namespace JumpDrill.Replays
                 Info = replay.Info,
                 Frames = replay.Frames,
                 WallHits = replay.WallHits,
-                Notes = replay.Notes.Where(n => n.EventType == NoteEventType.Bomb || keep.Contains(n)).ToList(),
+                Notes = replay.Notes.Where(n => n.EventType == NoteEventType.Bomb || keep.Contains(n))
+                    .Select(n => { ReplayNote s; return standIns.TryGetValue(n, out s) ? s : n; })
+                    .ToList(),
+            };
+        }
+
+        private static bool IsCut(ReplayNote note, int hand)
+        {
+            return note.EventType == NoteEventType.Good && note.Cut != null && note.Cut.SaberType == hand;
+        }
+
+        /// <summary>
+        /// 残す端のノーツ。端を切れていれば端そのもの。端を落として間を切っていれば、
+        /// 端の位置で、切れたノーツ（端に近いもの）の時刻と切り方を持った代わりのノーツ。全部落としていれば端のまま（ミス）。
+        /// </summary>
+        private static ReplayNote StandIn(List<ReplayNote> group, ReplayNote end, int hand)
+        {
+            if (IsCut(end, hand)) return end;
+
+            var cut = group.Where(n => IsCut(n, hand))
+                .OrderBy(n => Distance(PositionOf(n), PositionOf(end)))
+                .FirstOrDefault();
+            if (cut == null) return end;
+
+            return new ReplayNote
+            {
+                NoteId = end.NoteId,
+                SpawnTime = end.SpawnTime,
+                EventTime = cut.EventTime,
+                EventType = cut.EventType,
+                Cut = cut.Cut,
             };
         }
 

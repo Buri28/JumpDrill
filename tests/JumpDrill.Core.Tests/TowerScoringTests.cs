@@ -244,9 +244,76 @@ namespace JumpDrill.Core.Tests
             Assert.Equal(missed.Hand(1).GoodCount, missed.Hand(1).Fore.GoodCount + missed.Hand(1).Back.GoodCount);
             Assert.Equal(map.Notes.Count - 3, missed.GoodCount);
 
-            // 再現性は端の点だけで出す。
+            // 再現性（軌道）は端の点だけで出す。振りの本数も変わらない。
             Assert.Equal(clean.Hand(1).Score, missed.Hand(1).Score, 6);
             Assert.Equal(clean.SwingCount, missed.SwingCount);
+
+            // 再現精度は、ミスした振りを切れた割合（3連で1つミスなら 2/3）だけ数えるぶん下がる。
+            Assert.True(missed.ReproducibilityPercent < clean.ReproducibilityPercent);
+        }
+
+        /// <summary>同じ時刻のノーツ（1つのタワー）を、時刻順に。</summary>
+        private static System.Collections.Generic.List<ReplayNote> TowerAt(Replay replay, int index)
+        {
+            return replay.Notes.GroupBy(n => n.SpawnTime).OrderBy(g => g.Key).ElementAt(index).ToList();
+        }
+
+        private static void Miss(ReplayNote note)
+        {
+            note.EventType = NoteEventType.Miss;
+            note.Cut = null;
+        }
+
+        [Theory]
+        [InlineData(1, 2.0 / 3)]
+        [InlineData(2, 1.0 / 3)]
+        public void A_tower_swing_counts_the_share_of_notes_cut(int misses, double share)
+        {
+            var map = Generate("R3b", true);
+            var clean = Analyze(map, Play(map));
+
+            // 倍率が ×8 に上がった後のタワーで、端から落とす（端を落としても間を切っていれば振りは残る）
+            var replay = Play(map);
+            var tower = TowerAt(replay, 20);
+            Assert.Equal(3, tower.Count);
+            var end = TowerReplay.Collapse(Play(map)).Notes.Where(n => n.SpawnTime == tower[0].SpawnTime).Single();
+            foreach (var n in tower.OrderBy(n => n.NoteId == end.NoteId ? 0 : 1).Take(misses)) Miss(n);
+            var missed = Analyze(map, replay);
+
+            Assert.Equal(clean.SwingCount, missed.SwingCount);
+            Assert.Equal(clean.Hand(1).Score, missed.Hand(1).Score, 6);
+            Assert.Equal(8 * (1 - share), clean.Hand(1).SwingMultiplierSum - missed.Hand(1).SwingMultiplierSum, 6);
+        }
+
+        [Fact]
+        public void A_tower_missed_entirely_is_not_a_swing()
+        {
+            var map = Generate("R3b", true);
+            var clean = Analyze(map, Play(map));
+
+            var replay = Play(map);
+            foreach (var n in TowerAt(replay, 20)) Miss(n);
+            var missed = Analyze(map, replay);
+
+            // そのタワーへ入る振りと、そこから出る振りが抜ける
+            Assert.Equal(clean.SwingCount - 2, missed.SwingCount);
+        }
+
+        [Fact]
+        public void A_stack_swing_counts_half_when_one_note_is_missed()
+        {
+            // 隣り合う2点のタワーは2連（スタック）になる
+            var map = Generate("R37", true);
+            var clean = Analyze(map, Play(map));
+
+            var replay = Play(map);
+            var stack = TowerAt(replay, 20);
+            Assert.Equal(2, stack.Count);
+            Miss(stack[1]);
+            var missed = Analyze(map, replay);
+
+            Assert.Equal(clean.SwingCount, missed.SwingCount);
+            Assert.Equal(8 * 0.5, clean.Hand(1).SwingMultiplierSum - missed.Hand(1).SwingMultiplierSum, 6);
         }
 
         [Fact]

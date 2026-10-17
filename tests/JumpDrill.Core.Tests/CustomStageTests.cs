@@ -60,6 +60,33 @@ namespace JumpDrill.Core.Tests
         }
 
         [Fact]
+        public void A_new_row_fills_the_row_of_the_same_direction_first()
+        {
+            var stage = new CustomStage();
+            stage.Rows.Add(new CustomStageRow
+            {
+                Name = "R8bL5a",
+                Drills = Enumerable.Range(1, 6).Select(i => "[AAA" + i.ToString("00") + "] Drill R8b L5a axis " + (i * 50) + " BPM 11s").ToList(),
+            });
+            stage.Rows.Add(new CustomStageRow { Name = "R4cL19", Drills = { "[BBBBB] Drill R4c L19 axis 50 BPM 11s" } });
+
+            var picked = new List<string>
+            {
+                "[CCC01] Drill R8b L5a axis 400 BPM 11s",
+                "[CCC02] Drill R8b L5a axis 450 BPM 11s",
+                "[CCC03] Drill R8b L5a axis 500 BPM 11s",
+                "[DDDDD] Drill R3b L2a axis 50 BPM 11s",
+            };
+
+            Assert.Equal(0, stage.AddDrills(stage.Rows.Count, picked));
+
+            // 空き2つに入り、あふれた1本と別の方向は新しい行へ
+            Assert.Equal(new[] { "R8bL5a", "R4cL19", "R8bL5a", "R3bL2a" }, stage.Rows.Select(r => r.Name));
+            Assert.Equal(8, stage.Rows[0].Drills.Count);
+            Assert.Equal(new[] { "[CCC03] Drill R8b L5a axis 500 BPM 11s" }, stage.Rows[2].Drills);
+        }
+
+        [Fact]
         public void New_stages_are_numbered()
         {
             var book = new CustomStageBook();

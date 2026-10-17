@@ -38,8 +38,9 @@ namespace JumpDrill.Model
         }
 
         /// <summary>
-        /// ドリルを足す。<paramref name="row"/> が行の数と同じなら新しい行を作る。
-        /// 新しい行で違う方向を混ぜて選んだら、方向ごとに行を分ける。行の名前は方向（<c>R8bL5a</c>）。
+        /// ドリルを足す。<paramref name="row"/> が行の数と同じなら新しい行に足す。
+        /// 新しい行に足すときは、同じ方向の行があればまずその空きに入れ、残りで行を作る（同じ方向の行が増えないように）。
+        /// 違う方向を混ぜて選んだら、方向ごとに行を分ける。行の名前は方向（<c>R8bL5a</c>）。
         /// 行と1行の本数の上限を超える分は足さない。足せなかった本数を返す。
         /// </summary>
         /// <remarks>既にある行への方向の絞り込みは、選ばせる側でやる（<see cref="DirectionOf"/>）。</remarks>
@@ -56,11 +57,28 @@ namespace JumpDrill.Model
 
             foreach (var group in picked.GroupBy(DrillNaming.DirectionOf))
             {
-                if (Rows.Count >= MaxRows) { skipped += group.Count(); continue; }
+                var rest = group.ToList();
+
+                // 方向の読めないドリル（空文字）は、同じ方向とみなさない
+                if (group.Key.Length > 0)
+                {
+                    foreach (var existing in Rows)
+                    {
+                        if (rest.Count == 0) break;
+                        if (DirectionOf(existing) != group.Key) continue;
+
+                        int room = Math.Max(0, MaxDrillsPerRow - existing.Drills.Count);
+                        existing.Drills.AddRange(rest.Take(room));
+                        rest = rest.Skip(room).ToList();
+                    }
+                }
+                if (rest.Count == 0) continue;
+
+                if (Rows.Count >= MaxRows) { skipped += rest.Count; continue; }
 
                 string name = group.Key.Length > 0 ? group.Key : "Row " + (Rows.Count + 1);
-                Rows.Add(new CustomStageRow { Name = name, Drills = group.Take(MaxDrillsPerRow).ToList() });
-                skipped += Math.Max(0, group.Count() - MaxDrillsPerRow);
+                Rows.Add(new CustomStageRow { Name = name, Drills = rest.Take(MaxDrillsPerRow).ToList() });
+                skipped += Math.Max(0, rest.Count - MaxDrillsPerRow);
             }
             return skipped;
         }
