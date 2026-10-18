@@ -526,9 +526,13 @@ namespace JumpDrillMod.UI.Leaderboard
                 bool leftHand = i % 2 == 0;
                 float paneLeft = i < 2 ? 0f : 0.5f;
 
+                // 1.44 の BSML・TextMeshPro では古い扱いだが、代わりの CreateCurvedUIText と textWrappingMode は
+                // 1.39 / 1.40 には無い。3つの版を同じコードでビルドするため、こちらを使い続ける
+#pragma warning disable CS0618
                 var label = BeatSaberUI.CreateText((RectTransform)diagram.transform, string.Empty, Vector2.zero);
                 label.fontSize = 2.2f;
                 label.enableWordWrapping = false;
+#pragma warning restore CS0618
                 label.overflowMode = TextOverflowModes.Overflow;
                 label.raycastTarget = false;
                 label.alignment = leftHand ? TextAlignmentOptions.TopLeft : TextAlignmentOptions.TopRight;
