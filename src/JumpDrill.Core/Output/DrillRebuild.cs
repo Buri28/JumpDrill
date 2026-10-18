@@ -44,10 +44,42 @@ namespace JumpDrill.Output
             if (string.IsNullOrEmpty(songName)) throw new FormatException(Lang.T("曲名がありません。", "The map has no song name."));
 
             // 標準のステージのものは指定をそのまま使う
-            string id = DrillNaming.ExtractId(songName);
-            var entry = id == null ? null : DrillSet.All().FirstOrDefault(e => DrillNaming.ExtractId(e.Options.Name) == id);
-            if (entry != null) return entry.Options;
+            var standard = StandardOptions(songName);
+            if (standard != null) return standard;
 
+            var options = FromName(songName);
+
+            if (root.TryGetValue("_beatsPerMinute", out var b) && b is double infoBpm && infoBpm > 0) options.Bpm = infoBpm;
+
+            var difficulty = FirstDifficulty(root);
+            if (difficulty != null)
+            {
+                if (difficulty.TryGetValue("_noteJumpMovementSpeed", out var njs) && njs is double njsValue && njsValue > 0)
+                    options.Njs = njsValue;
+                if (difficulty.TryGetValue("_noteJumpStartBeatOffset", out var offset) && offset is double offsetValue)
+                    options.NoteJumpStartBeatOffset = offsetValue;
+
+                var custom = (difficulty.TryGetValue("_customData", out var c) ? c : null) as Dictionary<string, object>;
+                var saved = (custom != null && custom.TryGetValue(CustomDataKey, out var j) ? j : null) as Dictionary<string, object>;
+                if (saved != null) ApplySaved(options, saved);
+            }
+
+            return options;
+        }
+
+        /// <summary>標準のステージのドリルなら、その指定。違えば null。</summary>
+        public static DrillOptions StandardOptions(string songName)
+        {
+            string id = DrillNaming.ExtractId(songName);
+            return id == null ? null : DrillSet.All().FirstOrDefault(e => DrillNaming.ExtractId(e.Options.Name) == id)?.Options;
+        }
+
+        /// <summary>
+        /// 曲名から読める指定だけで作った <see cref="DrillOptions"/>。NJS やクリックなど曲名に入らないものは既定値。
+        /// 読めなければ理由付きの <see cref="FormatException"/>。
+        /// </summary>
+        public static DrillOptions FromName(string songName)
+        {
             var shape = DrillShape.Parse(DrillNaming.DirectionOf(songName));
             double? bpm = DrillNaming.ParseBpm(songName);
             if (shape == null || !bpm.HasValue)
@@ -72,23 +104,36 @@ namespace JumpDrill.Output
                 Sets = sets,
                 Name = songName,
             };
-
-            if (root.TryGetValue("_beatsPerMinute", out var b) && b is double infoBpm && infoBpm > 0) options.Bpm = infoBpm;
-
-            var difficulty = FirstDifficulty(root);
-            if (difficulty != null)
-            {
-                if (difficulty.TryGetValue("_noteJumpMovementSpeed", out var njs) && njs is double njsValue && njsValue > 0)
-                    options.Njs = njsValue;
-                if (difficulty.TryGetValue("_noteJumpStartBeatOffset", out var offset) && offset is double offsetValue)
-                    options.NoteJumpStartBeatOffset = offsetValue;
-
-                var custom = (difficulty.TryGetValue("_customData", out var c) ? c : null) as Dictionary<string, object>;
-                var saved = (custom != null && custom.TryGetValue(CustomDataKey, out var j) ? j : null) as Dictionary<string, object>;
-                if (saved != null) ApplySaved(options, saved);
-            }
-
             return options;
+        }
+
+        /// <summary>
+        /// 曲名に入らない指定を全部書く（カスタムステージのエクスポート）。<see cref="ApplySettings"/> で読み戻す。
+        /// Info.dat に書く <see cref="WriteSaved"/> に、譜面の BPM・NJS・オフセットを足したもの。
+        /// </summary>
+        public static void WriteSettings(JsonWriter w, DrillOptions options)
+        {
+            w.StartObject();
+            w.Property("bpm", options.Bpm);
+            w.Property("njs", options.Njs);
+            if (options.NoteJumpStartBeatOffset.HasValue) w.Property("offset", options.NoteJumpStartBeatOffset.Value);
+            w.Property("intervalMs", options.IntervalMs);
+            w.Property("notesPerBeat", options.NotesPerBeat);
+            w.Property("click", options.Click.ToString());
+            w.Property("countIn", options.CountInClicks);
+            w.Property("tail", options.TailSeconds);
+            w.Property("minLeadIn", options.MinLeadInSeconds);
+            if (options.GapSeconds.HasValue) w.Property("gap", options.GapSeconds.Value);
+            w.EndObject();
+        }
+
+        /// <summary><see cref="WriteSettings"/> で書いたものを当てる。知らない項目と、おかしな値は無視する。</summary>
+        public static void ApplySettings(DrillOptions options, Dictionary<string, object> settings)
+        {
+            if (settings.TryGetValue("bpm", out var b) && b is double bpm && bpm > 0) options.Bpm = bpm;
+            if (settings.TryGetValue("njs", out var n) && n is double njs && njs > 0) options.Njs = njs;
+            if (settings.TryGetValue("offset", out var o) && o is double offset) options.NoteJumpStartBeatOffset = offset;
+            ApplySaved(options, settings);
         }
 
         /// <summary>作り直した結果。</summary>

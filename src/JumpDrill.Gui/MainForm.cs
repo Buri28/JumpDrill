@@ -1932,7 +1932,7 @@ namespace JumpDrill.Gui
                 Lang.T("ドリル「{0}」を削除しました。", "Deleted the drill \"{0}\"."), DrillNaming.DisplayName(drill.SongName));
         }
 
-        /// <summary>カスタムステージ（stages.json）から曲名を外す。読めなければ触らない。</summary>
+        /// <summary>カスタムステージから曲名を外す。読めなければ触らない。</summary>
         private void RemoveFromStages(string songName, string folder)
         {
             try

@@ -23,6 +23,12 @@ namespace JumpDrill.Model
 
         /// <summary>生成に渡す指定。<see cref="DrillOptions.Name"/> まで埋めてある。</summary>
         public DrillOptions Options { get; internal set; }
+
+        /// <summary>標準のステージ以外のドリルを、一括生成と同じ経路で書くための入れ物（カスタムステージのインポート）。</summary>
+        public static DrillSetEntry ForOptions(DrillOptions options)
+        {
+            return new DrillSetEntry { Options = options, Direction = DrillNaming.DirectionOf(options.Name), Tag = "" };
+        }
     }
 
     /// <summary>

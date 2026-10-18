@@ -101,7 +101,7 @@ namespace JumpDrillMod
 
         /// <summary>
         /// Jump Drill 画面で最後に見ていたステージ。空は Standard、<c>other</c> は Other、
-        /// <c>custom:名前</c> はカスタムステージ（中身は GUI と同じ stages.json）。
+        /// <c>custom:名前</c> はカスタムステージ（中身は GUI と同じ <c>UserData\JumpDrill\Stages</c> のファイル）。
         /// </summary>
         public virtual string MedalStage { get; set; } = string.Empty;
 

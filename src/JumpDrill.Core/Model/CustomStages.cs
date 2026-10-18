@@ -176,13 +176,12 @@ namespace JumpDrill.Model
     }
 
     /// <summary>
-    /// カスタムステージの設定ファイル（JSON）。
+    /// カスタムステージの設定ファイル。1ステージ1ファイルで、ファイル名がステージ名。
     ///
     /// <code>
+    /// UserData\JumpDrill\Stages\My stage.json
     /// {
-    ///   "stages": [
-    ///     { "name": "My stage", "rows": [ { "name": "R8bL5a", "drills": [ "[Q7K3M] Drill R8b L5a axis 300 BPM 10s" ] } ] }
-    ///   ]
+    ///   "rows": [ { "name": "R8bL5a", "drills": [ "[Q7K3M] Drill R8b L5a axis 300 BPM 10s" ] } ]
     /// }
     /// </code>
     ///
@@ -193,9 +192,67 @@ namespace JumpDrill.Model
     {
         public List<CustomStage> Stages { get; } = new List<CustomStage>();
 
+        /// <summary>読めなかったファイルのステージ名。名前は使わせず、ファイルにも触らない。</summary>
+        public List<string> Unreadable { get; } = new List<string>();
+
+        /// <summary>読んだときにあったファイルのステージ名。保存のとき、ここにあって今は無いものを消す。</summary>
+        private readonly HashSet<string> _onDisk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>ファイル名なので大文字と小文字は区別しない。</summary>
         public CustomStage Find(string name)
         {
-            return Stages.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.Ordinal));
+            return Stages.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>その名前が使われているか（読めなかったファイルの名前も含む）。</summary>
+        public bool IsTaken(string name)
+        {
+            return Find(name) != null || Unreadable.Contains(name, StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>ステージ名にファイル名として使えない文字があれば、その理由。使えれば null。</summary>
+        public static string CheckFileName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+                name.EndsWith(".", StringComparison.Ordinal) || name.EndsWith(" ", StringComparison.Ordinal) ||
+                ReservedFileNames.Contains(name.ToUpperInvariant()))
+                return Lang.T("ステージ名に使えない文字があります（\\ / : * ? \" < > | など）。",
+                    "The stage name has characters that cannot be used (\\ / : * ? \" < > | etc.).");
+            return null;
+        }
+
+        private static readonly HashSet<string> ReservedFileNames = new HashSet<string>(
+            new[] { "CON", "PRN", "AUX", "NUL" }
+                .Concat(Enumerable.Range(1, 9).SelectMany(i => new[] { "COM" + i, "LPT" + i })));
+
+        /// <summary>名前の数字を数として比べる（CUSTOM2 が CUSTOM10 より前）。</summary>
+        public void Sort()
+        {
+            Stages.Sort((a, b) => CompareNatural(a.Name, b.Name));
+        }
+
+        private static int CompareNatural(string a, string b)
+        {
+            int i = 0, j = 0;
+            while (i < a.Length && j < b.Length)
+            {
+                if (char.IsDigit(a[i]) && char.IsDigit(b[j]))
+                {
+                    int si = i, sj = j;
+                    while (i < a.Length && char.IsDigit(a[i])) i++;
+                    while (j < b.Length && char.IsDigit(b[j])) j++;
+                    string na = a.Substring(si, i - si).TrimStart('0'), nb = b.Substring(sj, j - sj).TrimStart('0');
+                    int c = na.Length != nb.Length ? na.Length.CompareTo(nb.Length) : string.CompareOrdinal(na, nb);
+                    if (c != 0) return c;
+                }
+                else
+                {
+                    int c = string.Compare(a[i].ToString(), b[j].ToString(), StringComparison.OrdinalIgnoreCase);
+                    if (c != 0) return c;
+                    i++; j++;
+                }
+            }
+            return (a.Length - i).CompareTo(b.Length - j);
         }
 
         /// <summary>並べたドリルの曲名を付け替える（再作成で今の名前にしたとき）。変えたら true。</summary>
@@ -217,15 +274,15 @@ namespace JumpDrill.Model
         }
 
         /// <summary>
-        /// 設定ファイルの置き場所。Beat Saber ごとの <c>UserData\JumpDrill\stages.json</c>。
-        /// GUI と MOD で同じファイルを使い、どちらで作ったステージも両方に出す。
+        /// 設定ファイルを置くフォルダ。Beat Saber ごとの <c>UserData\JumpDrill\Stages</c>。
+        /// GUI と MOD で同じフォルダを使い、どちらで作ったステージも両方に出す。
         /// </summary>
         public static string PathFor(string installRoot)
         {
-            return Path.Combine(installRoot, "UserData", "JumpDrill", "stages.json");
+            return Path.Combine(installRoot, "UserData", "JumpDrill", "Stages");
         }
 
-        /// <summary>以前の版の置き場所（ユーザーのフォルダ）。</summary>
+        /// <summary>以前の版の置き場所（ユーザーのフォルダ）。全ステージを1ファイルに入れていた。</summary>
         public static string LegacyPath()
         {
             return Path.Combine(
@@ -233,28 +290,78 @@ namespace JumpDrill.Model
                 "JumpDrill", "stages.json");
         }
 
-        /// <summary>
-        /// 以前の版の置き場所にファイルが残っていれば、<paramref name="path"/> へ移す。
-        /// <paramref name="path"/> に既にあれば何もしない。移せなくても読み書きは止めない。
-        /// </summary>
-        public static void MoveLegacy(string path)
+        /// <summary>全ステージを1ファイルに入れていたころの、Beat Saber 側の置き場所。</summary>
+        private static string SingleFilePath(string folder)
         {
-            try
+            return Path.Combine(Path.GetDirectoryName(folder), "stages.json");
+        }
+
+        /// <summary>
+        /// 全ステージを1ファイルに入れていたころのファイル（Beat Saber 側、無ければユーザーのフォルダ）が残っていれば、
+        /// ステージごとのファイルに分けて <paramref name="folder"/> に置き、元のファイルを消す。
+        /// 同じ名前のファイルが既にあればそのステージは移さない。移せなくても読み書きは止めない。
+        /// </summary>
+        public static void MoveLegacy(string folder)
+        {
+            foreach (string legacy in new[] { SingleFilePath(folder), LegacyPath() })
             {
-                string legacy = LegacyPath();
-                if (File.Exists(path) || !File.Exists(legacy)) return;
+                try
+                {
+                    if (!File.Exists(legacy)) continue;
+                    SplitSingleFile(legacy, folder);
 
-                string dir = Path.GetDirectoryName(path);
-                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                File.Move(legacy, path);
-
-                // 空になった以前のフォルダも消す
-                string legacyDir = Path.GetDirectoryName(legacy);
-                if (Directory.Exists(legacyDir) && Directory.GetFileSystemEntries(legacyDir).Length == 0)
-                    Directory.Delete(legacyDir);
+                    // 空になった以前のフォルダも消す（ユーザーのフォルダの方）
+                    string legacyDir = Path.GetDirectoryName(legacy);
+                    if (legacy == LegacyPath() && Directory.Exists(legacyDir) && Directory.GetFileSystemEntries(legacyDir).Length == 0)
+                        Directory.Delete(legacyDir);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                catch (FormatException) { }
             }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+        }
+
+        /// <summary>
+        /// 全ステージを入れた1ファイルを、ステージごとのファイルに分けて <paramref name="folder"/> に置き、元を消す。
+        /// 同じ名前のファイルが既にあればそのステージは書かない。読めなければ例外で、元のファイルは残る。
+        /// </summary>
+        public static void SplitSingleFile(string file, string folder)
+        {
+            var stages = ReadSingleFile(file);
+
+            Directory.CreateDirectory(folder);
+            foreach (var stage in stages)
+            {
+                string path = Path.Combine(folder, SafeFileName(stage.Name) + ".json");
+                if (File.Exists(path)) continue;
+                WriteStage(path, stage);
+            }
+            File.Delete(file);
+        }
+
+        /// <summary>1ファイルに全ステージを入れていた形（<c>{ "stages": [ { "name", "rows" } ] }</c>）を読む。</summary>
+        private static List<CustomStage> ReadSingleFile(string path)
+        {
+            var root = JsonReader.Parse(File.ReadAllText(path, Encoding.UTF8)) as Dictionary<string, object>;
+            if (root == null) throw new FormatException("stages.json");
+
+            var stages = new List<CustomStage>();
+            foreach (var stageMap in ListOf(root, "stages").OfType<Dictionary<string, object>>())
+            {
+                var stage = new CustomStage { Name = StringOf(stageMap, "name") };
+                stage.Rows.AddRange(RowsOf(stageMap));
+                stages.Add(stage);
+            }
+            return stages;
+        }
+
+        /// <summary>ファイル名に使えない文字を _ に替える。空なら CUSTOM。</summary>
+        private static string SafeFileName(string name)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            string safe = new string((name ?? "").Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim().TrimEnd('.');
+            if (safe.Length == 0 || ReservedFileNames.Contains(safe.ToUpperInvariant())) safe = "CUSTOM" + safe;
+            return safe;
         }
 
         /// <summary>
@@ -281,65 +388,135 @@ namespace JumpDrill.Model
             for (int i = 1; ; i++)
             {
                 string name = "CUSTOM" + i;
-                if (Find(name) == null) return name;
+                if (!IsTaken(name)) return name;
             }
         }
 
-        /// <summary>ファイルを読む。無ければ空。壊れていれば例外。</summary>
-        public static CustomStageBook Load(string path)
+        /// <summary>
+        /// フォルダの中のステージを全部読む。フォルダが無ければ空。
+        /// 読めないファイルは飛ばして <see cref="Unreadable"/> に入れる（ほかのステージは使える）。
+        /// </summary>
+        public static CustomStageBook Load(string folder)
         {
             var book = new CustomStageBook();
-            if (!File.Exists(path)) return book;
+            if (!Directory.Exists(folder)) return book;
 
-            var root = JsonReader.Parse(File.ReadAllText(path, Encoding.UTF8)) as Dictionary<string, object>;
-            if (root == null) throw new FormatException(Lang.T("ステージの設定ファイルの形が違います。", "The stage file is not in the expected format."));
-
-            foreach (var stageObj in ListOf(root, "stages"))
+            foreach (string path in Directory.GetFiles(folder, "*.json"))
             {
-                var stageMap = stageObj as Dictionary<string, object>;
-                if (stageMap == null) continue;
-
-                var stage = new CustomStage { Name = StringOf(stageMap, "name") };
-                foreach (var rowObj in ListOf(stageMap, "rows"))
+                string name = Path.GetFileNameWithoutExtension(path);
+                try
                 {
-                    var rowMap = rowObj as Dictionary<string, object>;
-                    if (rowMap == null) continue;
-
-                    stage.Rows.Add(new CustomStageRow
-                    {
-                        Name = StringOf(rowMap, "name"),
-                        Drills = ListOf(rowMap, "drills").OfType<string>().Where(d => d.Length > 0).ToList(),
-                    });
+                    // 名前はファイル名。中に名前が書いてあっても使わない
+                    var stage = FromJson(File.ReadAllText(path, Encoding.UTF8), name);
+                    stage.Name = name;
+                    book.Stages.Add(stage);
                 }
-                book.Stages.Add(stage);
+                catch (Exception e) when (e is FormatException || e is IOException || e is UnauthorizedAccessException)
+                {
+                    book.Unreadable.Add(name);
+                }
+                book._onDisk.Add(name);
             }
 
+            book.Sort();
             return book;
         }
 
-        public void Save(string path)
+        private static IEnumerable<CustomStageRow> RowsOf(Dictionary<string, object> map)
         {
-            var json = new JsonWriter(indent: true, asciiOnly: false);
-            json.StartObject().Name("stages").StartArray();
+            return ListOf(map, "rows").OfType<Dictionary<string, object>>().Select(rowMap => new CustomStageRow
+            {
+                Name = StringOf(rowMap, "name"),
+                Drills = ListOf(rowMap, "drills").OfType<string>().Where(d => d.Length > 0).ToList(),
+            });
+        }
+
+        /// <summary>
+        /// ステージごとにファイルへ書く。中身の変わっていないファイルは書かない。
+        /// 読んだときにあって今は無いステージ（削除・名前の変更）のファイルは消す。
+        /// 読めなかったファイルと、読んだあとでほかで作られたファイルには触らない。
+        /// </summary>
+        public void Save(string folder)
+        {
+            Directory.CreateDirectory(folder);
+
             foreach (var stage in Stages)
             {
-                json.StartObject().Property("name", stage.Name).Name("rows").StartArray();
-                foreach (var row in stage.Rows)
+                string path = Path.Combine(folder, stage.Name + ".json");
+
+                // 大文字と小文字だけ変えた名前は同じファイルになるので、ファイル名も付け替える
+                string existing = Directory.GetFiles(folder, stage.Name + ".json").FirstOrDefault();
+                if (existing != null && Path.GetFileName(existing) != stage.Name + ".json")
                 {
-                    json.StartObject().Property("name", row.Name).Name("drills").StartArray();
-                    foreach (var drill in row.Drills) json.Value(drill);
-                    json.EndArray().EndObject();
+                    File.Move(existing, path + ".rename");
+                    File.Move(path + ".rename", path);
                 }
+
+                WriteStage(path, stage);
+                _onDisk.Add(stage.Name);
+            }
+
+            foreach (string name in _onDisk.ToList())
+            {
+                if (Find(name) != null || Unreadable.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+                string path = Path.Combine(folder, name + ".json");
+                if (File.Exists(path)) File.Delete(path);
+                _onDisk.Remove(name);
+            }
+
+            Sort();
+        }
+
+        /// <summary>
+        /// 1ステージぶんの JSON。ステージのファイルには名前を入れない（ファイル名が名前）。
+        /// エクスポートした zip では、取り込む側が名前を知るために入れる（<paramref name="includeName"/>）。
+        /// </summary>
+        public static string ToJson(CustomStage stage, bool includeName = false)
+        {
+            var json = new JsonWriter(indent: true, asciiOnly: false);
+            json.StartObject();
+            if (includeName) json.Property("name", stage.Name);
+            WriteRows(json, stage);
+            json.EndObject();
+            return json.ToString() + "\n";
+        }
+
+        /// <summary><c>"rows": [ ... ]</c> を書く。</summary>
+        public static void WriteRows(JsonWriter json, CustomStage stage)
+        {
+            json.Name("rows").StartArray();
+            foreach (var row in stage.Rows)
+            {
+                json.StartObject().Property("name", row.Name).Name("drills").StartArray();
+                foreach (var drill in row.Drills) json.Value(drill);
                 json.EndArray().EndObject();
             }
-            json.EndArray().EndObject();
+            json.EndArray();
+        }
 
-            string dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        /// <summary>
+        /// <see cref="ToJson"/> を読む。名前は JSON にあればそれ、無ければ <paramref name="name"/>。
+        /// 形が違えば <see cref="FormatException"/>。
+        /// </summary>
+        public static CustomStage FromJson(string text, string name)
+        {
+            var root = JsonReader.Parse(text) as Dictionary<string, object>;
+            if (root == null) throw new FormatException(Lang.T("ステージのファイルの形が違います。", "The stage file is not in the expected format."));
+
+            string inside = StringOf(root, "name");
+            var stage = new CustomStage { Name = inside.Length > 0 ? inside : name };
+            stage.Rows.AddRange(RowsOf(root));
+            return stage;
+        }
+
+        private static void WriteStage(string path, CustomStage stage)
+        {
+            string text = ToJson(stage);
+            if (File.Exists(path) && File.ReadAllText(path, Encoding.UTF8) == text) return;
 
             // 書きかけで落ちても元のファイルが残るよう、別名に書いてから置き換える
             string temp = path + ".tmp";
-            File.WriteAllText(temp, json.ToString() + "\n", new UTF8Encoding(false));
+            File.WriteAllText(temp, text, new UTF8Encoding(false));
             if (File.Exists(path)) File.Replace(temp, path, null);
             else File.Move(temp, path);
         }

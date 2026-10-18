@@ -26,7 +26,7 @@ namespace JumpDrill.Replays
 
         /// <summary>
         /// JumpDrillMod が自分で残すリプレイの置き場の名前（<c>UserData\JumpDrill\Replays</c>）。
-        /// カスタムステージ（<c>UserData\JumpDrill\stages.json</c>）と同じフォルダにまとめる。
+        /// カスタムステージ（<c>UserData\JumpDrill\Stages</c>）と同じフォルダにまとめる。
         /// </summary>
         public const string OwnReplayMod = "JumpDrill";
 

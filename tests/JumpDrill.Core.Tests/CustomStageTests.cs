@@ -13,31 +13,126 @@ namespace JumpDrill.Core.Tests
         private const string Drill300 = "[Q7K3M] Drill R8b L5a axis 300 BPM 30s";
         private const string Drill250 = "{R3bL2a 250} [ABCDE] Drill R3b L2a axis 250 BPM 10s";
 
-        [Fact]
-        public void The_stage_file_round_trips_including_japanese_names()
+        private static string NewFolder()
         {
-            string path = Path.Combine(Path.GetTempPath(), "jumpdrill-stages-" + System.Guid.NewGuid().ToString("N") + ".json");
+            return Path.Combine(Path.GetTempPath(), "jumpdrill-stages-" + System.Guid.NewGuid().ToString("N"));
+        }
+
+        [Fact]
+        public void Each_stage_is_saved_to_its_own_file_named_after_the_stage()
+        {
+            string folder = NewFolder();
             try
             {
                 var book = new CustomStageBook();
                 book.Stages.Add(new CustomStage
                 {
-                    Name = "苦手 \"横\"",
+                    Name = "苦手 横",
                     Rows = { new CustomStageRow { Name = "R8bL5a", Drills = { Drill300, Drill250 } } },
                 });
-                book.Save(path);
+                book.Stages.Add(new CustomStage { Name = "CUSTOM10" });
+                book.Stages.Add(new CustomStage { Name = "CUSTOM2" });
+                book.Save(folder);
 
-                Assert.Contains("苦手", File.ReadAllText(path));
+                Assert.Contains(Drill300, File.ReadAllText(Path.Combine(folder, "苦手 横.json")));
+                Assert.True(File.Exists(Path.Combine(folder, "CUSTOM2.json")));
 
-                var loaded = CustomStageBook.Load(path);
-                var stage = Assert.Single(loaded.Stages);
-                Assert.Equal("苦手 \"横\"", stage.Name);
-                Assert.Equal(new[] { Drill300, Drill250 }, stage.Rows[0].Drills);
+                var loaded = CustomStageBook.Load(folder);
+                Assert.Equal(new[] { "CUSTOM2", "CUSTOM10", "苦手 横" }, loaded.Stages.Select(s => s.Name));
+                Assert.Equal(new[] { Drill300, Drill250 }, loaded.Find("苦手 横").Rows[0].Drills);
             }
             finally
             {
-                File.Delete(path);
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
             }
+        }
+
+        [Fact]
+        public void Renaming_and_deleting_remove_the_old_files_but_leave_files_made_elsewhere()
+        {
+            string folder = NewFolder();
+            try
+            {
+                var book = new CustomStageBook();
+                book.Stages.Add(new CustomStage { Name = "A" });
+                book.Stages.Add(new CustomStage { Name = "B" });
+                book.Save(folder);
+
+                var loaded = CustomStageBook.Load(folder);
+                File.WriteAllText(Path.Combine(folder, "C.json"), "{ \"rows\": [] }");   // 読んだあとで MOD が作った
+
+                loaded.Find("A").Name = "A2";
+                loaded.Stages.Remove(loaded.Find("B"));
+                loaded.Save(folder);
+
+                Assert.Equal(new[] { "A2.json", "C.json" },
+                    Directory.GetFiles(folder).Select(Path.GetFileName).OrderBy(n => n));
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        }
+
+        [Fact]
+        public void A_broken_file_is_skipped_kept_and_its_name_stays_taken()
+        {
+            string folder = NewFolder();
+            try
+            {
+                Directory.CreateDirectory(folder);
+                File.WriteAllText(Path.Combine(folder, "Broken.json"), "{ not json");
+                File.WriteAllText(Path.Combine(folder, "Good.json"), "{ \"rows\": [ { \"name\": \"R\", \"drills\": [ \"" + Drill300 + "\" ] } ] }");
+
+                var book = CustomStageBook.Load(folder);
+                Assert.Equal("Good", Assert.Single(book.Stages).Name);
+                Assert.Equal("Broken", Assert.Single(book.Unreadable));
+                Assert.True(book.IsTaken("broken"));
+
+                book.Save(folder);
+                Assert.Equal("{ not json", File.ReadAllText(Path.Combine(folder, "Broken.json")));
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        }
+
+        [Fact]
+        public void The_old_single_file_is_split_into_one_file_per_stage()
+        {
+            string folder = NewFolder();
+            string single = folder + "-stages.json";
+            try
+            {
+                File.WriteAllText(single,
+                    "{ \"stages\": [ { \"name\": \"苦手 \\\"横\\\"\", \"rows\": [ { \"name\": \"R\", \"drills\": [ \"" + Drill300 + "\" ] } ] }," +
+                    " { \"name\": \"CUSTOM1\", \"rows\": [] } ] }");
+
+                CustomStageBook.SplitSingleFile(single, folder);
+
+                Assert.False(File.Exists(single));
+                var book = CustomStageBook.Load(folder);
+                Assert.Equal(new[] { "CUSTOM1", "苦手 _横_" }, book.Stages.Select(s => s.Name));
+                Assert.Equal(Drill300, book.Find("苦手 _横_").Rows[0].Drills[0]);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+                if (File.Exists(single)) File.Delete(single);
+            }
+        }
+
+        [Theory]
+        [InlineData("My stage", true)]
+        [InlineData("苦手", true)]
+        [InlineData("a/b", false)]
+        [InlineData("a?", false)]
+        [InlineData("CON", false)]
+        [InlineData("end.", false)]
+        public void Stage_names_must_be_usable_as_file_names(string name, bool ok)
+        {
+            Assert.Equal(ok, CustomStageBook.CheckFileName(name) == null);
         }
 
         [Fact]
@@ -121,7 +216,7 @@ namespace JumpDrill.Core.Tests
         [Fact]
         public void A_missing_file_is_an_empty_book()
         {
-            Assert.Empty(CustomStageBook.Load(Path.Combine(Path.GetTempPath(), "no-such-stages.json")).Stages);
+            Assert.Empty(CustomStageBook.Load(Path.Combine(Path.GetTempPath(), "no-such-stages-folder")).Stages);
         }
 
         [Fact]

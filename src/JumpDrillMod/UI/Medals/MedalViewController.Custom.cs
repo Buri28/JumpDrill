@@ -18,7 +18,7 @@ namespace JumpDrillMod.UI.Medals
     /// </summary>
     /// <remarks>
     /// カスタムステージは GUI のメダル画面と同じもの（JumpDrill.Core の <c>CustomStageBook</c>）で、
-    /// 同じ stages.json を読み書きする。どちらで組んだステージも両方に出る。
+    /// 同じファイル（<c>UserData\JumpDrill\Stages\ステージ名.json</c>）を読み書きする。どちらで組んだステージも両方に出る。
     ///
     /// VR では文字を打つのが面倒なので、作るときは名前を聞かずに CUSTOM1、CUSTOM2… と付け、
     /// あとから Rename（画面のキーボード）で変えられるようにする。
@@ -35,7 +35,7 @@ namespace JumpDrillMod.UI.Medals
 
         private CustomStageBook book = new CustomStageBook();
 
-        /// <summary>stages.json が読めなかった。上書きして中身を失わないよう、組み替えさせない。</summary>
+        /// <summary>ステージのフォルダが読めなかった。上書きして中身を失わないよう、組み替えさせない。</summary>
         private bool bookBroken;
 
         /// <summary>出しているカスタムステージの成績。</summary>
@@ -227,7 +227,7 @@ namespace JumpDrillMod.UI.Medals
             RefreshDropdown();
         }
 
-        /// <summary>stages.json を読む。出していたカスタムステージが消えていたら Standard に戻す。</summary>
+        /// <summary>ステージを読む。出していたカスタムステージが消えていたら Standard に戻す。</summary>
         private void LoadBook()
         {
             try
@@ -235,6 +235,8 @@ namespace JumpDrillMod.UI.Medals
                 CustomStageBook.MoveLegacy(StagesPath);
                 book = CustomStageBook.Load(StagesPath);
                 bookBroken = false;
+                if (book.Unreadable.Count > 0)
+                    Plugin.Log?.Warn("could not read the stage files: " + string.Join(", ", book.Unreadable));
             }
             catch (Exception e)
             {
@@ -252,10 +254,10 @@ namespace JumpDrillMod.UI.Medals
             RefreshDropdown();
         }
 
-        /// <summary>このインスタンスの <c>UserData\JumpDrill\stages.json</c>。</summary>
+        /// <summary>このインスタンスの <c>UserData\JumpDrill\Stages</c>。</summary>
         private static string StagesPath => CustomStageBook.PathFor(InstallPaths.Root);
 
-        /// <summary>stages.json に書く。書けなければ知らせて false。</summary>
+        /// <summary>ステージのファイルに書く。書けなければ知らせて false。</summary>
         private bool SaveBook()
         {
             try
@@ -366,9 +368,17 @@ namespace JumpDrillMod.UI.Medals
             AskName(stage.Name, name =>
             {
                 if (name == stage.Name) return;
-                // GUI の日本語の名前も使わせない（同じ stages.json を GUI でも開く）
+                if (CustomStageBook.CheckFileName(name) != null)
+                {
+                    SetStatus("The name has characters that cannot be used (\\ / : * ? \" < > |).");
+                    return;
+                }
+                // GUI の日本語の名前も使わせない（同じステージを GUI でも開く）
+                var other = book.Find(name);
                 if (name == StandardOption || name == OtherOption || name == AllOption ||
-                    name == "標準" || name == "その他" || name == "すべて" || book.Find(name) != null)
+                    name == "標準" || name == "その他" || name == "すべて" ||
+                    (other != null && other != stage) ||
+                    (other == null && book.IsTaken(name)))
                 {
                     SetStatus("A stage with this name already exists.");
                     return;

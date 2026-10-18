@@ -14,7 +14,7 @@ namespace JumpDrill.Gui
     /// 移す先:
     /// <list type="bullet">
     /// <item>settings.txt → アプリの workspace（<see cref="SettingsStore.DefaultPath"/>）</item>
-    /// <item>stages.json → 1つの Beat Saber の UserData\JumpDrill（<see cref="StagesInstall"/>）</item>
+    /// <item>stages.json → 1つの Beat Saber の UserData\JumpDrill\Stages にステージごとに分けて（<see cref="StagesInstall"/>）</item>
     /// <item>out・zip（古い出力） → アプリの workspace の out・zip</item>
     /// <item>mod（取ってきた DLL） → 消す。要るときにまた取ってくる</item>
     /// <item>MOD のリプレイ（Beat Saber の UserData\JumpDrillMod\Replays） → UserData\JumpDrill\Replays
@@ -86,15 +86,8 @@ namespace JumpDrill.Gui
             string install = StagesInstall();
             if (install == null) return;
 
-            string path = CustomStageBook.PathFor(install);
-            if (File.Exists(path))
-            {
-                File.Delete(legacy);
-                return;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.Move(legacy, path);
+            // ステージごとのファイルに分けて移す
+            CustomStageBook.MoveLegacy(CustomStageBook.PathFor(install));
         }
 
         private static string StagesInstall()

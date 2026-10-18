@@ -17,7 +17,7 @@ namespace JumpDrill.Gui
     /// 一括生成のドリルのメダルと Lv。1行が1方向、1マスが1本（速さの Stage）。
     ///
     /// 上のプルダウンでステージを切り替える。「標準」は一括生成の 14方向 × 8 Stage で、
-    /// ほかは作ったドリルを自分で並べたカスタムステージ（<see cref="CustomStageBook"/>、stages.json）。
+    /// ほかは作ったドリルを自分で並べたカスタムステージ（<see cref="CustomStageBook"/>、1ステージ1ファイル）。
     /// カスタムステージでは表の「+」でドリルを足し、右クリックで変更・削除・並べ替えをする。
     ///
     /// 記録は成績（ローカルリーダーボード）と同じ読み方で、ID で引く。
@@ -76,16 +76,18 @@ namespace JumpDrill.Gui
         private ToolStripMenuItem _newStage;
         private ToolStripMenuItem _renameStage;
         private ToolStripMenuItem _deleteStage;
+        private ToolStripMenuItem _importStage;
+        private ToolStripMenuItem _exportStage;
 
         private readonly SettingsStore _settings;
         /// <summary>
-        /// 見ている Beat Saber の stages.json。「すべてのバージョン」で Beat Saber が複数あるときは決まらず null
+        /// 見ている Beat Saber のステージのフォルダ。「すべてのバージョン」で Beat Saber が複数あるときは決まらず null
         /// （カスタムステージは出さず、組み替えもさせない）。
         /// </summary>
         private string _stagesPath;
         private CustomStageBook _book = new CustomStageBook();
 
-        /// <summary>stages.json が読めなかった。上書きして中身を失わないよう、編集させない。</summary>
+        /// <summary>ステージのフォルダが読めなかった。上書きして中身を失わないよう、編集させない。</summary>
         private bool _bookBroken;
 
         /// <summary>作ったドリルの一覧（割り当てのダイアログに出す）。</summary>
@@ -305,10 +307,10 @@ namespace JumpDrill.Gui
             ShowStage();
         }
 
-        /// <summary>stages.json を読んでプルダウンを作る。前に見ていたステージを選び直す。</summary>
+        /// <summary>ステージを読んでプルダウンを作る。前に見ていたステージを選び直す。</summary>
         private void LoadStages()
         {
-            // MOD と同じファイル（Beat Saber ごとの UserData\JumpDrill\stages.json）。どちらで作ったステージも両方に出る
+            // MOD と同じファイル（Beat Saber ごとの UserData\JumpDrill\Stages）。どちらで作ったステージも両方に出る
             _stagesPath = StagesPathFor(InstallPicker.Selected);
             _bookBroken = false;
             try
@@ -324,6 +326,9 @@ namespace JumpDrill.Gui
                 {
                     CustomStageBook.MoveLegacy(_stagesPath);
                     _book = CustomStageBook.Load(_stagesPath);
+                    if (_book.Unreadable.Count > 0)
+                        _status.Text = Lang.T("読み込めなかったステージがあります: ", "Some stages could not be read: ") +
+                            string.Join(", ", _book.Unreadable.Select(n => n + ".json"));
                 }
             }
             catch (Exception ex)
@@ -336,7 +341,7 @@ namespace JumpDrill.Gui
             FillStagePicker(_settings.GetString("medalStage", ""), _settings.GetBool("medalOther", false), _settings.GetBool("medalAll", false));
         }
 
-        /// <summary>選んでいる Beat Saber の stages.json。「すべて」なら、Beat Saber が1つだけのときはそれ。</summary>
+        /// <summary>選んでいる Beat Saber のステージのフォルダ。「すべて」なら、Beat Saber が1つだけのときはそれ。</summary>
         private static string StagesPathFor(string install)
         {
             if (string.IsNullOrEmpty(install))
@@ -417,13 +422,20 @@ namespace JumpDrill.Gui
             _stageMenu.Items.Add(_renameStage);
             _stageMenu.Items.Add(_deleteStage);
             _stageMenu.Items.Add(new ToolStripSeparator());
-            _stageMenu.Items.Add(Lang.T("設定ファイルの場所を開く", "Open the stage file location"), null, (s, e) => OpenStagesFolder());
+            _importStage = new ToolStripMenuItem(Lang.T("インポート...", "Import..."), null, async (s, e) => await ImportStage());
+            _exportStage = new ToolStripMenuItem(Lang.T("エクスポート...", "Export..."), null, (s, e) => ExportStage());
+            _stageMenu.Items.Add(_importStage);
+            _stageMenu.Items.Add(_exportStage);
+            _stageMenu.Items.Add(new ToolStripSeparator());
+            _stageMenu.Items.Add(Lang.T("ステージのフォルダを開く", "Open the stage folder"), null, (s, e) => OpenStagesFolder());
 
             _stageMenu.Opening += (s, e) =>
             {
                 _newStage.Enabled = !_bookBroken;
                 _renameStage.Enabled = !_bookBroken && CurrentStage != null;
                 _deleteStage.Enabled = !_bookBroken && CurrentStage != null;
+                _importStage.Enabled = !_bookBroken && !_generating;
+                _exportStage.Enabled = CurrentStage != null;
             };
             _stageMenuButton.Click += (s, e) => _stageMenu.Show(_stageMenuButton, new Point(0, _stageMenuButton.Height));
         }
@@ -432,8 +444,13 @@ namespace JumpDrill.Gui
         private string CheckStageName(string name, CustomStage self)
         {
             // 表示の言語によらず、標準・その他・すべての名前は使わせない（MOD は英語の名前でプルダウンを選ぶ）
+            string invalid = CustomStageBook.CheckFileName(name);
+            if (invalid != null) return invalid;
+
+            // ステージ名はファイル名なので、大文字と小文字だけ違う名前も同じとみなす
             var reserved = new[] { "標準", "Standard", "その他", "Other", "すべて", "All" };
-            if (reserved.Contains(name) || _book.Stages.Any(st => st != self && st.Name == name))
+            var other = _book.Find(name);
+            if (reserved.Contains(name) || (other != null && other != self) || (other == null && _book.IsTaken(name)))
                 return Lang.T("同じ名前のステージがあります。", "A stage with this name already exists.");
             return null;
         }
@@ -472,14 +489,152 @@ namespace JumpDrill.Gui
             if (SaveStages()) FillStagePicker("");
         }
 
+        /// <summary>
+        /// 見ているカスタムステージを1つの .json に書き出す（<see cref="CustomStageExport"/>）。
+        /// 並べたドリルの、曲名に入らない指定（NJS・クリックなど）も手元の譜面から読んで書く。
+        /// </summary>
+        private void ExportStage()
+        {
+            var stage = CurrentStage;
+            if (stage == null) return;
+
+            string path;
+            using (var dialog = new SaveFileDialog
+            {
+                Filter = Lang.T("カスタムステージ (*.json)|*.json", "Custom stage (*.json)|*.json"),
+                FileName = stage.Name + ".json",
+            })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                path = dialog.FileName;
+            }
+
+            try
+            {
+                var local = _findDrills == null ? new List<DrillLibrary.DrillLevel>() : FindDrills();
+                int missing = 0;
+                CustomStageExport.Write(path, stage, songName =>
+                {
+                    string id = DrillNaming.ExtractId(songName);
+                    var level = local.FirstOrDefault(d => d.SongName == songName)
+                        ?? (id == null ? null : local.FirstOrDefault(d => DrillNaming.ExtractId(d.SongName) == id));
+                    if (level == null) { missing++; return null; }
+                    try { return DrillRebuild.Read(level.Path); }
+                    catch (Exception ex) when (ex is FormatException || ex is IOException) { missing++; return null; }
+                });
+
+                _status.Text = missing == 0
+                    ? Lang.T("エクスポートしました: ", "Exported: ") + path
+                    : string.Format(CultureInfo.CurrentCulture,
+                        Lang.T("エクスポートしました（{0} 本は譜面が見つからず、NJS などは既定値で作られます）: {1}",
+                            "Exported ({0} drills had no map; they will be made with the default NJS etc.): {1}"), missing, path);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, Lang.T("エクスポートできませんでした。", "Could not export.") + Environment.NewLine + ex.Message,
+                    "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// エクスポートしたステージを取り込む。持っていないドリルは、書いてある指定で作る。
+        /// 同じ名前のステージがあれば、別の名前を入れさせる。
+        /// </summary>
+        private async Task ImportStage()
+        {
+            if (_bookBroken || _generating) return;
+
+            string path;
+            using (var dialog = new OpenFileDialog { Filter = Lang.T("カスタムステージ (*.json)|*.json", "Custom stage (*.json)|*.json") })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                path = dialog.FileName;
+            }
+
+            CustomStageExport.ImportPlan plan;
+            try
+            {
+                var exported = CustomStageExport.Read(path);
+                var local = _findDrills == null ? new List<DrillLibrary.DrillLevel>() : FindDrills();
+                plan = CustomStageExport.Plan(exported, local.Select(d => d.SongName));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, Lang.T("インポートできませんでした。", "Could not import.") + Environment.NewLine + ex.Message,
+                    "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var stage = plan.Stage;
+            if (CheckStageName(stage.Name, null) != null)
+            {
+                string name = StageDialogs.AskName(this, Lang.T("インポート", "Import"), FreeStageName(stage.Name),
+                    n => CheckStageName(n, null),
+                    Lang.T("同じ名前のステージがあります。別の名前を入れてください。", "A stage with this name exists. Enter another name."));
+                if (name == null) return;
+                stage.Name = name;
+            }
+
+            if (plan.ToGenerate.Count > 0 && MessageBox.Show(this,
+                    string.Format(CultureInfo.CurrentCulture, Lang.T(
+                        "持っていないドリルが {0} 本あります。作ってから取り込みます。",
+                        "{0} drills are missing. They will be made before importing."), plan.ToGenerate.Count),
+                    "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+
+            _book.Stages.Add(stage);
+            if (!SaveStages())
+            {
+                _book.Stages.Remove(stage);
+                return;
+            }
+
+            if (plan.ToGenerate.Count > 0)
+            {
+                await Generate(plan.ToGenerate.Select(DrillSetEntry.ForOptions).ToList());
+                if (IsDisposed) return;
+            }
+
+            _otherNames = null;
+            FillStagePicker(stage.Name);
+
+            string done = string.Format(CultureInfo.CurrentCulture, Lang.T("「{0}」を取り込みました。", "Imported \"{0}\"."), stage.Name);
+            if (plan.CannotGenerate.Count > 0)
+            {
+                _status.Text = done + string.Format(CultureInfo.CurrentCulture,
+                    Lang.T("作れなかったドリル: {0} 本", " Drills that could not be made: {0}"), plan.CannotGenerate.Count);
+                MessageBox.Show(this,
+                    Lang.T("曲名から指定を読めず、作れなかったドリルがあります。新しい版の JumpDrill で作ったドリルかもしれません。",
+                        "Some drills could not be made from their names. They may come from a newer JumpDrill.") +
+                    Environment.NewLine + Environment.NewLine + string.Join(Environment.NewLine, plan.CannotGenerate.Take(10).Select(DrillNaming.DisplayName)),
+                    "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            else if (plan.ToGenerate.Count == 0)
+            {
+                _status.Text = done;
+            }
+        }
+
+        /// <summary>使われていない名前。<c>名前 (2)</c>、<c>名前 (3)</c>… と探す。</summary>
+        private string FreeStageName(string name)
+        {
+            for (int i = 2; i < 1000; i++)
+            {
+                string candidate = name + " (" + i + ")";
+                if (CheckStageName(candidate, null) == null) return candidate;
+            }
+            return name;
+        }
+
         private void OpenStagesFolder()
         {
             try
             {
                 if (_stagesPath == null) return;
-                string dir = Path.GetDirectoryName(_stagesPath);
-                Directory.CreateDirectory(dir);
-                string args = File.Exists(_stagesPath) ? "/select,\"" + _stagesPath + "\"" : "\"" + dir + "\"";
+                Directory.CreateDirectory(_stagesPath);
+
+                // 見ているステージがあればそのファイルを選んで開く
+                string file = CurrentStage == null ? null : Path.Combine(_stagesPath, CurrentStage.Name + ".json");
+                string args = file != null && File.Exists(file) ? "/select,\"" + file + "\"" : "\"" + _stagesPath + "\"";
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", args) { UseShellExecute = true });
             }
             catch (Exception ex)
@@ -488,7 +643,7 @@ namespace JumpDrill.Gui
             }
         }
 
-        /// <summary>stages.json に書く。書けなければ知らせて false。</summary>
+        /// <summary>ステージのファイルに書く。書けなければ知らせて false。</summary>
         private bool SaveStages()
         {
             try
