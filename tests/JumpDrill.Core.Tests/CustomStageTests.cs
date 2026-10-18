@@ -156,6 +156,11 @@ namespace JumpDrill.Core.Tests
             // カスタムステージに入れたものは出さない
             var stage = new CustomStage { Rows = { new CustomStageRow { Drills = { "[ABCDE] Drill R4c L19 axis 50 BPM 11s" } } } };
             Assert.Equal(new[] { "R8bL5a", "R8bL5a" }, CustomStage.Other(names, new[] { stage }).Rows.Select(r => r.Name));
+
+            // All は標準のステージのものも出す
+            var all = CustomStage.Other(names, includeDrillSet: true);
+            Assert.Contains(all.Rows.SelectMany(r => r.Drills), n => n == DrillSet.All()[0].Options.Name);
+            Assert.Equal(other.Rows.Sum(r => r.Drills.Count) + 1, all.Rows.Sum(r => r.Drills.Count));
         }
 
         [Fact]

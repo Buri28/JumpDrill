@@ -124,6 +124,7 @@ namespace JumpDrill.Model
 
         /// <summary>
         /// 「Other」の表。標準のステージ以外のドリルを方向ごとにまとめ、遅い順に左から並べる。
+        /// 「All」の表も同じ並べ方で、標準のステージのドリルも含める（<paramref name="includeDrillSet"/>）。
         /// 1方向で <see cref="MaxDrillsPerRow"/> 本を超えたら、続きは同じ方向の2行目・3行目に送る。
         /// </summary>
         /// <remarks>
@@ -133,12 +134,15 @@ namespace JumpDrill.Model
         /// <param name="assigned">
         /// カスタムステージ。ここに並べたドリルは Other に出さない（どこかのステージに入っていないものが Other）。
         /// </param>
-        public static CustomStage Other(IEnumerable<string> songNames, IEnumerable<CustomStage> assigned = null)
+        /// <param name="includeDrillSet">標準のステージ（112本）のドリルも出すか。All のとき true。</param>
+        public static CustomStage Other(IEnumerable<string> songNames, IEnumerable<CustomStage> assigned = null,
+            bool includeDrillSet = false)
         {
             if (songNames == null) throw new ArgumentNullException(nameof(songNames));
 
-            var setIds = new HashSet<string>(
-                DrillSet.All().Select(e => DrillNaming.ExtractId(e.Options.Name)), StringComparer.Ordinal);
+            var setIds = includeDrillSet
+                ? new HashSet<string>(StringComparer.Ordinal)
+                : new HashSet<string>(DrillSet.All().Select(e => DrillNaming.ExtractId(e.Options.Name)), StringComparer.Ordinal);
             if (assigned != null)
                 foreach (var name in assigned.SelectMany(s => s.Rows).SelectMany(r => r.Drills))
                     setIds.Add(DrillNaming.ExtractId(name) ?? name);

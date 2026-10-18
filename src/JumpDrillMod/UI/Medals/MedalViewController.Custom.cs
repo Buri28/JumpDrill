@@ -50,7 +50,7 @@ namespace JumpDrillMod.UI.Medals
         private const string AllOption = "All";
 
         /// <summary>
-        /// Other の表を All（カスタムステージに入っているものも含めて、ドリルセット以外の全部）で出しているか。
+        /// Other の表を All（ドリルセットとカスタムステージに入っているものも含めて、作ったドリル全部）で出しているか。
         /// 表の作りは Other と同じなので、ViewMode は Other のままこの印で分ける。
         /// </summary>
         private bool allDrills;

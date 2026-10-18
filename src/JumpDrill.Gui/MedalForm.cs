@@ -120,14 +120,14 @@ namespace JumpDrill.Gui
 
         /// <summary>
         /// 作ったドリルを方向ごとに並べた表（その他・すべて）を出しているか。
-        /// その他はどのカスタムステージにも入っていないものだけ、すべてはカスタムステージに入っているものも出す。
+        /// その他はどのカスタムステージにも入っていない（標準以外の）ものだけ、すべては標準とカスタムステージに入っているものも出す。
         /// </summary>
         private bool IsOther { get { return _stagePicker.SelectedIndex == 1 || _stagePicker.SelectedIndex == 2; } }
 
         /// <summary>標準（112曲）を出しているか。</summary>
         private bool IsStandard { get { return _stagePicker.SelectedIndex == 0; } }
 
-        /// <summary>すべて（カスタムステージに入っているものも含めて、標準以外のドリル全部）を出しているか。</summary>
+        /// <summary>すべて（標準とカスタムステージに入っているものも含めて、作ったドリル全部）を出しているか。</summary>
         private bool IsAll { get { return _stagePicker.SelectedIndex == 2; } }
 
         /// <summary>その他の表に出すドリルの曲名。再スキャンで探し直す。</summary>
@@ -768,7 +768,7 @@ namespace JumpDrill.Gui
         {
             var stage = CurrentStage;
             bool other = IsOther;
-            var rows = other ? DrillSetMedals.Evaluate(CustomStage.Other(OtherNames(), IsAll ? null : _book.Stages), _best)
+            var rows = other ? DrillSetMedals.Evaluate(CustomStage.Other(OtherNames(), IsAll ? null : _book.Stages, includeDrillSet: IsAll), _best)
                 : stage == null ? DrillSetMedals.Evaluate(_best)
                 : DrillSetMedals.Evaluate(stage, _best);
             // NEW はその他・すべてでだけ出す（作ったばかりの一覧はそこを開いたときに作り直している）

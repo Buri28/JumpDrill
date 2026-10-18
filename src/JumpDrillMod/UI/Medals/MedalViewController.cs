@@ -201,7 +201,7 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("</vertical></horizontal>");
             sb.Append("<dropdown-list-setting id='stage-dropdown' text='' value='stage' options='stage-options'");
             sb.Append(" apply-on-change='true' bind-value='true' on-change='stage-changed' pref-width='30' pref-height='6'");
-            sb.Append(" hover-hint='Standard: the 112 drills. Other: drills not in any stage. All: drills you made, including those in stages. CUSTOM: stages you made.'/>");
+            sb.Append(" hover-hint='Standard: the 112 drills. Other: drills not in any stage. All: every drill you made, including the 112 and those in stages. CUSTOM: stages you made.'/>");
             sb.Append("<button text='New' on-click='stage-new' pref-width='12' pref-height='6'");
             sb.Append(" hover-hint='Make a new custom stage. You can rename it later.'/>");
             Box(sb, TableWidth - 4 - 30 - 30 - 12 - 24 - 4, "MiddleLeft", "<text text='' font-size='2.6'/>");
@@ -646,7 +646,7 @@ namespace JumpDrillMod.UI.Medals
         /// </summary>
         private void EvaluateOthers()
         {
-            otherRows = DrillSetMedals.Evaluate(CustomStage.Other(otherNames, allDrills ? null : book.Stages), bestById);
+            otherRows = DrillSetMedals.Evaluate(CustomStage.Other(otherNames, allDrills ? null : book.Stages, includeDrillSet: allDrills), bestById);
 
             int pages = Math.Max(1, (otherRows.Count + OtherRows - 1) / OtherRows);
             if (otherPage >= pages) otherPage = pages - 1;
@@ -1039,7 +1039,8 @@ namespace JumpDrillMod.UI.Medals
                     int drills = OtherCells.Count();
                     int pages = Math.Max(1, (otherRows.Count + OtherRows - 1) / OtherRows);
                     otherPageText.text = drills == 0
-                        ? "No other drills. Make one with the grid in the Mods tab."
+                        ? allDrills ? "No drills. Make one with Make drill → or Generate all in Standard."
+                            : "No other drills. Make one with Make drill →."
                         : pages == 1
                             ? string.Format(ci, allDrills ? "{0} drill(s)." : "{0} other drill(s).", drills)
                             : string.Format(ci, allDrills ? "{0} drill(s).  Page {1}/{2}" : "{0} other drill(s).  Page {1}/{2}", drills, otherPage + 1, pages);
