@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
+using JumpDrill.Model;
 using JumpDrill.Replays;
 
 namespace JumpDrill.Gui
@@ -86,6 +87,24 @@ namespace JumpDrill.Gui
         // 赤 103 に対し青 117）。細い線なので、その差がそのまま重さの差になる。
         private static readonly Color LeftMarkColor = Color.FromArgb(0xE6, 0x55, 0x55);
 
+        /// <summary>振りとノーツの色（<see cref="SwingColors"/>）。フォアは手の色、バックはずらした色。</summary>
+        private static Color SwingColor(int hand, bool forehand)
+        {
+            return SwingColors.Of(hand, forehand);
+        }
+
+        /// <summary>向きの印の色。左手のフォアだけ、赤を明るくした色（細い線で青と釣り合わせる）。</summary>
+        private static Color MarkColor(int hand, bool forehand)
+        {
+            return hand == 0 && forehand ? LeftMarkColor : SwingColor(hand, forehand);
+        }
+
+        /// <summary>振りの i 番目の区間（i-1 → i）がフォアか。刃が動いている向きで決める（<see cref="SwingColors.SegmentForehand"/>）。</summary>
+        private static bool SegmentForehand(Swing swing, int i)
+        {
+            return SwingColors.SegmentForehand(swing.Path[i - 1], swing.Path[i], swing.ToDirection, swing.ToForehand, swing.FromForehand);
+        }
+
         private readonly List<Swing> _swings = new List<Swing>();
         private readonly List<Note> _notes = new List<Note>();
         private RectangleF _bounds;
@@ -96,7 +115,15 @@ namespace JumpDrill.Gui
         private sealed class Note
         {
             public int ColorType;
+            public int LineIndex;
+            public int LineLayer;
             public PointF Center;
+
+            /// <summary>
+            /// 同じ手・同じマスに先に置いたノーツがある（タワー・スタックの行きと帰りなど）。
+            /// 四角と中心の点はそちらで描いたので、こちらは三角だけ描く。
+            /// </summary>
+            public bool Shared;
 
             /// <summary>本体の格子上の位置。打点に寄せても変わらない。</summary>
             public PointF GridCenter;
@@ -131,12 +158,44 @@ namespace JumpDrill.Gui
             /// <summary>面の右向き・上向きを X-Y へ落としたもの（プレイヤーを向いた後）。</summary>
             public PointF Right;
             public PointF Up;
+
+            /// <summary>この配置を切ったときの切り方（1回ごと）。<see cref="Cuts"/> の元。</summary>
+            public readonly List<NoteCutInfo> RawCuts = new List<NoteCutInfo>();
+
+            /// <summary><see cref="RawCuts"/> と並ぶ、切った瞬間の前後の先端の通り道（<see cref="TipShape"/>）。</summary>
+            public readonly List<Vector3[]> RawShapes = new List<Vector3[]>();
+
+            /// <summary>切った線（1回ごと）。ノーツの面の座標（<see cref="Right"/> / <see cref="Up"/> の向き、m）で持つ。</summary>
+            public readonly List<CutLine> Cuts = new List<CutLine>();
+
+            /// <summary>
+            /// 切った瞬間のノーツの中心（平均、世界座標）。横から見た図に置く。切っていなければ <see cref="HasCutCenter"/> が false。
+            /// ノーツは飛んでくるので、切るのが早いほど奥、遅いほど手前になる。
+            /// </summary>
+            public Vector3 CutCenter;
+            public bool HasCutCenter;
+        }
+
+        /// <summary>
+        /// 1回の切り口の線。ノーツの面の座標（X が面の右、Y が面の上、m）。
+        /// <see cref="Points"/> は振りに沿った曲線で、真ん中の点が切った位置。
+        /// </summary>
+        private struct CutLine
+        {
+            public PointF[] Points;
         }
 
         private sealed class Swing
         {
             public int SaberType;
             public Vector3[] Path;
+
+            /// <summary>次に切るノーツ・前に切ったノーツがフォア（切り下げ）か（採点と同じ決め方）。</summary>
+            public bool ToForehand;
+            public bool FromForehand;
+
+            /// <summary>次に切るノーツの矢印の向き（世界座標の X-Y）。区間の色を決めるのに使う。</summary>
+            public PointF ToDirection;
 
             /// <summary>その手の平均軌道からのずれ (m)。色の濃さに使う。</summary>
             public double Deviation;
@@ -154,6 +213,41 @@ namespace JumpDrill.Gui
 
         /// <summary>平均軌道だけを太く描くか。</summary>
         public bool ShowMeanOnly { get; set; }
+
+        /// <summary>
+        /// 正面図に遠近を付けるか。付けると、頭の少し後ろから見た絵になり、手前（手元）は大きく、奥（先端）は小さく描く。
+        /// 遠近の無い絵では手元の小さい弧が奥にすぼまって見え、実際の前後と逆に読めてしまうため。
+        /// 大きさの基準はノーツを切った深さで、ノーツと切った線は今までどおりの大きさ・位置になる。
+        /// </summary>
+        public bool Perspective
+        {
+            get { return _perspective; }
+            set
+            {
+                if (_perspective == value) return;
+                _perspective = value;
+                ComputeBounds();
+                Invalidate();
+            }
+        }
+
+        private bool _perspective;
+
+        /// <summary>遠近の視点（頭の位置からカメラを少し後ろへ引いたもの）。</summary>
+        private Vector3 _eye;
+
+        /// <summary>遠近で大きさを変えない深さ（ノーツを切った深さの平均、m）。</summary>
+        private float _referenceZ;
+
+        /// <summary>
+        /// 遠近の視点を頭からどれだけ後ろへ引くか (m)。
+        /// 振りかぶりで先端が頭より 0.5 m ほど後ろへ回るので、それより十分後ろに置く。
+        /// 近すぎると視点のそばの点が何倍にも広がり、図が崩れた（1 m では崩れた）。
+        /// </summary>
+        private const float CameraBack = 2.0f;
+
+        /// <summary>視点にこれより近い点は、この深さにあるものとして描く (m)。広がりすぎないための下限。</summary>
+        private const float NearestDepth = 0.8f;
 
         /// <summary>ノーツを本体の格子ではなく、実際に切った位置に置くか。</summary>
         public bool AnchorNotesToCuts { get; set; }
@@ -200,7 +294,9 @@ namespace JumpDrill.Gui
 
         public int SwingCount { get { return _swings.Count; } }
 
-        public void Load(Replay replay)
+        /// <param name="replay">軌道に使うリプレイ（タワー・スタックは端の点だけにまとめたもの）。</param>
+        /// <param name="notesFrom">ノーツを置くリプレイ（まとめる前）。null なら <paramref name="replay"/>。</param>
+        public void Load(Replay replay, Replay notesFrom = null)
         {
             _swings.Clear();
             _means.Clear();        // 消し忘れると前に選んだ譜面の平均軌道が残る
@@ -211,7 +307,8 @@ namespace JumpDrill.Gui
                 foreach (int saberType in new[] { 0, 1 })
                     LoadHand(replay, saberType);
 
-                LoadNotes(replay);
+                LoadNotes(notesFrom ?? replay);
+                SetupPerspective(notesFrom ?? replay);
             }
 
             ComputeBounds();
@@ -244,6 +341,8 @@ namespace JumpDrill.Gui
                 var note = new Note
                 {
                     ColorType = placement.ColorType,
+                    LineIndex = placement.LineIndex,
+                    LineLayer = placement.LineLayer,
                     Center = center,
                     GridCenter = gridCenter,
                     TiltCenter = tiltCenter,
@@ -260,11 +359,218 @@ namespace JumpDrill.Gui
                         event_.CutDirection == placement.CutDirection)
                         note.Times.Add(event_.EventTime);
 
+                LoadCuts(replay, placement, note);
                 _notes.Add(note);
             }
 
             ApplyAngleOffsets();
+            MergeOverlaps();
             ApplyLookAtPlayer(replay);
+        }
+
+        /// <summary>その配置を切ったときの切り方を集める。線にするのは面の向きが決まってから（<see cref="BuildCutLines"/>）。</summary>
+        private static void LoadCuts(Replay replay, NotePlacement placement, Note note)
+        {
+            foreach (var cut in replay.Notes)
+            {
+                if (cut.EventType != NoteEventType.Good || cut.Cut == null || cut.IsStandIn) continue;
+                if (cut.ColorType != placement.ColorType || cut.LineIndex != placement.LineIndex ||
+                    cut.LineLayer != placement.LineLayer || cut.CutDirection != placement.CutDirection) continue;
+                note.RawCuts.Add(cut.Cut);
+                note.RawShapes.Add(TipShape(replay, cut));
+            }
+        }
+
+        /// <summary>切った線の点の数。奇数で、真ん中が切った瞬間。</summary>
+        private const int CutLineSamples = 11;
+
+        /// <summary>
+        /// 切った瞬間の前後の、先端の通り道。弧長でノーツの幅ぶん（前後 <see cref="NoteSize"/> / 2 ずつ）を等間隔に取り、
+        /// 切った瞬間の先端からのずれ（世界座標）で返す。真ん中の点は原点。
+        /// 前後 100 ms で幅に届かなければ、届いた所で止める（端は同じ点が続く）。
+        /// </summary>
+        private static Vector3[] TipShape(Replay replay, ReplayNote note)
+        {
+            float moment = CutMoment(replay, note);
+            int saber = note.Cut.SaberType;
+            Vector3 hilt, origin;
+            BladeAt(replay, saber, moment, out hilt, out origin);
+
+            const float Half = NoteSize / 2;
+            var ahead = Walk(replay, saber, moment, origin, +1, Half);
+            var behind = Walk(replay, saber, moment, origin, -1, Half);
+
+            var shape = new Vector3[CutLineSamples];
+            int middle = CutLineSamples / 2;
+            for (int k = 0; k < CutLineSamples; k++)
+            {
+                float target = Half * (k - middle) / middle;
+                var p = target >= 0 ? At(ahead, target) : At(behind, -target);
+                shape[k] = new Vector3 { X = p.X - origin.X, Y = p.Y - origin.Y, Z = p.Z - origin.Z };
+            }
+            return shape;
+        }
+
+        /// <summary>切った瞬間から 1 ms ずつ進めて（戻して）、先端の道のりを弧長と組で集める。</summary>
+        private static List<KeyValuePair<float, Vector3>> Walk(Replay replay, int saber, float moment, Vector3 origin, int direction, float length)
+        {
+            var points = new List<KeyValuePair<float, Vector3>> { new KeyValuePair<float, Vector3>(0f, origin) };
+            float arc = 0f;
+            var last = origin;
+            for (int ms = 1; ms <= 100 && arc < length; ms++)
+            {
+                Vector3 hilt, tip;
+                BladeAt(replay, saber, moment + direction * ms / 1000f, out hilt, out tip);
+                arc += (float)Vector3.Distance(last, tip);
+                points.Add(new KeyValuePair<float, Vector3>(arc, tip));
+                last = tip;
+            }
+            return points;
+        }
+
+        /// <summary>弧長 <paramref name="arc"/> の位置。道のりより先なら終わりの点。</summary>
+        private static Vector3 At(List<KeyValuePair<float, Vector3>> points, float arc)
+        {
+            for (int i = 1; i < points.Count; i++)
+            {
+                if (points[i].Key < arc) continue;
+                float span = points[i].Key - points[i - 1].Key;
+                float t = span > 1e-6f ? (arc - points[i - 1].Key) / span : 0f;
+                return Lerp(points[i - 1].Value, points[i].Value, t);
+            }
+            return points[points.Count - 1].Value;
+        }
+
+        /// <summary>切った瞬間（打点が刃の線にいちばん近づく時刻）。<see cref="CutMoments"/>。</summary>
+        private static float CutMoment(Replay replay, ReplayNote note)
+        {
+            return CutMoments.Find(replay, note);
+        }
+
+        private static void BladeAt(Replay replay, int saberType, float time, out Vector3 hilt, out Vector3 tip)
+        {
+            CutMoments.BladeAt(replay, saberType, time, out hilt, out tip);
+        }
+
+        private static Vector3 Lerp(Vector3 a, Vector3 b, float t)
+        {
+            return new Vector3 { X = a.X + (b.X - a.X) * t, Y = a.Y + (b.Y - a.Y) * t, Z = a.Z + (b.Z - a.Z) * t };
+        }
+
+        /// <summary>
+        /// 切った線を、ノーツの面の座標で作る。
+        ///
+        /// 線は切った瞬間の前後の先端の通り道（ノーツの幅ぶん）を面に落とした曲線で、
+        /// 振った向き（<c>saberDir</c>）に直交する向きへ、中心から <c>cutDistanceToCenter</c> だけずらして置く。
+        /// ずらす側は、中心から見た打点の側。リプレイの <c>cutPoint</c> は中心から切り口の面へ下ろした垂線の足で、
+        /// 中心 ＝ cutPoint ± cutNormal × cutDistanceToCenter（符号は回によって違う。マスに近い方を取る）。
+        ///
+        /// 面の座標で測るのは、外側の列のノーツがプレイヤーの方へ大きく回っているため。
+        /// 振った向きを正面の平面へそのまま落とすと 30〜40° 傾いて見え、本体の角度ずれ（面の上で数度）と合わなかった。
+        /// 切り口の面とノーツの面が交わる線も、面どうしが斜めなので傾き、ずれも距離より大きく見えた。
+        /// 点数（中心の 15 点）に効くのは距離なので、それをそのまま幅にする。
+        /// </summary>
+        private static void BuildCutLines(Note note, Vector3 right, Vector3 up)
+        {
+            note.Cuts.Clear();
+            for (int index = 0; index < note.RawCuts.Count; index++)
+            {
+                var cut = note.RawCuts[index];
+                var swung = cut.SaberDirection;
+                double u = swung.X * right.X + swung.Y * right.Y + swung.Z * right.Z;
+                double v = swung.X * up.X + swung.Y * up.Y + swung.Z * up.Z;
+                double length = Math.Sqrt(u * u + v * v);
+                if (length < 1e-6) continue;
+
+                var along = new PointF((float)(u / length), (float)(v / length));
+                var across = new PointF(-along.Y, along.X);
+
+                // 中心から見た打点の向き。中心は「打点 ± 法線 × 距離」の2つの候補のうち、図のマスに近い方。
+                // 法線は中心の側を向いているとは限らない（実測で逆向きの回が混ざり、片方に決め打ちすると
+                // 中心がマスから 0.3〜0.6 m 横にずれる回が出た）
+                var normal = cut.CutNormal;
+                double dist = cut.CutDistanceToCenter;
+                var point = cut.CutPoint;
+                double plus = Square(point.X + normal.X * dist - note.GridCenter.X) + Square(point.Y + normal.Y * dist - note.GridCenter.Y);
+                double minus = Square(point.X - normal.X * dist - note.GridCenter.X) + Square(point.Y - normal.Y * dist - note.GridCenter.Y);
+                double sign = plus <= minus ? -1.0 : 1.0;   // 打点 − 中心 ＝ sign × 法線 × 距離
+
+                // 面の上の横向きを世界座標に戻して、中心から打点への向きと比べる
+                double ax = right.X * across.X + up.X * across.Y;
+                double ay = right.Y * across.X + up.Y * across.Y;
+                double az = right.Z * across.X + up.Z * across.Y;
+                double side = sign * (normal.X * ax + normal.Y * ay + normal.Z * az) >= 0 ? 1.0 : -1.0;
+                float d = (float)(dist * side);
+
+                // 線の形は切った瞬間の前後の先端の通り道を面に落としたもの。真ん中（切った瞬間）を切った位置に置く
+                var shape = note.RawShapes[index];
+                var points = new PointF[shape.Length];
+                for (int k = 0; k < shape.Length; k++)
+                {
+                    var q = shape[k];
+                    points[k] = new PointF(
+                        across.X * d + (float)(q.X * right.X + q.Y * right.Y + q.Z * right.Z),
+                        across.Y * d + (float)(q.X * up.X + q.Y * up.Y + q.Z * up.Z));
+                }
+
+                note.Cuts.Add(new CutLine { Points = points });
+            }
+        }
+
+        private static double Square(double x) { return x * x; }
+
+        /// <summary>
+        /// 切った瞬間のノーツの中心を、切った回の平均で出す。
+        /// 中心は「打点 ± 法線 × 距離」の2つの候補のうち、図のマスに近い方（<see cref="BuildCutLines"/> と同じ）。
+        /// </summary>
+        private static void FindCutCenter(Note note)
+        {
+            double x = 0, y = 0, z = 0;
+            int count = 0;
+            foreach (var cut in note.RawCuts)
+            {
+                var point = cut.CutPoint;
+                if (point.X == 0 && point.Y == 0 && point.Z == 0) continue;
+
+                var normal = cut.CutNormal;
+                double dist = cut.CutDistanceToCenter;
+                double plus = Square(point.X + normal.X * dist - note.GridCenter.X) + Square(point.Y + normal.Y * dist - note.GridCenter.Y);
+                double minus = Square(point.X - normal.X * dist - note.GridCenter.X) + Square(point.Y - normal.Y * dist - note.GridCenter.Y);
+                double sign = plus <= minus ? 1.0 : -1.0;
+
+                x += point.X + sign * normal.X * dist;
+                y += point.Y + sign * normal.Y * dist;
+                z += point.Z + sign * normal.Z * dist;
+                count++;
+            }
+            if (count == 0) return;
+
+            note.CutCenter = new Vector3 { X = (float)(x / count), Y = (float)(y / count), Z = (float)(z / count) };
+            note.HasCutCenter = true;
+        }
+
+        /// <summary>
+        /// 同じ手・同じマスのノーツを1つの四角にまとめる。タワー・スタックでは行きと帰りで
+        /// 同じマスに向きの違うノーツが来るので、そのまま描くと四角が重なって読めない。
+        /// 四角は1つだけ描き、三角はそれぞれの向きで描く（上下のタワーなら上と下の両方に付く）。
+        /// 打点に寄せているときは、置き場所をそれらの打点の平均にする。
+        /// </summary>
+        private void MergeOverlaps()
+        {
+            foreach (var group in _notes.GroupBy(n => new { n.ColorType, n.LineIndex, n.LineLayer }))
+            {
+                var notes = group.ToList();
+                if (notes.Count < 2) continue;
+
+                var center = new PointF(notes.Average(n => n.Center.X), notes.Average(n => n.Center.Y));
+                float depth = notes.Average(n => n.Depth);
+                for (int i = 0; i < notes.Count; i++)
+                {
+                    notes[i].Center = center;
+                    notes[i].Depth = depth;
+                    notes[i].Shared = i > 0;
+                }
+            }
         }
 
         /// <summary>
@@ -289,6 +595,8 @@ namespace JumpDrill.Gui
                 if (note.EventType != NoteEventType.Good || note.Cut == null) continue;
                 if (note.ColorType != placement.ColorType) continue;
                 if (note.LineIndex != placement.LineIndex || note.LineLayer != placement.LineLayer) continue;
+                // タワー・スタックでは同じマスに向きの違うノーツが来る。混ぜると上下の振りが打ち消し合う
+                if (note.CutDirection != placement.CutDirection) continue;
 
                 var d = note.Cut.SaberDirection;
                 double length = Math.Sqrt(d.X * d.X + d.Y * d.Y);
@@ -332,7 +640,19 @@ namespace JumpDrill.Gui
 
                 note.Right = new PointF(right.X, right.Y);
                 note.Up = new PointF(up.X, up.Y);
+                BuildCutLines(note, right, up);
+                FindCutCenter(note);
             }
+        }
+
+        /// <summary>遠近の視点と、大きさを変えない深さを決める。</summary>
+        private void SetupPerspective(Replay replay)
+        {
+            var head = HeadAtCuts(replay);
+            _eye = new Vector3 { X = head.X, Y = head.Y, Z = head.Z - CameraBack };
+
+            var cuts = replay.Notes.Where(n => n.EventType == NoteEventType.Good && n.Cut != null).ToList();
+            _referenceZ = cuts.Count > 0 ? cuts.Average(n => n.Cut.CutPoint.Z) : 0f;
         }
 
         /// <summary>打点の瞬間の頭の位置（平均）。</summary>
@@ -396,11 +716,10 @@ namespace JumpDrill.Gui
 
                     // 相手は、同じ拍に出ていて、かつ矢印が向いている先と<b>逆</b>にいる方
                     // （振り抜く先には居ない）。
-                    var partner = notes
-                        .Where(other => other != note && SameRow(note, other))
-                        .OrderByDescending(other => Dot(arrow.Value, Toward(note, other)))
-                        .FirstOrDefault();
-                    if (partner == null) continue;
+                    // 同じ拍に同じ色がちょうど2個のときだけ（3連のタワーには当てない）
+                    var row = notes.Where(other => other != note && SameRow(note, other)).ToList();
+                    if (row.Count != 1) continue;
+                    var partner = row[0];
 
                     var line = Toward(partner, note);
                     if (Math.Abs(line.X) < 1e-6 && Math.Abs(line.Y) < 1e-6) continue;
@@ -473,14 +792,16 @@ namespace JumpDrill.Gui
 
             // 遷移ごとに束ねる。往路と復路を混ぜると別物が重なる。
             var groups = new Dictionary<string, List<Vector3[]>>();
+            var ends = new Dictionary<string, Swing>();
 
             // 振りは数字と同じ決め方（SwingAnalyzer.CleanPairs）。間でミスしたところは前後をつながない
-            foreach (var pair in SwingAnalyzer.CleanPairs(SwingAnalyzer.HandSequence(replay, saberType), saberType))
+            var sequence = SwingAnalyzer.HandSequence(replay, saberType);
+            foreach (var pair in SwingAnalyzer.CleanPairs(sequence, saberType))
             {
                 var from = pair.Key;
                 var to = pair.Value;
 
-                var path = ExtractPath(replay, saberType, from.EventTime, to.EventTime);
+                var path = ExtractPath(replay, saberType, CutMoment(replay, from), CutMoment(replay, to));
                 if (path == null) continue;
 
                 string key = from.LineIndex + "," + from.LineLayer + ">" +
@@ -489,10 +810,18 @@ namespace JumpDrill.Gui
                 List<Vector3[]> list;
                 if (!groups.TryGetValue(key, out list)) groups[key] = list = new List<Vector3[]>();
                 list.Add(path);
+                if (!ends.ContainsKey(key))
+                    ends[key] = new Swing
+                    {
+                        ToForehand = SwingAnalyzer.IsForehand(to, sequence.IndexOf(to)),
+                        FromForehand = SwingAnalyzer.IsForehand(from, sequence.IndexOf(from)),
+                        ToDirection = SwingColors.ArrowOf(to.CutDirection),
+                    };
             }
 
-            foreach (var group in groups.Values)
+            foreach (var pair in groups)
             {
+                var group = pair.Value;
                 if (group.Count < 2) continue;
 
                 var mean = Mean(group);
@@ -501,30 +830,50 @@ namespace JumpDrill.Gui
                     _swings.Add(new Swing
                     {
                         SaberType = saberType,
+                        ToForehand = ends[pair.Key].ToForehand,
+                        FromForehand = ends[pair.Key].FromForehand,
+                        ToDirection = ends[pair.Key].ToDirection,
                         Path = path,
                         Deviation = MeanDistance(path, mean),
                     });
                 }
 
                 // 平均軌道は最後に描きたいので、目印として先頭要素を複製せず別枠で持つ。
-                _means.Add(new Swing { SaberType = saberType, Path = mean, Deviation = 0.0 });
+                _means.Add(new Swing
+                {
+                    SaberType = saberType,
+                    ToForehand = ends[pair.Key].ToForehand,
+                    FromForehand = ends[pair.Key].FromForehand,
+                    ToDirection = ends[pair.Key].ToDirection,
+                    Path = mean,
+                    Deviation = 0.0,
+                });
             }
         }
 
         private readonly List<Swing> _means = new List<Swing>();
 
+        /// <summary>1本の振りの先端の道のり（弧長で等間隔に取り直したもの）。</summary>
         private static Vector3[] ExtractPath(Replay replay, int saberType, float from, float to)
         {
-            var points = new List<Vector3>();
+            var tips = new List<Vector3>();
+
+            // 始まりと終わりは切った瞬間の刃（フレームの間を補ったもの）。
+            // 切る瞬間の先端は 1 フレームで 0.2〜0.5 m 進むので、フレームのままだとノーツから外れた所で始まる
+            Vector3 hilt, tip;
+            BladeAt(replay, saberType, from, out hilt, out tip);
+            tips.Add(tip);
             foreach (var frame in replay.Frames)
             {
-                if (frame.Time < from) continue;
-                if (frame.Time > to) break;
-                points.Add(frame.SaberTip(saberType));
+                if (frame.Time <= from) continue;
+                if (frame.Time >= to) break;
+                tips.Add(frame.SaberTip(saberType));
             }
+            BladeAt(replay, saberType, to, out hilt, out tip);
+            tips.Add(tip);
 
-            if (points.Count < 4) return null;
-            return SwingAnalyzer.ResampleByArcLength(points, SwingAnalyzer.SamplesPerSwing);
+            if (tips.Count < 4) return null;
+            return SwingAnalyzer.ResampleByArcLength(tips, SwingAnalyzer.SamplesPerSwing);
         }
 
         private static Vector3[] Mean(List<Vector3[]> paths)
@@ -574,9 +923,17 @@ namespace JumpDrill.Gui
             // ノーツが枠の外に出ると位置関係が読めない。
             foreach (var note in _notes)
             {
-                // 横から見た図の印は軌道の終点なので、束より外へ出ることはない。
-                // ノーツ1個ぶんの余白を足すと、その分だけ絵が縮むだけになる。
-                if (_axis == ViewAxis.Side) continue;
+                // 横から見た図には、切った瞬間のノーツを置く。先端より奥にあることが多いので、範囲に入れる
+                if (_axis == ViewAxis.Side)
+                {
+                    if (!note.HasCutCenter) continue;
+                    var side = Project(note.CutCenter);
+                    minX = Math.Min(minX, side.X - NoteSize / 2);
+                    maxX = Math.Max(maxX, side.X + NoteSize / 2);
+                    minY = Math.Min(minY, side.Y - NoteSize / 2);
+                    maxY = Math.Max(maxY, side.Y + NoteSize / 2);
+                    continue;
+                }
 
                 minX = Math.Min(minX, note.Center.X - NoteSize / 2);
                 maxX = Math.Max(maxX, note.Center.X + NoteSize / 2);
@@ -598,7 +955,15 @@ namespace JumpDrill.Gui
         /// </summary>
         private PointF Project(Vector3 p)
         {
-            if (_axis != ViewAxis.Side) return new PointF(p.X, p.Y);
+            if (_axis != ViewAxis.Side)
+            {
+                if (!_perspective || _referenceZ <= _eye.Z) return new PointF(p.X, p.Y);
+
+                // ノーツを切った深さで 1 倍。手前ほど大きく、奥ほど小さく
+                float depth = Math.Max(NearestDepth, p.Z - _eye.Z);
+                float scale = (_referenceZ - _eye.Z) / depth;
+                return new PointF(_eye.X + (p.X - _eye.X) * scale, _eye.Y + (p.Y - _eye.Y) * scale);
+            }
 
             return new PointF(_faceRight ? p.Z : -p.Z, p.Y);
         }
@@ -671,12 +1036,9 @@ namespace JumpDrill.Gui
                 if (ShowMeanOnly) break;
                 if (OnlyHand.HasValue && swing.SaberType != OnlyHand.Value) continue;
 
-                Color baseColor = swing.SaberType == 0 ? LeftColor : RightColor;
-
                 // 平均から外れた振りほど目立たせる。
                 int alpha = (int)Math.Min(200, 40 + swing.Deviation * 1600);
-                using (var pen = new Pen(Color.FromArgb(alpha, baseColor), 1.4f))
-                    DrawPath(g, pen, swing.Path);
+                DrawSwing(g, swing, c => Color.FromArgb(alpha, c), 1.4f, round: false);
             }
 
             // 枠と矢印と軸は最後に。束の下に隠れると位置も角度も読めない。
@@ -685,11 +1047,12 @@ namespace JumpDrill.Gui
                 DrawScores(g);
                 DrawAxis(g);
                 DrawNotes(g, filled: false);
+                DrawCutLines(g);
                 DrawSwungDirections(g);
             }
             else
             {
-                DrawCutMarks(g);
+                DrawSideNotes(g);
                 DrawSwingAngles(g);
             }
 
@@ -697,16 +1060,12 @@ namespace JumpDrill.Gui
             {
                 if (OnlyHand.HasValue && mean.SaberType != OnlyHand.Value) continue;
 
-                Color color = mean.SaberType == 0 ? LeftColor : RightColor;
-                using (var pen = new Pen(Color.FromArgb(255, ControlPaint.Light(color, 0.4f)), 3.2f))
-                {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    DrawPath(g, pen, mean.Path);
-                }
-
-                DrawDirectionMarks(g, mean.Path, mean.SaberType == 0 ? LeftMarkColor : RightColor);
+                DrawSwing(g, mean, c => Color.FromArgb(255, ControlPaint.Light(c, 0.4f)), 3.2f, round: true);
+                DrawDirectionMarks(g, mean.Path, i => MarkColor(mean.SaberType, SegmentForehand(mean, i)));
             }
+
+            // 切った瞬間の先端。正面図では白い線（ノーツのどこを切ったか）と先端の軌跡がここでつながる
+            DrawCutMarks(g);
         }
 
         /// <summary>ノーツの一辺 (m)。本体の見た目に合わせた大きさ。</summary>
@@ -731,7 +1090,7 @@ namespace JumpDrill.Gui
             {
                 if (OnlyHand.HasValue && hand != OnlyHand.Value) continue;
 
-                var notes = _notes.Where(n => n.ColorType == hand)
+                var notes = _notes.Where(n => n.ColorType == hand && !n.Shared)
                     .OrderBy(n => n.Center.Y)
                     .ToList();
                 if (notes.Count < 2) continue;
@@ -775,7 +1134,9 @@ namespace JumpDrill.Gui
                 var bottomRight = ToScreen(new PointF(note.Center.X + NoteSize / 2, note.Center.Y - NoteSize / 2));
                 var box = RectangleF.FromLTRB(topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y);
 
-                DrawNote(g, box, color, note.CutDirection, note, filled);
+                // まとめたノーツは三角だけ。塗りは先に置いた方が済ませている
+                if (note.Shared && filled) continue;
+                DrawNote(g, box, color, note.CutDirection, note, filled, headOnly: note.Shared);
             }
         }
 
@@ -1038,6 +1399,105 @@ namespace JumpDrill.Gui
             }
         }
 
+        /// <summary>
+        /// ノーツのどこを切ったか。1回ごとに切り口の線を、ノーツの幅ぶんの長さで薄く重ねる。
+        /// 中心の点から線までの距離が、点数の中心の 15 点に効くずれ（cutDistanceToCenter）。
+        /// </summary>
+        private void DrawCutLines(Graphics g)
+        {
+            using (var pen = new Pen(Color.FromArgb(80, 0xF2, 0xF5, 0xFA), 1.2f))
+            using (var arrow = new AdjustableArrowCap(3.2f, 3.6f, true))
+            using (var meanPen = new Pen(Color.FromArgb(240, 0xF2, 0xF5, 0xFA), 2.4f) { StartCap = LineCap.Round })
+            {
+                // 線の先が振った向き（振り抜いた側）
+                meanPen.CustomEndCap = arrow;
+
+                foreach (var note in _notes)
+                {
+                    if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
+
+                    // 面の座標 (u, v) → 正面の平面。面の右・上を X-Y へ落としたもので、四角と同じだけ縮む
+                    Func<float, float, PointF> onFace = (u, v) => ToScreen(new PointF(
+                        note.Center.X + note.Right.X * u + note.Up.X * v,
+                        note.Center.Y + note.Right.Y * u + note.Up.Y * v));
+
+                    // 平均だけのときは、向きと横のずれを平均した1本にする
+                    var lines = ShowMeanOnly ? MeanCut(note.Cuts) : note.Cuts;
+                    var drawWith = ShowMeanOnly ? meanPen : pen;
+
+                    foreach (var cut in lines)
+                        g.DrawLines(drawWith, cut.Points.Select(p => onFace(p.X, p.Y)).ToArray());
+                }
+            }
+        }
+
+        /// <summary>
+        /// 横から見た図のノーツ。切った瞬間の中心（平均）に、一辺 <see cref="NoteSize"/> の四角を置く。
+        /// 向き（上下）ごとに別の四角で、中に切る向きの小さな三角。
+        /// 先端の印（白丸）が四角の手前にあれば、刃の先でノーツの手前側をかすめて切っている。
+        /// </summary>
+        private void DrawSideNotes(Graphics g)
+        {
+            foreach (var note in _notes)
+            {
+                if (!note.HasCutCenter) continue;
+                if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
+
+                // 上向きの成分があればバック（採点と同じ）。左右だけ・向き指定なしはフォアの色
+                Color color = SwingColor(note.ColorType, !((CutDirection)note.CutDirection).IsUpward());
+                var c = note.CutCenter;
+                float h = NoteSize / 2;
+                var a = ToScreen(Project(new Vector3 { X = c.X, Y = c.Y + h, Z = c.Z - h }));
+                var b = ToScreen(Project(new Vector3 { X = c.X, Y = c.Y - h, Z = c.Z + h }));
+                var box = RectangleF.FromLTRB(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y));
+
+                using (var path = RoundedSquare(box.Width, box.Width * 0.2f))
+                {
+                    var saved = g.Save();
+                    g.TranslateTransform(box.X + box.Width / 2, box.Y + box.Height / 2);
+                    using (var fill = new SolidBrush(Color.FromArgb(60, color)))
+                        g.FillPath(fill, path);
+                    using (var edge = new Pen(Color.FromArgb(220, ControlPaint.Light(color, 0.35f)), 1.8f))
+                        g.DrawPath(edge, path);
+
+                    // 切る向きの上下だけ。横から見ると左右は奥行きに潰れる
+                    var arrow = ArrowDirection(note.CutDirection);
+                    if (arrow.HasValue && arrow.Value.Y != 0)
+                    {
+                        float s = box.Width * 0.18f;
+                        float dir = arrow.Value.Y;   // 画面は下が正
+                        using (var head = new SolidBrush(Color.FromArgb(200, 0xF2, 0xF5, 0xFA)))
+                            g.FillPolygon(head, new[]
+                            {
+                                new PointF(0f, dir * s),
+                                new PointF(-s, -dir * s * 0.6f),
+                                new PointF(s, -dir * s * 0.6f),
+                            });
+                    }
+                    g.Restore(saved);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 切った線の平均。同じ番目の点どうしの平均で、形も位置も平均になる。
+        /// 切っていなければ空。
+        /// </summary>
+        private static List<CutLine> MeanCut(List<CutLine> cuts)
+        {
+            var result = new List<CutLine>();
+            if (cuts.Count == 0) return result;
+
+            // 同じ番目の点どうしを平均する（どの線も、真ん中が切った瞬間で、弧長で等間隔）
+            int count = cuts[0].Points.Length;
+            var points = new PointF[count];
+            for (int k = 0; k < count; k++)
+                points[k] = new PointF(cuts.Average(c => c.Points[k].X), cuts.Average(c => c.Points[k].Y));
+
+            result.Add(new CutLine { Points = points });
+            return result;
+        }
+
         /// <summary>実際に振った向きを示す線の長さ (m)。</summary>
         private const float SwungMarkLength = 0.34f;
 
@@ -1075,20 +1535,21 @@ namespace JumpDrill.Gui
         /// 平均軌道に「く」の字を並べて向きを示す。
         /// 往路と復路は別の平均として重なって出るので、印が無いとどちらがどちらか読めない。
         /// </summary>
-        private void DrawDirectionMarks(Graphics g, Vector3[] path, Color color)
+        /// <param name="colorAt">その区間（index-1 → index）の印の色。</param>
+        private void DrawDirectionMarks(Graphics g, Vector3[] path, Func<int, Color> colorAt)
         {
             var points = new PointF[path.Length];
             for (int i = 0; i < path.Length; i++) points[i] = ToScreen(Project(path[i]));
 
-            // 手の色。平均軌道は淡いので、濃い方を印に使うと乗っても読める。
-            using (var pen = new Pen(Color.FromArgb(255, color), 2.4f))
+            foreach (double at in new[] { 0.25, 0.5, 0.75 })
             {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
+                int index = Math.Max(1, (int)(at * (points.Length - 1)));
 
-                foreach (double at in new[] { 0.25, 0.5, 0.75 })
+                // 手の色。平均軌道は淡いので、濃い方を印に使うと乗っても読める。
+                using (var pen = new Pen(Color.FromArgb(255, colorAt(index)), 2.4f))
                 {
-                    int index = Math.Max(1, (int)(at * (points.Length - 1)));
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
 
                     float dx = points[index].X - points[index - 1].X;
                     float dy = points[index].Y - points[index - 1].Y;
@@ -1109,7 +1570,7 @@ namespace JumpDrill.Gui
             }
         }
 
-        private static void DrawNote(Graphics g, RectangleF box, Color color, int cutDirection, Note note, bool filled)
+        private static void DrawNote(Graphics g, RectangleF box, Color color, int cutDirection, Note note, bool filled, bool headOnly = false)
         {
             float size = Math.Min(box.Width, box.Height);
             var arrow = ArrowDirection(cutDirection);
@@ -1143,8 +1604,9 @@ namespace JumpDrill.Gui
                 {
                     var bright = ControlPaint.Light(color, 0.35f);
 
-                    using (var edge = new Pen(Color.FromArgb(235, bright), Math.Max(1.6f, size * 0.05f)))
-                        g.DrawPath(edge, body);
+                    if (!headOnly)
+                        using (var edge = new Pen(Color.FromArgb(235, bright), Math.Max(1.6f, size * 0.05f)))
+                            g.DrawPath(edge, body);
 
                     // 三角は切る向きと反対側に置き、先が切る向きを指す（BeatLeader と同じ）。
                     // 正三角形ではなく、幅の広い浅い形。
@@ -1158,10 +1620,13 @@ namespace JumpDrill.Gui
                             });
 
                     // 点はノーツの中心。当たり所を測る基準になるので、位置をずらさない。
-                    using (var mark = new SolidBrush(Color.FromArgb(235, 0xF2, 0xF5, 0xFA)))
+                    if (!headOnly)
                     {
-                        float dot = size * 0.065f;
-                        g.FillEllipse(mark, -dot, -dot, dot * 2, dot * 2);
+                        using (var mark = new SolidBrush(Color.FromArgb(235, 0xF2, 0xF5, 0xFA)))
+                        {
+                            float dot = size * 0.065f;
+                            g.FillEllipse(mark, -dot, -dot, dot * 2, dot * 2);
+                        }
                     }
                 }
             }
@@ -1200,6 +1665,32 @@ namespace JumpDrill.Gui
             path.CloseFigure();
 
             return path;
+        }
+
+        /// <summary>振りを区間ごとに、フォア・バックの色で描く（<see cref="SegmentForehand"/>）。</summary>
+        private void DrawSwing(Graphics g, Swing swing, Func<Color, Color> style, float width, bool round)
+        {
+            var points = new PointF[swing.Path.Length];
+            for (int i = 0; i < points.Length; i++) points[i] = ToScreen(Project(swing.Path[i]));
+
+            // 同じ色が続く所はまとめて1本の折れ線にする（区間ごとに引くと継ぎ目が欠ける）
+            int start = 0;
+            for (int i = 1; i < points.Length; i++)
+            {
+                bool fore = SegmentForehand(swing, i);
+                bool last = i == points.Length - 1;
+                if (!last && SegmentForehand(swing, i + 1) == fore) continue;
+
+                using (var pen = new Pen(style(SwingColor(swing.SaberType, fore)), width))
+                {
+                    if (round) { pen.StartCap = LineCap.Round; pen.EndCap = LineCap.Round; }
+                    pen.LineJoin = LineJoin.Round;
+                    var run = new PointF[i - start + 1];
+                    Array.Copy(points, start, run, 0, run.Length);
+                    g.DrawLines(pen, run);
+                }
+                start = i;
+            }
         }
 
         private void DrawPath(Graphics g, Pen pen, Vector3[] path)

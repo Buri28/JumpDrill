@@ -370,7 +370,12 @@ namespace JumpDrill.Replays
 
     public sealed class ReplayScore : ICutStats
     {
+        /// <summary>採点に使ったリプレイ。タワー・スタックは端の点だけのジャンプにまとめてある。</summary>
         public Replay Replay { get; internal set; }
+
+        /// <summary>まとめる前のリプレイ。タワー・スタックの間のノーツも入っている。図にノーツを置くのに使う。</summary>
+        public Replay Original { get; internal set; }
+
         public List<SwingScore> PerHand { get; internal set; } = new List<SwingScore>();
 
         /// <summary>両手をまとめた、直線からのずれ (m)。</summary>
@@ -573,7 +578,7 @@ namespace JumpDrill.Replays
             Dictionary<ReplayNote, double> shares;
             replay = TowerReplay.Collapse(replay, out owners, out shares);
 
-            var result = new ReplayScore { Replay = replay };
+            var result = new ReplayScore { Replay = replay, Original = original };
             result.GoodCount = original.Notes.Count(n => n.EventType == NoteEventType.Good);
             result.MissCount = original.Notes.Count(n => n.EventType == NoteEventType.Miss);
             result.DurationSeconds = replay.Frames.Count > 0 ? replay.Frames[replay.Frames.Count - 1].Time : 0.0;
@@ -1020,7 +1025,7 @@ namespace JumpDrill.Replays
 
             foreach (var pair in CleanPairs(sequence, saberType))
                 AddTransition(groups, spans, lines, groupFore, groupMultipliers, multipliers, shares, forehand, replay, saberType, pair.Key, pair.Value,
-                    pair.Key.EventTime);
+                    CutMoments.Find(replay, pair.Key));
 
             // 先に格子の当てはめ誤差を1つ求める。往復で反転する成分だけがそこに入る。
             var usedLines = new List<Line>();
@@ -1216,7 +1221,7 @@ namespace JumpDrill.Replays
             // ミスを挟むと同じノーツへ戻る。跳んでいないので振りとして数えない。
             if (from.LineIndex == to.LineIndex && from.LineLayer == to.LineLayer) return;
 
-            var path = ExtractPath(replay, saberType, fromTime, to.EventTime);
+            var path = ExtractPath(replay, saberType, fromTime, CutMoments.Find(replay, to));
             if (path == null) return;
 
             string key = from.LineIndex + "," + from.LineLayer + ">" +
@@ -1336,15 +1341,26 @@ namespace JumpDrill.Replays
         /// ノーツを切る所とは1 m ほど離れている。手首の返しはそこで初めて効くので、
         /// コントローラのままだと「同じ振りができているか」を取り逃がす。
         /// </summary>
+        /// <remarks>
+        /// 始まりと終わりは切った瞬間の先端（<see cref="CutMoments"/>、フレームの間を補ったもの）。
+        /// 記録された切った時刻のフレームのままだと、切る瞬間の先端は 1 フレームで 0.2〜0.5 m 進むので、
+        /// 端がノーツから外れた所になり、どこで切ったかの偶然が束の幅や往復のずれに入っていた
+        /// （直近 30 プレイで比べると、再現が 1 プレイで最大 ±20 点ほど動いた）。
+        /// </remarks>
         private static Vector3[] ExtractPath(Replay replay, int saberType, float fromTime, float toTime)
         {
             var points = new List<Vector3>();
+            Vector3 hilt, tip;
+            CutMoments.BladeAt(replay, saberType, fromTime, out hilt, out tip);
+            points.Add(tip);
             foreach (var frame in replay.Frames)
             {
-                if (frame.Time < fromTime) continue;
-                if (frame.Time > toTime) break;
+                if (frame.Time <= fromTime) continue;
+                if (frame.Time >= toTime) break;
                 points.Add(frame.SaberTip(saberType));
             }
+            CutMoments.BladeAt(replay, saberType, toTime, out hilt, out tip);
+            points.Add(tip);
 
             // 点が少なすぎると弧長も測れない。
             if (points.Count < 4) return null;

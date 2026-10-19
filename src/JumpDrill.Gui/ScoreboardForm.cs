@@ -88,8 +88,13 @@ namespace JumpDrill.Gui
             Axis = ReplayView.ViewAxis.Side,
         };
         private readonly ComboBox _hand = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
+
+        /// <summary>図の出し方。正面と横の2枚か、視点を変えられる 3D か。</summary>
+        private readonly ComboBox _figureMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
+        private readonly ReplayView3D _view3D = new ReplayView3D { Dock = DockStyle.Fill, Visible = false };
         // 既定で平均だけ。束を全部出すと向きの印が埋もれて読めない。
         private readonly CheckBox _meanOnly = new CheckBox { Text = Lang.T("平均だけ", "Mean only"), AutoSize = true, Checked = true };
+        private readonly CheckBox _perspective = new CheckBox { Text = Lang.T("遠近をつける", "Perspective"), AutoSize = true };
         private readonly CheckBox _notesAtCuts = new CheckBox { Text = Lang.T("ノーツを打点に合わせる", "Align notes to hits"), AutoSize = true };
 
         /// <summary>横から見た図の左右。既定はプレイヤーが右を向いた形。</summary>
@@ -251,6 +256,8 @@ namespace JumpDrill.Gui
             _list.SelectedIndexChanged += (s, e) => OnSelectionChanged();
             _hand.SelectedIndexChanged += (s, e) => ApplyViewOptions();
             _meanOnly.CheckedChanged += (s, e) => ApplyViewOptions();
+            _figureMode.SelectedIndexChanged += (s, e) => ApplyFigureMode();
+            _perspective.CheckedChanged += (s, e) => _view.Perspective = _perspective.Checked;
             _faceLeft.CheckedChanged += (s, e) => ApplyViewOptions();
 
             // 置き場所が変わると読み直しが要る。
@@ -386,6 +393,9 @@ namespace JumpDrill.Gui
         /// <summary>正面図の既定の幅。ノーツの格子と角度の数字がぶつからずに並ぶ大きさ。</summary>
         private const int FrontDefault = 450;
 
+        /// <summary>正面図と横の図を並べたときの、正面図の割合。横の図より少しだけ広く。</summary>
+        private const double FrontShare = 0.55;
+
         /// <summary>
         /// 横から見た図の既定の幅。奥行きは振り1本ぶんしかないので、正面図より狭くていい。
         /// ここを空けた分は内訳に回る（内訳は列が増えても縮まない方が読みやすい）。
@@ -482,9 +492,17 @@ namespace JumpDrill.Gui
             _hand.Items.AddRange(new object[] { Lang.T("両手", "Both hands"), Lang.T("右手だけ", "Right only"), Lang.T("左手だけ", "Left only") });
             _hand.SelectedIndex = 0;
 
+            _figureMode.Items.AddRange(new object[]
+            {
+                Lang.T("正面と横", "Front and side"), "3D", Lang.T("3D フォア", "3D forehand"), Lang.T("3D バック", "3D backhand"),
+            });
+            _figureMode.SelectedIndex = 0;
+
             var viewTools = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
+            viewTools.Controls.Add(_figureMode);
             viewTools.Controls.Add(_hand);
             viewTools.Controls.Add(_meanOnly);
+            viewTools.Controls.Add(_perspective);
             viewTools.Controls.Add(_notesAtCuts);
             viewTools.Controls.Add(_faceLeft);
 
@@ -514,11 +532,12 @@ namespace JumpDrill.Gui
             {
                 if (figuresMoved || figures.Width < FrontMinimum + SideMinimum + figures.SplitterWidth) return;
 
-                // 正面図は決め打ちの幅。割合にすると、内訳の列が増えたぶんだけ
-                // 絵が痩せていく（列は読みやすさのために増えるので、そのたびに
-                // 絵が縮むのは筋が違う）。
-                int want = Math.Max(FrontMinimum,
-                    Math.Min(FrontDefault, figures.Width - figures.SplitterWidth - SideMinimum));
+                // 正面図を少しだけ広く（全体の FrontShare）。決め打ちの幅にすると、窓を広げたぶんが
+                // 全部横の図に回り、全画面では横の図ばかり大きくなった。
+                // 狭いときは、正面図の格子と数字が並ぶ幅（FrontDefault）を先に取る。
+                int room = figures.Width - figures.SplitterWidth;
+                int want = Math.Max(Math.Min(FrontDefault, room - SideMinimum), (int)(room * FrontShare));
+                want = Math.Max(FrontMinimum, Math.Min(want, room - SideMinimum));
 
                 figures.Panel1MinSize = FrontMinimum;
                 figures.Panel2MinSize = SideMinimum;
@@ -529,7 +548,12 @@ namespace JumpDrill.Gui
             viewPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             viewPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             viewPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            viewPanel.Controls.Add(figures, 0, 0);
+            // 正面と横の2枚と 3D は同じ場所に重ね、どちらか一方だけ出す
+            var figureHost = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) };
+            figureHost.Controls.Add(figures);
+            figureHost.Controls.Add(_view3D);
+            viewPanel.Controls.Add(figureHost, 0, 0);
+            _figuresPair = figures;
             viewPanel.Controls.Add(viewTools, 0, 1);
             viewPanel.Controls.Add(_viewInfo, 0, 2);
 
@@ -1305,6 +1329,7 @@ namespace JumpDrill.Gui
                 _sideView.RightSummary = null;
                 _view.Load(null);
                 _sideView.Load(null);
+                _view3D.Load(null);
                 _viewInfo.Text = "";
                 return;
             }
@@ -1313,8 +1338,9 @@ namespace JumpDrill.Gui
             _view.RightSummary = SummaryOf(score.Hand(1));
             _sideView.LeftSummary = _view.LeftSummary;
             _sideView.RightSummary = _view.RightSummary;
-            _view.Load(score.Replay);
-            _sideView.Load(score.Replay);
+            _view.Load(score.Replay, score.Original);
+            _sideView.Load(score.Replay, score.Original);
+            _view3D.Load(score.Replay, score.Original);
             ApplyViewOptions();
 
             // 幅に収まる範囲に留める。細かい数字は右の表にある。
@@ -1358,6 +1384,24 @@ namespace JumpDrill.Gui
             };
         }
 
+        private SplitContainer _figuresPair;
+
+        /// <summary>
+        /// 正面と横の2枚か 3D かを切り替える。3D では正面図・横の図にしか効かないチェックを隠す。
+        /// 3D フォア・3D バックは、その向きの振りとノーツだけを出す（行きと帰りの扇が重なるのを避ける）。
+        /// </summary>
+        private void ApplyFigureMode()
+        {
+            bool threeD = _figureMode.SelectedIndex >= 1;
+            _view3D.OnlyForehand = _figureMode.SelectedIndex == 2 ? true : _figureMode.SelectedIndex == 3 ? (bool?)false : null;
+            _view3D.Invalidate();
+            _view3D.Visible = threeD;
+            if (_figuresPair != null) _figuresPair.Visible = !threeD;
+            _perspective.Visible = !threeD;
+            _notesAtCuts.Visible = !threeD;
+            _faceLeft.Visible = !threeD;
+        }
+
         /// <summary>手と平均の選びは2つの図で揃える。別々だと見比べにならない。</summary>
         private void ApplyViewOptions()
         {
@@ -1369,6 +1413,9 @@ namespace JumpDrill.Gui
                 view.ShowMeanOnly = _meanOnly.Checked;
                 view.Invalidate();
             }
+            _view3D.OnlyHand = only;
+            _view3D.ShowMeanOnly = _meanOnly.Checked;
+            _view3D.Invalidate();
 
             // 左右の向きは横の図にしか無い。
             _sideView.FaceRight = !_faceLeft.Checked;
