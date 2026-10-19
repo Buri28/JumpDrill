@@ -87,11 +87,14 @@ namespace JumpDrill.Gui
             Dock = DockStyle.Fill,
             Axis = ReplayView.ViewAxis.Side,
         };
-        private readonly ComboBox _hand = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
+        private readonly ComboBox _hand = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100 };
 
         /// <summary>図の出し方。正面と横の2枚か、視点を変えられる 3D か。</summary>
-        private readonly ComboBox _figureMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
+        private readonly ComboBox _figureMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100 };
         private readonly ReplayView3D _view3D = new ReplayView3D { Dock = DockStyle.Fill, Visible = false };
+
+        /// <summary>フォアとバックの両方か、片方だけか。正面・横・3D のどれにも効く。</summary>
+        private readonly ComboBox _strokeSide = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         // 既定で平均だけ。束を全部出すと向きの印が埋もれて読めない。
         private readonly CheckBox _meanOnly = new CheckBox { Text = Lang.T("平均だけ", "Mean only"), AutoSize = true, Checked = true };
         private readonly CheckBox _perspective = new CheckBox { Text = Lang.T("遠近をつける", "Perspective"), AutoSize = true };
@@ -257,6 +260,7 @@ namespace JumpDrill.Gui
             _hand.SelectedIndexChanged += (s, e) => ApplyViewOptions();
             _meanOnly.CheckedChanged += (s, e) => ApplyViewOptions();
             _figureMode.SelectedIndexChanged += (s, e) => ApplyFigureMode();
+            _strokeSide.SelectedIndexChanged += (s, e) => ApplyViewOptions();
             _perspective.CheckedChanged += (s, e) => _view.Perspective = _perspective.Checked;
             _faceLeft.CheckedChanged += (s, e) => ApplyViewOptions();
 
@@ -289,7 +293,13 @@ namespace JumpDrill.Gui
                 await ScanAsync();
             };
             InstallPicker.Changed += reload;
-            Load += (s, e) => { _install.FitWidth(DeviceDpi); _metric.FitWidth(DeviceDpi); };
+            Load += (s, e) =>
+            {
+                _install.FitWidth(DeviceDpi);
+                _metric.FitWidth(DeviceDpi);
+                // 図の下のプルダウンも、いちばん長い項目が収まる幅に（決め打ちだと文字の大きい画面で切れた）
+                foreach (var box in new[] { _figureMode, _strokeSide, _hand }) FitComboWidth(box);
+            };
 
             // 基準を変えたら、読んである記録でベストと順位を付け直す（メダル画面で変えたときも）。
             // 読んでいる最中なら、読み終えたときに今の基準で並ぶ
@@ -492,14 +502,17 @@ namespace JumpDrill.Gui
             _hand.Items.AddRange(new object[] { Lang.T("両手", "Both hands"), Lang.T("右手だけ", "Right only"), Lang.T("左手だけ", "Left only") });
             _hand.SelectedIndex = 0;
 
-            _figureMode.Items.AddRange(new object[]
-            {
-                Lang.T("正面と横", "Front and side"), "3D", Lang.T("3D フォア", "3D forehand"), Lang.T("3D バック", "3D backhand"),
-            });
+            _figureMode.Items.AddRange(new object[] { Lang.T("正面と横", "Front and side"), "3D" });
             _figureMode.SelectedIndex = 0;
+            _strokeSide.Items.AddRange(new object[]
+            {
+                Lang.T("フォアとバック", "Both"), Lang.T("フォア", "Forehand"), Lang.T("バック", "Backhand"),
+            });
+            _strokeSide.SelectedIndex = 0;
 
             var viewTools = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
             viewTools.Controls.Add(_figureMode);
+            viewTools.Controls.Add(_strokeSide);
             viewTools.Controls.Add(_hand);
             viewTools.Controls.Add(_meanOnly);
             viewTools.Controls.Add(_perspective);
@@ -1386,15 +1399,22 @@ namespace JumpDrill.Gui
 
         private SplitContainer _figuresPair;
 
+        /// <summary>プルダウンの幅を、いちばん長い項目の文字が収まる幅にする（<see cref="InstallPicker.FitWidth"/> と同じ測り方）。</summary>
+        private void FitComboWidth(ComboBox box)
+        {
+            int widest = 0;
+            foreach (var item in box.Items)
+                widest = Math.Max(widest, TextRenderer.MeasureText(item.ToString(), box.Font).Width);
+            box.Width = widest + SystemInformation.VerticalScrollBarWidth + (int)Math.Round(12 * DeviceDpi / 96.0);
+            box.DropDownWidth = box.Width;
+        }
+
         /// <summary>
         /// 正面と横の2枚か 3D かを切り替える。3D では正面図・横の図にしか効かないチェックを隠す。
-        /// 3D フォア・3D バックは、その向きの振りとノーツだけを出す（行きと帰りの扇が重なるのを避ける）。
         /// </summary>
         private void ApplyFigureMode()
         {
-            bool threeD = _figureMode.SelectedIndex >= 1;
-            _view3D.OnlyForehand = _figureMode.SelectedIndex == 2 ? true : _figureMode.SelectedIndex == 3 ? (bool?)false : null;
-            _view3D.Invalidate();
+            bool threeD = _figureMode.SelectedIndex == 1;
             _view3D.Visible = threeD;
             if (_figuresPair != null) _figuresPair.Visible = !threeD;
             _perspective.Visible = !threeD;
@@ -1407,14 +1427,19 @@ namespace JumpDrill.Gui
         {
             int? only = _hand.SelectedIndex == 1 ? 1 : _hand.SelectedIndex == 2 ? 0 : (int?)null;
 
+            // フォアだけ・バックだけ。行きと帰りが重なるタワー・スタックで片方ずつ見る
+            bool? side = _strokeSide.SelectedIndex == 1 ? true : _strokeSide.SelectedIndex == 2 ? (bool?)false : null;
+
             foreach (var view in new[] { _view, _sideView })
             {
                 view.OnlyHand = only;
                 view.ShowMeanOnly = _meanOnly.Checked;
+                view.OnlyForehand = side;
                 view.Invalidate();
             }
             _view3D.OnlyHand = only;
             _view3D.ShowMeanOnly = _meanOnly.Checked;
+            _view3D.OnlyForehand = side;
             _view3D.Invalidate();
 
             // 左右の向きは横の図にしか無い。

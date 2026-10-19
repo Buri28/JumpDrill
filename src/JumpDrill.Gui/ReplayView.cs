@@ -99,10 +99,10 @@ namespace JumpDrill.Gui
             return hand == 0 && forehand ? LeftMarkColor : SwingColor(hand, forehand);
         }
 
-        /// <summary>振りの i 番目の区間（i-1 → i）がフォアか。刃が動いている向きで決める（<see cref="SwingColors.SegmentForehand"/>）。</summary>
+        /// <summary>振りの i 番目の区間（i-1 → i）がフォアか。折り返し点の前後で分ける（<see cref="SwingColors.TurnIndex"/>）。</summary>
         private static bool SegmentForehand(Swing swing, int i)
         {
-            return SwingColors.SegmentForehand(swing.Path[i - 1], swing.Path[i], swing.ToDirection, swing.ToForehand, swing.FromForehand);
+            return SwingColors.SegmentForehand(i, SwingColors.TurnIndex(swing.Path, swing.ToDirection), swing.ToForehand, swing.FromForehand);
         }
 
         private readonly List<Swing> _swings = new List<Swing>();
@@ -213,6 +213,17 @@ namespace JumpDrill.Gui
 
         /// <summary>平均軌道だけを太く描くか。</summary>
         public bool ShowMeanOnly { get; set; }
+
+        /// <summary>
+        /// フォアだけ（true）かバックだけ（false）を出す。両方なら null。
+        /// 振りは折り返し点の前後で分ける（色と同じ決め方）。ノーツは切る向きで分ける。
+        /// </summary>
+        public bool? OnlyForehand { get; set; }
+
+        private bool ShownSide(bool forehand) { return !OnlyForehand.HasValue || OnlyForehand.Value == forehand; }
+
+        /// <summary>ノーツがフォアか。上向きの成分があればバック（採点と同じ）。左右だけ・向き指定なしはフォア。</summary>
+        private static bool NoteForehand(Note note) { return !((CutDirection)note.CutDirection).IsUpward(); }
 
         /// <summary>
         /// 正面図に遠近を付けるか。付けると、頭の少し後ろから見た絵になり、手前（手元）は大きく、奥（先端）は小さく描く。
@@ -1061,7 +1072,7 @@ namespace JumpDrill.Gui
                 if (OnlyHand.HasValue && mean.SaberType != OnlyHand.Value) continue;
 
                 DrawSwing(g, mean, c => Color.FromArgb(255, ControlPaint.Light(c, 0.4f)), 3.2f, round: true);
-                DrawDirectionMarks(g, mean.Path, i => MarkColor(mean.SaberType, SegmentForehand(mean, i)));
+                DrawDirectionMarks(g, mean.Path, i => ShownSide(SegmentForehand(mean, i)) ? MarkColor(mean.SaberType, SegmentForehand(mean, i)) : Color.Empty);
             }
 
             // 切った瞬間の先端。正面図では白い線（ノーツのどこを切ったか）と先端の軌跡がここでつながる
@@ -1127,6 +1138,7 @@ namespace JumpDrill.Gui
             foreach (var note in _notes)
             {
                 if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
+                if (!ShownSide(NoteForehand(note))) continue;
 
                 Color color = note.ColorType == 0 ? LeftColor : RightColor;
 
@@ -1134,9 +1146,11 @@ namespace JumpDrill.Gui
                 var bottomRight = ToScreen(new PointF(note.Center.X + NoteSize / 2, note.Center.Y - NoteSize / 2));
                 var box = RectangleF.FromLTRB(topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y);
 
-                // まとめたノーツは三角だけ。塗りは先に置いた方が済ませている
-                if (note.Shared && filled) continue;
-                DrawNote(g, box, color, note.CutDirection, note, filled, headOnly: note.Shared);
+                // まとめたノーツは三角だけ。塗りは先に置いた方が済ませている。
+                // フォアだけ・バックだけのときは、先に置いた方が隠れていることがあるので、どれも四角から描く
+                bool headOnly = note.Shared && !OnlyForehand.HasValue;
+                if (headOnly && filled) continue;
+                DrawNote(g, box, color, note.CutDirection, note, filled, headOnly: headOnly);
             }
         }
 
@@ -1386,6 +1400,7 @@ namespace JumpDrill.Gui
             {
                 if (OnlyHand.HasValue && mean.SaberType != OnlyHand.Value) continue;
                 if (mean.Path.Length == 0) continue;
+                if (!ShownSide(mean.ToForehand)) continue;
 
                 var dot = ToScreen(Project(mean.Path[mean.Path.Length - 1]));
 
@@ -1415,6 +1430,7 @@ namespace JumpDrill.Gui
                 foreach (var note in _notes)
                 {
                     if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
+                    if (!ShownSide(NoteForehand(note))) continue;
 
                     // 面の座標 (u, v) → 正面の平面。面の右・上を X-Y へ落としたもので、四角と同じだけ縮む
                     Func<float, float, PointF> onFace = (u, v) => ToScreen(new PointF(
@@ -1442,9 +1458,9 @@ namespace JumpDrill.Gui
             {
                 if (!note.HasCutCenter) continue;
                 if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
+                if (!ShownSide(NoteForehand(note))) continue;
 
-                // 上向きの成分があればバック（採点と同じ）。左右だけ・向き指定なしはフォアの色
-                Color color = SwingColor(note.ColorType, !((CutDirection)note.CutDirection).IsUpward());
+                Color color = SwingColor(note.ColorType, NoteForehand(note));
                 var c = note.CutCenter;
                 float h = NoteSize / 2;
                 var a = ToScreen(Project(new Vector3 { X = c.X, Y = c.Y + h, Z = c.Z - h }));
@@ -1511,6 +1527,7 @@ namespace JumpDrill.Gui
             foreach (var note in _notes)
             {
                 if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
+                if (!ShownSide(NoteForehand(note))) continue;
                 if (note.Swung.X == 0 && note.Swung.Y == 0) continue;
 
                 var from = ToScreen(note.Center);
@@ -1544,9 +1561,11 @@ namespace JumpDrill.Gui
             foreach (double at in new[] { 0.25, 0.5, 0.75 })
             {
                 int index = Math.Max(1, (int)(at * (points.Length - 1)));
+                var markColor = colorAt(index);
+                if (markColor.IsEmpty) continue;   // フォアだけ・バックだけで出さない区間
 
                 // 手の色。平均軌道は淡いので、濃い方を印に使うと乗っても読める。
-                using (var pen = new Pen(Color.FromArgb(255, colorAt(index)), 2.4f))
+                using (var pen = new Pen(Color.FromArgb(255, markColor), 2.4f))
                 {
                     pen.StartCap = LineCap.Round;
                     pen.EndCap = LineCap.Round;
@@ -1680,6 +1699,9 @@ namespace JumpDrill.Gui
                 bool fore = SegmentForehand(swing, i);
                 bool last = i == points.Length - 1;
                 if (!last && SegmentForehand(swing, i + 1) == fore) continue;
+
+                // フォアだけ・バックだけで出さない部分は飛ばす
+                if (!ShownSide(fore)) { start = i; continue; }
 
                 using (var pen = new Pen(style(SwingColor(swing.SaberType, fore)), width))
                 {

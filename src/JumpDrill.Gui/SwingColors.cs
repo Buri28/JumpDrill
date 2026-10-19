@@ -20,19 +20,31 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 振りの1区間（先端が <paramref name="a"/> から <paramref name="b"/> へ動いた所）がフォアか。
+        /// 振りの折り返し点の番号。次に切るノーツの矢印の向きで見て、いちばん手前に戻った点。
+        /// そこまでが前のノーツの振り抜き、そこからが次のノーツの振りかぶり。
         ///
-        /// 刃が動いている向きで決める。次に切るノーツの矢印の向きに動いていればそのノーツの種類、
-        /// 逆向きなら前に切ったノーツの種類。縦の振りなら、下へ動いている所がフォア、上へ動いている所がバックになる。
-        /// 1本の振りは「前に切った瞬間から次に切る瞬間まで」なので、前半は前のノーツの振り抜き、後半は次のノーツの振りかぶり。
-        /// 行き先だけで1色にすると、振り抜きの所まで次のノーツの色になり、図の上と下で色が分かれて見えた。
+        /// 区間ごとに動く向きで分けると、折り返しの近く（刃がほぼ横に動く所）で判定が細かく入れ替わり、
+        /// フォアだけ・バックだけを出したときに振りが途切れ途切れになった。1本の振りの切り替わりは1か所にする。
+        /// 向き指定なしのノーツなら 0（全部が次のノーツの振り）。
         /// </summary>
-        /// <param name="toDirection">次に切るノーツの矢印の向き（世界座標の X-Y、上が正）。向き指定なしはゼロ。</param>
-        public static bool SegmentForehand(Vector3 a, Vector3 b, PointF toDirection, bool toForehand, bool fromForehand)
+        public static int TurnIndex(Vector3[] path, PointF toDirection)
         {
-            if (toDirection.X == 0 && toDirection.Y == 0) return toForehand;
-            double along = (b.X - a.X) * toDirection.X + (b.Y - a.Y) * toDirection.Y;
-            return along >= 0 ? toForehand : fromForehand;
+            if (toDirection.X == 0 && toDirection.Y == 0) return 0;
+
+            int turn = 0;
+            double lowest = double.MaxValue;
+            for (int i = 0; i < path.Length; i++)
+            {
+                double along = path[i].X * toDirection.X + path[i].Y * toDirection.Y;
+                if (along < lowest) { lowest = along; turn = i; }
+            }
+            return turn;
+        }
+
+        /// <summary>振りの i 番目の区間（i-1 → i）がフォアか。折り返し点（<see cref="TurnIndex"/>）の前後で分ける。</summary>
+        public static bool SegmentForehand(int i, int turn, bool toForehand, bool fromForehand)
+        {
+            return i > turn ? toForehand : fromForehand;
         }
 
         /// <summary>矢印の向き（世界座標の X-Y、上が正、長さは気にしない）。向き指定なしはゼロ。</summary>

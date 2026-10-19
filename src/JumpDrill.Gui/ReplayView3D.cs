@@ -530,7 +530,7 @@ namespace JumpDrill.Gui
         private Color VisibleColor(Swing swing, int i)
         {
             i = Math.Max(1, Math.Min(swing.Tips.Length - 1, i));
-            bool forehand = SwingColors.SegmentForehand(swing.Tips[i - 1], swing.Tips[i], swing.ToDirection, swing.ToForehand, swing.FromForehand);
+            bool forehand = SwingColors.SegmentForehand(i, SwingColors.TurnIndex(swing.Tips, swing.ToDirection), swing.ToForehand, swing.FromForehand);
             return ShownSide(forehand) ? HandColor(swing.SaberType, forehand) : Color.Empty;
         }
 
@@ -539,14 +539,14 @@ namespace JumpDrill.Gui
         private static Color Lighter(Color color, float amount) { return color.IsEmpty ? color : ControlPaint.Light(color, amount); }
 
         /// <summary>
-        /// 振りの i 番目の区間（i-1 → i）の色。刃が動いている向きでフォア・バックを決める（<see cref="SwingColors.SegmentForehand"/>）。
+        /// 振りの i 番目の区間（i-1 → i）の色。折り返し点の前後でフォア・バックを決める（<see cref="SwingColors.TurnIndex"/>）。
         /// 手元の道のりも、同じ瞬間の先端の動きで決める。
         /// </summary>
         private static Color SegmentColor(Swing swing, int i)
         {
             i = Math.Max(1, Math.Min(swing.Tips.Length - 1, i));
             return HandColor(swing.SaberType,
-                SwingColors.SegmentForehand(swing.Tips[i - 1], swing.Tips[i], swing.ToDirection, swing.ToForehand, swing.FromForehand));
+                SwingColors.SegmentForehand(i, SwingColors.TurnIndex(swing.Tips, swing.ToDirection), swing.ToForehand, swing.FromForehand));
         }
 
         /// <summary>床（高さ 0）の格子。50 cm 刻み。前後左右の向きが分かるように、プレイヤーの前を少し明るく。</summary>
