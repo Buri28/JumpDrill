@@ -62,6 +62,17 @@ namespace JumpDrillMod.UI.Medals
         [UIComponent("stage-dropdown")] private DropDownListSetting? stageDropdown = null;
         [UIComponent("keyboard")] private ModalKeyboard? keyboard = null;
 
+        /// <summary>削除の前の確かめの窓（<see cref="ConfirmPrompt"/>）。</summary>
+        private readonly ConfirmPrompt confirm = new ConfirmPrompt();
+
+        [UIComponent("confirm-text")] private TMPro.TextMeshProUGUI? confirmText = null;
+
+        [UIAction("confirm-yes")]
+        public void ConfirmYes() => confirm.Yes(parserParams);
+
+        [UIAction("confirm-no")]
+        public void ConfirmNo() => confirm.No(parserParams);
+
         private CustomStage? CurrentStage => mode == ViewMode.Custom && customName != null ? book.Find(customName) : null;
 
         // ───────── マークアップ ─────────
@@ -174,7 +185,13 @@ namespace JumpDrillMod.UI.Medals
                 return;
             }
 
-            // 押したらすぐ消す（2回押す形は慣れないとのことでやめた、ユーザー指定）。記録は残る
+            // 窓で確かめてから消す。記録は残る
+            confirm.Ask(parserParams, confirmText, "Delete the map of\n" + NoParse(DrillNaming.DisplayName(songName)) + "?\nRecords are kept.", () => DeleteDrillNow(songName, id));
+        }
+
+        private void DeleteDrillNow(string songName, string id)
+        {
+            if (launcher == null || drillSet == null) return;
 
             var folders = launcher.FoldersOf(id);
             if (!bookBroken)
@@ -397,7 +414,22 @@ namespace JumpDrillMod.UI.Medals
             var stage = CurrentStage;
             if (stage == null || bookBroken) return;
 
-            // 押したらすぐ消す（2回押す形は慣れないとのことでやめた、ユーザー指定）。譜面と記録は残る
+            // 窓で確かめてから消す。譜面と記録は残る
+            string name = stage.Name;
+            confirm.Ask(parserParams, confirmText, "Delete the stage " + NoParse(name) + "?\nMaps and records are kept.", () => DeleteStageNow(name));
+        }
+
+        /// <summary>
+        /// 確かめた後で消す。窓を出している間にステージを読み直すことがある（読み込みが終わった、など）ので、名前で引き直す。
+        /// </summary>
+        private void DeleteStageNow(string name)
+        {
+            var stage = bookBroken ? null : book.Find(name);
+            if (stage == null)
+            {
+                SetStatus("The stage changed. Nothing was deleted.");
+                return;
+            }
             book.Stages.Remove(stage);
             if (!SaveBook()) return;
             SetMode(ViewMode.Standard, null);
@@ -496,7 +528,28 @@ namespace JumpDrillMod.UI.Medals
             var row = SelectedRow();
             if (row == null || stage == null) return;
 
-            // 押したらすぐ消す（2回押す形は慣れないとのことでやめた、ユーザー指定）。ドリルの譜面と記録は残る
+            // 窓で確かめてから消す。ドリルの譜面と記録は残る
+            string stageName = stage.Name;
+            int index = selectedRow;
+            string rowName = row.Name;
+            var drills = row.Drills.ToList();
+            confirm.Ask(parserParams, confirmText, "Delete the row " + NoParse(rowName) + "?\nMaps and records are kept.",
+                () => DeleteRowNow(stageName, index, rowName, drills));
+        }
+
+        /// <summary>
+        /// 確かめた後で消す。窓を出している間にステージを読み直すことがある（読み込みが終わった、など）ので、
+        /// ステージは名前で、行は位置で引き直し、名前と中身が同じときだけ消す。食い違えば消さずに知らせる。
+        /// </summary>
+        private void DeleteRowNow(string stageName, int index, string rowName, List<string> drills)
+        {
+            var stage = bookBroken ? null : book.Find(stageName);
+            var row = stage != null && index >= 0 && index < stage.Rows.Count ? stage.Rows[index] : null;
+            if (stage == null || row == null || row.Name != rowName || !row.Drills.SequenceEqual(drills))
+            {
+                SetStatus("The stage changed. Nothing was deleted.");
+                return;
+            }
             stage.Rows.Remove(row);
             selectedRow = selectedColumn = -1;
             SetStatus(row.Name + " was deleted.");

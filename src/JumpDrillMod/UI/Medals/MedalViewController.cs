@@ -332,6 +332,8 @@ namespace JumpDrillMod.UI.Medals
             AppendPicker(sb);
             sb.Append("<modal-keyboard id='keyboard' value='keyboard-text' on-enter='keyboard-enter' clear-on-open='false'");
             sb.Append(" show-event='show-keyboard' hide-event='hide-keyboard'/>");
+            // 削除の前の確かめ
+            sb.Append(ConfirmPrompt.Markup());
 
             sb.Append("</bg>");
             return sb.ToString();
@@ -478,7 +480,7 @@ namespace JumpDrillMod.UI.Medals
         }
 
         /// <summary>リッチテキストのタグとして読ませない。閉じタグが中にあれば崩れるので、その &lt; だけ全角に置き換える。</summary>
-        private static string NoParse(string text)
+        internal static string NoParse(string text)
         {
             return "<noparse>" + text.Replace("</noparse>", "＜/noparse>") + "</noparse>";
         }

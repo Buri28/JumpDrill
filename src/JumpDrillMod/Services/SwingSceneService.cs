@@ -319,7 +319,7 @@ namespace JumpDrillMod.Services
 
         /// <summary>
         /// ノーツの立方体。面ごとに向きで濃淡を付ける（上から光が当たっている形）。
-        /// プレイヤー側の面に切る向きの三角、中心に白い点。向きは矢印の 8 方向だけで回す（GUI と同じ）。
+        /// プレイヤー側の面に切る向きの三角、中心に白い点。向きは本体と同じくプレイヤーの方を向く（GUI と同じ、SwingScene.Note の軸）。
         /// </summary>
         private void AddNote(Transform parent, Note note)
         {

@@ -522,27 +522,17 @@ namespace JumpDrill.Gui
 
         /// <summary>
         /// ノーツの立方体。面ごとに奥行きで並べ、プレイヤー側の面（手前の面）に切る向きの三角を描く。
-        /// 向きは矢印の 8 方向だけで回し、プレイヤーの方へ向く分は入れない。
+        /// 向きは本体と同じく、矢印の向きに傾けたうえでプレイヤー（頭）の方を向く（SwingScene.Note の軸）。
         /// </summary>
         private void AddNote(List<Item> items, List<Item> onTop, Note note)
         {
             Color color = HandColor(note.ColorType, note.Forehand);
             float h = NoteSize / 2;
-            double angle = ArrowAngle(note.CutDirection);
-            double turn = double.IsNaN(angle) ? 0.0 : angle;   // 向き指定なしは回さない
-            float ca = (float)Math.Cos(turn), sa = (float)Math.Sin(turn);
+            double angle = SwingSides.ArrowAngle(note.CutDirection);
 
-            // 面の上の (u, v) と前後 w → 世界。v が矢印の向き（切る向き）
-            Func<float, float, float, Vector3> at = (u, v, w) => new Vector3
-            {
-                X = note.Center.X + u * ca + v * sa,
-                Y = note.Center.Y - u * sa + v * ca,
-                Z = note.Center.Z + w,
-            };
-
-            var corners = new Vector3[8];
-            for (int i = 0; i < 8; i++)
-                corners[i] = at((i & 1) == 0 ? -h : h, (i & 2) == 0 ? -h : h, (i & 4) == 0 ? -h : h);
+            // 面の上の (u, v) と前後 w → 世界。v が矢印の向き（切る向き）。プレイヤーの方を向いた後の軸（SwingScene.Note）
+            Func<float, float, float, Vector3> at = note.At;
+            var corners = note.Corners();
 
             int[][] faces =
             {
@@ -641,26 +631,6 @@ namespace JumpDrill.Gui
 
         /// <summary>刃がノーツの中を通った所の濃さ (0-255)。</summary>
         private const int InsideNoteAlpha = 70;
-
-        /// <summary>
-        /// 切る向きの角度（上向きから右回りのラジアン）。面の v 軸がこの向きになる（(sin, cos)）。
-        /// 三角は v の負の側に置き、先が v の向き（切る向き）を指す。向き指定なしは NaN。
-        /// </summary>
-        private static double ArrowAngle(int cutDirection)
-        {
-            switch (cutDirection)
-            {
-                case 0: return 0.0;                // Up
-                case 1: return Math.PI;            // Down
-                case 2: return -Math.PI / 2;       // Left
-                case 3: return Math.PI / 2;        // Right
-                case 4: return -Math.PI / 4;       // UpLeft
-                case 5: return Math.PI / 4;        // UpRight
-                case 6: return -Math.PI * 3 / 4;   // DownLeft
-                case 7: return Math.PI * 3 / 4;    // DownRight
-                default: return double.NaN;
-            }
-        }
 
         private void DrawHint(Graphics g)
         {

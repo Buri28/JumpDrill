@@ -129,4 +129,15 @@
     </horizontal>
 
   </vertical>
+  <!-- 削除の前の確かめの窓（ConfirmPrompt.Markup と同じもの） -->
+  <modal id='confirm-modal' show-event='show-confirm' hide-event='hide-confirm' click-off-closes='true'
+         move-to-center='true' size-delta-x='64' size-delta-y='26'>
+    <vertical pad='3' spacing='2' child-expand-height='false'>
+      <text id='confirm-text' text='' font-size='3.4' align='Center' word-wrapping='true'/>
+      <horizontal spacing='3' pref-height='7'>
+        <button text='Cancel' on-click='confirm-no' pref-width='22' pref-height='7'/>
+        <button text='&lt;color=#FF8060&gt;Delete&lt;/color&gt;' on-click='confirm-yes' pref-width='22' pref-height='7'/>
+      </horizontal>
+    </vertical>
+  </modal>
 </bg>

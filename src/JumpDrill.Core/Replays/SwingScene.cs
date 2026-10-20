@@ -55,35 +55,24 @@ namespace JumpDrill.Replays
 
             /// <summary>
             /// 立方体の軸（長さ 1）。V が切る向き、U がその右、W が前（プレイヤーから遠ざかる向き）。
-            /// 矢印の 8 方向だけで回し、プレイヤーの方へ向く分は入れない。
+            /// 本体と同じく、ノーツはプレイヤー（頭）の方を向く（<see cref="NotePose.LookAtPlayer"/>）。
+            /// 外側の列のノーツほど中央へ向けて大きく回る。傾きは角度オフセットを当てた後のもの（<see cref="NoteFigure.Tilt"/>）。
             /// </summary>
-            public Vector3 AxisU
-            {
-                get { double a = Turn; return new Vector3 { X = (float)Math.Cos(a), Y = (float)-Math.Sin(a), Z = 0f }; }
-            }
-
-            public Vector3 AxisV
-            {
-                get { double a = Turn; return new Vector3 { X = (float)Math.Sin(a), Y = (float)Math.Cos(a), Z = 0f }; }
-            }
-
-            public Vector3 AxisW { get { return new Vector3 { Z = 1f }; } }
-
-            private double Turn
-            {
-                get { double a = SwingSides.ArrowAngle(CutDirection); return double.IsNaN(a) ? 0.0 : a; }
-            }
+            public Vector3 AxisU { get; internal set; } = new Vector3 { X = 1f };
+            public Vector3 AxisV { get; internal set; } = new Vector3 { Y = 1f };
+            public Vector3 AxisW { get; internal set; } = new Vector3 { Z = 1f };
 
             /// <summary>面の上の (u, v) と前後 w（中心から、m）→ 世界座標。</summary>
             public Vector3 At(float u, float v, float w)
             {
                 var au = AxisU;
                 var av = AxisV;
+                var aw = AxisW;
                 return new Vector3
                 {
-                    X = Center.X + u * au.X + v * av.X,
-                    Y = Center.Y + u * au.Y + v * av.Y,
-                    Z = Center.Z + w,
+                    X = Center.X + u * au.X + v * av.X + w * aw.X,
+                    Y = Center.Y + u * au.Y + v * av.Y + w * aw.Y,
+                    Z = Center.Z + u * au.Z + v * av.Z + w * aw.Z,
                 };
             }
 
@@ -239,35 +228,34 @@ namespace JumpDrill.Replays
             return mean;
         }
 
-        /// <summary>3D に置くノーツ。図のノーツ（<see cref="NoteFigures"/>）の、切った瞬間の中心。</summary>
+        /// <summary>
+        /// 3D に置くノーツ。図のノーツ（<see cref="NoteFigures"/>）の、切った瞬間の中心に置く。
+        /// 向きは図と同じもの（頭の方を向いた面の軸、<see cref="NoteFigure.FaceRight"/> など）で、正面図の矢印・切った線とそろう。
+        /// </summary>
         private void LoadNotes(List<NoteFigure> figures)
         {
             foreach (var figure in figures)
             {
                 if (!figure.HasCutCenter) continue;
+
                 Notes.Add(new Note
                 {
                     ColorType = figure.ColorType,
                     CutDirection = figure.CutDirection,
                     Forehand = figure.Forehand,
                     Center = figure.CutCenter,
+                    AxisU = figure.FaceRight,
+                    AxisV = figure.FaceUp,
+                    AxisW = figure.FaceForward,
                 });
             }
         }
 
+        /// <summary>頭の位置（<see cref="NoteFigures.HeadAtCuts"/>、図のノーツの向きを出すのと同じもの）。</summary>
         private void LoadHead(Replay replay)
         {
-            var cuts = replay.Notes.Where(n => n.EventType == NoteEventType.Good && n.Cut != null).ToList();
-            if (cuts.Count == 0 || replay.Frames.Count == 0) return;
-
-            double x = 0, y = 0, z = 0;
-            foreach (var note in cuts)
-            {
-                int i = replay.Frames.FindIndex(f => f.Time >= note.EventTime);
-                var head = replay.Frames[i < 0 ? replay.Frames.Count - 1 : i].Head.Position;
-                x += head.X; y += head.Y; z += head.Z;
-            }
-            Head = new Vector3 { X = (float)(x / cuts.Count), Y = (float)(y / cuts.Count), Z = (float)(z / cuts.Count) };
+            if (!replay.Notes.Any(n => n.EventType == NoteEventType.Good && n.Cut != null) || replay.Frames.Count == 0) return;
+            Head = NoteFigures.HeadAtCuts(replay);
             HasHead = true;
         }
 
@@ -286,6 +274,8 @@ namespace JumpDrill.Replays
             {
                 var polygon = new List<Vector3> { swing.Hilts[i - 1], swing.Tips[i - 1], swing.Tips[i], swing.Hilts[i] };
                 foreach (var axis in axes)
+                {
+                    if (polygon.Count < 3) break;
                     foreach (float sign in new[] { 1f, -1f })
                     {
                         // 中心からの、この軸の向きの距離が NoteSize / 2 以下の側を残す
@@ -294,6 +284,7 @@ namespace JumpDrill.Replays
                         polygon = Clip(polygon, p => NoteSize / 2 - s * (a.X * (p.X - center.X) + a.Y * (p.Y - center.Y) + a.Z * (p.Z - center.Z)));
                         if (polygon.Count < 3) break;
                     }
+                }
                 if (polygon.Count >= 3) result.Add(new KeyValuePair<int, Vector3[]>(i, polygon.ToArray()));
             }
             return result;

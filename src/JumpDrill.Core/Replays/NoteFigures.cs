@@ -43,6 +43,11 @@ namespace JumpDrill.Replays
         /// <summary>要求された向きからの角度ずれの平均 (度)。</summary>
         public double AngleError { get; internal set; }
 
+        /// <summary>プレイヤーを向いた後の面の右・上・前（世界座標、長さ 1）。3D の立方体の軸にも使う。</summary>
+        public Vector3 FaceRight { get; internal set; } = new Vector3 { X = 1f };
+        public Vector3 FaceUp { get; internal set; } = new Vector3 { Y = 1f };
+        public Vector3 FaceForward { get; internal set; } = new Vector3 { Z = 1f };
+
         /// <summary>面の右向き・上向きを X-Y へ落としたもの（プレイヤーを向いた後）。</summary>
         public double RightX { get; internal set; }
         public double RightY { get; internal set; }
@@ -343,6 +348,9 @@ namespace JumpDrill.Replays
                 note.RightY = right.Y;
                 note.UpX = up.X;
                 note.UpY = up.Y;
+                note.FaceRight = right;
+                note.FaceUp = up;
+                note.FaceForward = NotePose.Cross(right, up);
 
                 BuildCutLines(note, right, up);
                 FindCutCenter(note);

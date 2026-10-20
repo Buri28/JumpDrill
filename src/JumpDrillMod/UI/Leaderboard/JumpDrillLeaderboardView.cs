@@ -80,7 +80,9 @@ namespace JumpDrillMod.UI.Leaderboard
             this.scores = Arrange(ranked);
             this.diagrams = diagrams;
 
-            // 譜面が変われば選び直し。前の譜面の3位を選んでいた、を持ち越さない
+            // 譜面が変われば選び直し。前の譜面の3位を選んでいた、を持ち越さない。
+            // 前の譜面の記録を消す確かめの窓も閉じる
+            confirm.No(parserParams);
             selected = 0;
             page = 0;
             SelectJustPlayed();
@@ -214,8 +216,21 @@ namespace JumpDrillMod.UI.Leaderboard
             });
         }
 
+        [UIParams] private readonly BeatSaberMarkupLanguage.Parser.BSMLParserParams? parserParams = null;
+
+        /// <summary>削除の前の確かめの窓（<see cref="ConfirmPrompt"/>）。</summary>
+        private readonly ConfirmPrompt confirm = new ConfirmPrompt();
+
+        [UIComponent("confirm-text")] private TextMeshProUGUI? confirmText = null;
+
+        [UIAction("confirm-yes")]
+        public void ConfirmYes() => confirm.Yes(parserParams);
+
+        [UIAction("confirm-no")]
+        public void ConfirmNo() => confirm.No(parserParams);
+
         /// <summary>
-        /// 選んでいる記録を消す。押したらすぐ消す（2回押す形は慣れないとのことでやめた、ユーザー指定）。
+        /// 選んでいる記録を消す。窓で確かめてから消す（元に戻せない）。
         /// </summary>
         /// <remarks>
         /// ごみ箱は通さない（元に戻せない）。同じプレイの BeatLeader・LocalLeaderboard のコピーも消す
@@ -231,6 +246,11 @@ namespace JumpDrillMod.UI.Leaderboard
             string what = string.Format(CultureInfo.InvariantCulture, "{0} ({1})",
                 score.CountsAsRecord ? "#" + RankOf(score) : "the record",
                 score.PlayedAt.ToString("MM/dd HH:mm", CultureInfo.InvariantCulture));
+            confirm.Ask(parserParams, confirmText, "Delete " + what + "?\nThis cannot be undone.", () => DeleteRecordNow(score, what));
+        }
+
+        private void DeleteRecordNow(DrillScore score, string what)
+        {
             var result = ReplayCleanupService.Delete(new[] { score });
             if (diagramNote != null)
                 diagramNote.text = result.Failed > 0 ? "Could not delete some files. See the log." : "Deleted " + what + ".";
@@ -299,16 +319,16 @@ namespace JumpDrillMod.UI.Leaderboard
         /// <summary>振りを空間に置く（VR 表示）。リーダーボードが2か所にあっても置くのは1つだけ。</summary>
         private static SwingSceneService room => SwingSceneService.Shared;
 
-        private const string RoomOff = "VR view off";
+        private const string RoomOff = "3D view off";
 
         /// <summary>出す位置の選択肢。プレイしたときの位置と、そこから前へずらした位置 (m)。</summary>
         private static readonly KeyValuePair<string, float>[] RoomPlaces =
         {
-            new KeyValuePair<string, float>("VR at play spot", 0f),
-            new KeyValuePair<string, float>("VR 0.5 m ahead", 0.5f),
-            new KeyValuePair<string, float>("VR 1 m ahead", 1f),
-            new KeyValuePair<string, float>("VR 1.5 m ahead", 1.5f),
-            new KeyValuePair<string, float>("VR 2 m ahead", 2f),
+            new KeyValuePair<string, float>("3D at play spot", 0f),
+            new KeyValuePair<string, float>("3D 0.5 m ahead", 0.5f),
+            new KeyValuePair<string, float>("3D 1 m ahead", 1f),
+            new KeyValuePair<string, float>("3D 1.5 m ahead", 1.5f),
+            new KeyValuePair<string, float>("3D 2 m ahead", 2f),
         };
 
         private static bool ShowInRoom => PluginConfig.Instance?.DiagramRoom ?? false;
