@@ -666,15 +666,10 @@ namespace JumpDrill.Replays
             }
         }
 
-        /// <summary>白へ寄せる。GUI の <c>ControlPaint.Light</c> と同じ効き方にしてある。</summary>
+        /// <summary>明るくする。GUI の <c>ControlPaint.Light</c> と同じ計算（<see cref="SwingPalette.Light"/>）。</summary>
         private static byte[] Lighten(byte[] color, double amount)
         {
-            return new[]
-            {
-                (byte)(color[0] + (255 - color[0]) * amount),
-                (byte)(color[1] + (255 - color[1]) * amount),
-                (byte)(color[2] + (255 - color[2]) * amount),
-            };
+            return SwingPalette.Light(color, amount);
         }
     }
 }

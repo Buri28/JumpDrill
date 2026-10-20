@@ -33,6 +33,49 @@ namespace JumpDrill.Replays
             return hand == 0 ? (forehand ? Left : LeftBack) : (forehand ? Right : RightBack);
         }
 
+        /// <summary>
+        /// 明るくする。GUI の <c>ControlPaint.Light</c> と同じ計算（色合いと鮮やかさは変えず、明るさだけを
+        /// 白までの残りの半分 × <paramref name="amount"/> だけ上げる。HLS で、明るさの上限が 240）。
+        /// 白へまっすぐ寄せると色が抜けて灰色に見え、GUI の扇（手の色の付いた薄い面）と違って見えた。
+        /// </summary>
+        public static byte[] Light(byte[] rgb, double amount)
+        {
+            double r = rgb[0] / 255.0, g = rgb[1] / 255.0, b = rgb[2] / 255.0;
+            double max = System.Math.Max(r, System.Math.Max(g, b)), min = System.Math.Min(r, System.Math.Min(g, b));
+            double l = (max + min) / 2, h = 0, s = 0;
+            if (max != min)
+            {
+                double d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                if (max == r) h = (g - b) / d + (g < b ? 6 : 0);
+                else if (max == g) h = (b - r) / d + 2;
+                else h = (r - g) / d + 4;
+                h /= 6;
+            }
+
+            l += (1 - l) * 0.5 * amount;
+
+            if (s == 0) return new[] { ToByte(l), ToByte(l), ToByte(l) };
+            double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            double p = 2 * l - q;
+            return new[] { ToByte(Hue(p, q, h + 1.0 / 3)), ToByte(Hue(p, q, h)), ToByte(Hue(p, q, h - 1.0 / 3)) };
+        }
+
+        private static double Hue(double p, double q, double t)
+        {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+            if (t < 0.5) return q;
+            if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+            return p;
+        }
+
+        private static byte ToByte(double v)
+        {
+            return (byte)System.Math.Max(0, System.Math.Min(255, (int)System.Math.Round(v * 255)));
+        }
+
         /// <summary>向きの印の色。左手のフォアだけ明るい赤。</summary>
         public static byte[] MarkOf(int hand, bool forehand)
         {

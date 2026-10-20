@@ -299,28 +299,51 @@ namespace JumpDrillMod.UI.Leaderboard
         /// <summary>振りを空間に置く（VR 表示）。リーダーボードが2か所にあっても置くのは1つだけ。</summary>
         private static SwingSceneService room => SwingSceneService.Shared;
 
-        private const string RoomOff = "3D off";
-        private const string RoomOn = "3D on";
+        private const string RoomOff = "VR view off";
+
+        /// <summary>出す位置の選択肢。プレイしたときの位置と、そこから前へずらした位置 (m)。</summary>
+        private static readonly KeyValuePair<string, float>[] RoomPlaces =
+        {
+            new KeyValuePair<string, float>("VR at play spot", 0f),
+            new KeyValuePair<string, float>("VR 0.5 m ahead", 0.5f),
+            new KeyValuePair<string, float>("VR 1 m ahead", 1f),
+            new KeyValuePair<string, float>("VR 1.5 m ahead", 1.5f),
+            new KeyValuePair<string, float>("VR 2 m ahead", 2f),
+        };
 
         private static bool ShowInRoom => PluginConfig.Instance?.DiagramRoom ?? false;
 
+        private static float RoomForward => PluginConfig.Instance?.DiagramRoomForward ?? 0f;
+
         [UIValue("room-options")]
-        public List<object> RoomOptions => new List<object> { RoomOff, RoomOn };
+        public List<object> RoomOptions => new[] { RoomOff }.Concat(RoomPlaces.Select(p => p.Key)).Cast<object>().ToList();
 
         [UIValue("room")]
         public string Room
         {
-            get => ShowInRoom ? RoomOn : RoomOff;
+            get
+            {
+                if (!ShowInRoom) return RoomOff;
+                // 選択肢に無い値（手で設定を書き換えたなど）は、いちばん近いものを出す
+                return RoomPlaces.OrderBy(p => Math.Abs(p.Value - RoomForward)).First().Key;
+            }
             set { }
         }
 
         /// <summary>
-        /// 選んでいる記録の振りを空間に出すか。今どちらかが分かるようにプルダウンにする。
+        /// 選んでいる記録の振りを空間に出すか、どこに出すか。今どれかが分かるようにプルダウンにする。
+        /// プレイしたときの位置のままだと振りの中に立つ形になり、全体を見渡しにくいので、前へずらして出せる。
         /// </summary>
         [UIAction("room-changed")]
         public void RoomChanged(object value)
         {
-            if (PluginConfig.Instance != null) PluginConfig.Instance.DiagramRoom = (value as string) == RoomOn;
+            var label = value as string;
+            var place = RoomPlaces.FirstOrDefault(p => p.Key == label);
+            if (PluginConfig.Instance != null)
+            {
+                PluginConfig.Instance.DiagramRoom = place.Key != null;
+                if (place.Key != null) PluginConfig.Instance.DiagramRoomForward = place.Value;
+            }
             UpdateRoom();
         }
 
@@ -333,7 +356,7 @@ namespace JumpDrillMod.UI.Leaderboard
                 room.Hide();
                 return;
             }
-            room.Show(score.ReplayPath, OnlyForehand);
+            room.Show(score.ReplayPath, OnlyForehand, RoomForward);
         }
 
         private const string StrokeBoth = "Fore + back";

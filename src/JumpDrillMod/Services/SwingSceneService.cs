@@ -80,7 +80,8 @@ namespace JumpDrillMod.Services
         /// そのリプレイの振りを空間に出す。前に出していたものは消す。
         /// </summary>
         /// <param name="onlyForehand">フォアだけ（true）かバックだけ（false）。両方なら null。</param>
-        internal void Show(string? replayPath, bool? onlyForehand)
+        /// <param name="forward">プレイしたときの位置から前へずらす量 (m)。</param>
+        internal void Show(string? replayPath, bool? onlyForehand, float forward = 0f)
         {
             if (string.IsNullOrEmpty(replayPath))
             {
@@ -90,7 +91,12 @@ namespace JumpDrillMod.Services
 
             // 同じ名前で書き直されたリプレイは別物として置き直す
             string key = SceneKey(replayPath!) + (onlyForehand == true ? "|fore" : onlyForehand == false ? "|back" : "|both");
-            if (root != null && key == shownKey) return;
+            if (root != null && key == shownKey)
+            {
+                // ずらす量だけ変わったときは、置き直さずに動かす
+                root.transform.position = new UVector3(0f, 0f, forward);
+                return;
+            }
 
             Hide();
 
@@ -100,6 +106,7 @@ namespace JumpDrillMod.Services
             try
             {
                 root = new GameObject("JumpDrillSwingScene");
+                root.transform.position = new UVector3(0f, 0f, forward);
                 Build(root.transform, scene, onlyForehand);
                 shownKey = key;
             }
@@ -236,8 +243,8 @@ namespace JumpDrillMod.Services
             line.positionCount = points.Count;
             line.SetPositions(points.ToArray());
             line.widthMultiplier = width;
-            line.startColor = color;
-            line.endColor = color;
+            line.startColor = ToBuffer(color);
+            line.endColor = ToBuffer(color);
             line.numCapVertices = 2;
             line.numCornerVertices = 2;
             line.shadowCastingMode = ShadowCastingMode.Off;
@@ -375,7 +382,7 @@ namespace JumpDrillMod.Services
             var mesh = new Mesh();
             meshes.Add(mesh);
             mesh.SetVertices(vertices);
-            mesh.SetColors(colors);
+            mesh.SetColors(colors.Select(ToBuffer).ToList());
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateBounds();
 
@@ -417,8 +424,12 @@ namespace JumpDrillMod.Services
         }
 
         /// <summary>
-        /// 頂点の色をそのまま使う半透明の素材。<c>Hidden/Internal-Colored</c> は Unity が必ず持っているシェーダーで、
+        /// 頂点の色をそのまま使う素材。<c>Hidden/Internal-Colored</c> は Unity が必ず持っているシェーダーで、
         /// 混ぜ方・裏面・奥行きの書き込みを外から変えられる。裏面も描き、奥行きは書かない（半透明どうしが消し合わないように）。
+        ///
+        /// 混ぜ方は足し合わせ（One, One）で、色は濃さを掛けておき、書き込む濃さ（アルファ）は 0 にする（<see cref="ToBuffer"/>）。
+        /// Beat Saber は画面のアルファを光り（ブルーム）の強さに使うので、ふつうの半透明（SrcAlpha, OneMinusSrcAlpha）だと
+        /// アルファが積もって白く光り抜けた。足し合わせなら画面のアルファは変わらない。
         /// </summary>
         private Material Material
         {
@@ -427,13 +438,24 @@ namespace JumpDrillMod.Services
                 if (material != null) return material;
 
                 material = new Material(Shader.Find("Hidden/Internal-Colored")) { hideFlags = HideFlags.HideAndDontSave };
-                material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-                material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+                material.SetInt("_SrcBlend", (int)BlendMode.One);
+                material.SetInt("_DstBlend", (int)BlendMode.One);
                 material.SetInt("_Cull", (int)CullMode.Off);
                 material.SetInt("_ZWrite", 0);
                 material.renderQueue = (int)RenderQueue.Transparent;
                 return material;
             }
+        }
+
+        /// <summary>
+        /// 画面に書く色。濃さを色に掛け、アルファは 0（画面のアルファを変えず、光らせない。<see cref="Material"/>）。
+        /// 色は GUI と同じ見え方の値（ガンマ）で決めてあるので、リニアに直してから書く。Beat Saber はリニアで描いていて、
+        /// そのまま書くと 0.25 が 0.5 ほどの明るさに見え、全体が白っぽくなった。
+        /// </summary>
+        private static Color ToBuffer(Color color)
+        {
+            var premultiplied = new Color(color.r * color.a, color.g * color.a, color.b * color.a, 1f).linear;
+            return new Color(premultiplied.r, premultiplied.g, premultiplied.b, 0f);
         }
 
         private static Color SideColor(int hand, bool forehand)
@@ -442,11 +464,13 @@ namespace JumpDrillMod.Services
         }
 
         /// <summary>白へ寄せる（GUI の ControlPaint.Light と同じ効き方）。</summary>
+        /// <summary>明るくする。GUI の <c>ControlPaint.Light</c> と同じ計算（JumpDrill.Core の <c>SwingPalette.Light</c>）。</summary>
         private static Color? Lighten(Color? color, float amount)
         {
             if (!color.HasValue) return null;
             var c = color.Value;
-            return new Color(c.r + (1f - c.r) * amount, c.g + (1f - c.g) * amount, c.b + (1f - c.b) * amount, c.a);
+            var rgb = SwingPalette.Light(new[] { (byte)Mathf.RoundToInt(c.r * 255f), (byte)Mathf.RoundToInt(c.g * 255f), (byte)Mathf.RoundToInt(c.b * 255f) }, amount);
+            return new Color(rgb[0] / 255f, rgb[1] / 255f, rgb[2] / 255f, c.a);
         }
 
         private static Color? Fade(Color? color, float alpha)

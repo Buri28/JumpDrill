@@ -99,6 +99,12 @@ namespace JumpDrillMod
         public virtual bool DiagramRoom { get; set; } = false;
 
         /// <summary>
+        /// 空間に出す振りを、プレイしたときの位置からどれだけ前へずらすか (m)。
+        /// そのままだと振りの中に立つ形になり、全体を見渡しにくい。
+        /// </summary>
+        public virtual float DiagramRoomForward { get; set; } = 0f;
+
+        /// <summary>
         /// リーダーボードを新しい順に並べるか。false なら順位（<see cref="RankByAccuracy"/> の数字の高い順）。
         /// 叩くたびに切り替え直さなくて済むように残しておく。
         /// </summary>
