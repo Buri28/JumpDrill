@@ -189,6 +189,9 @@ namespace JumpDrill.Output
             w.EndObject();
         }
 
+        /// <summary>カウントインの数の上限。外から取り込んだファイルのおかしな値で、極端に長い譜面を作らないため。</summary>
+        private const int MaxCountIn = 64;
+
         private static void ApplySaved(DrillOptions options, Dictionary<string, object> saved)
         {
             // 間隔は名前の BPM（小数1桁）より細かく持っているので、名前から出したものと食い違わないときだけ使う
@@ -196,8 +199,10 @@ namespace JumpDrill.Output
                 Math.Abs(Tempo.EbpmFromHandIntervalMs(interval) - Tempo.EbpmFromHandIntervalMs(options.IntervalMs)) < 0.051)
                 options.IntervalMs = interval;
             if (saved.TryGetValue("notesPerBeat", out var d) && d is double div && div > 0) options.NotesPerBeat = div;
-            if (saved.TryGetValue("click", out var c) && c is string click && Enum.TryParse(click, out ClickMode mode)) options.Click = mode;
-            if (saved.TryGetValue("countIn", out var k) && k is double count && count >= 0) options.CountInClicks = (int)count;
+            // 数字の文字列（"123"）でも TryParse は通るので、定義された値かも見る
+            if (saved.TryGetValue("click", out var c) && c is string click && Enum.TryParse(click, out ClickMode mode) &&
+                Enum.IsDefined(typeof(ClickMode), mode)) options.Click = mode;
+            if (saved.TryGetValue("countIn", out var k) && k is double count && count >= 0 && count <= MaxCountIn) options.CountInClicks = (int)count;
             if (saved.TryGetValue("tail", out var t) && t is double tail && tail >= 0) options.TailSeconds = tail;
             if (saved.TryGetValue("minLeadIn", out var l) && l is double lead && lead >= 0) options.MinLeadInSeconds = lead;
             if (saved.TryGetValue("gap", out var g) && g is double gap) options.GapSeconds = gap;

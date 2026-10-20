@@ -5,6 +5,8 @@ using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 using JumpDrill.Replays;
+using Note = JumpDrill.Replays.SwingScene.Note;
+using Swing = JumpDrill.Replays.SwingScene.Swing;
 
 namespace JumpDrill.Gui
 {
@@ -31,35 +33,14 @@ namespace JumpDrill.Gui
         /// <summary>刃の細い線を何本に1本描くか（1本の振りの点の数に対して）。</summary>
         private const int RibEvery = 3;
 
-        /// <summary>1本の振り。先端と手元を同じ瞬間どうしで並べたもの。</summary>
-        private sealed class Swing
-        {
-            public int SaberType;
+        /// <summary>描く中身（Core の <see cref="SwingScene"/>。MOD の VR 表示と同じもの）。</summary>
+        private SwingScene _scene = new SwingScene();
 
-            /// <summary>次に切るノーツ・前に切ったノーツがフォア（切り下げ）か（採点と同じ決め方）。</summary>
-            public bool ToForehand;
-            public bool FromForehand;
-
-            /// <summary>次に切るノーツの矢印の向き（世界座標の X-Y）。区間の色を決めるのに使う。</summary>
-            public PointF ToDirection;
-            public Vector3[] Tips;
-            public Vector3[] Hilts;
-        }
-
-        /// <summary>切った瞬間のノーツ（平均）。</summary>
-        private sealed class Note
-        {
-            public int ColorType;
-            public bool Forehand;
-            public int CutDirection;
-            public Vector3 Center;
-        }
-
-        private readonly List<Swing> _swings = new List<Swing>();
-        private readonly List<Swing> _means = new List<Swing>();
-        private readonly List<Note> _notes = new List<Note>();
-        private Vector3 _head;
-        private bool _hasHead;
+        private List<Swing> _swings { get { return _scene.Swings; } }
+        private List<Swing> _means { get { return _scene.Means; } }
+        private List<Note> _notes { get { return _scene.Notes; } }
+        private Vector3 _head { get { return _scene.Head; } }
+        private bool _hasHead { get { return _scene.HasHead; } }
 
         public ReplayView3D()
         {
@@ -87,178 +68,10 @@ namespace JumpDrill.Gui
         /// <param name="notesFrom">ノーツを置くリプレイ（まとめる前）。null なら <paramref name="replay"/>。</param>
         public void Load(Replay replay, Replay notesFrom = null)
         {
-            _swings.Clear();
-            _means.Clear();
-            _notes.Clear();
-            _hasHead = false;
-
-            if (replay != null)
-            {
-                foreach (int saberType in new[] { 0, 1 }) LoadHand(replay, saberType);
-                LoadNotes(notesFrom ?? replay);
-                LoadHead(notesFrom ?? replay);
-            }
+            _scene = SwingScene.Build(replay, notesFrom);
 
             FitTarget();
             Invalidate();
-        }
-
-        // ───────── データ ─────────
-
-        /// <summary>遷移ごとに振りを束ね、平均を取る（正面図と同じ決め方）。</summary>
-        private void LoadHand(Replay replay, int saberType)
-        {
-            var groups = new Dictionary<string, List<Swing>>();
-            var sequence = SwingAnalyzer.HandSequence(replay, saberType);
-            foreach (var pair in SwingAnalyzer.CleanPairs(sequence, saberType))
-            {
-                var swing = Extract(replay, saberType, CutMoments.Find(replay, pair.Key), CutMoments.Find(replay, pair.Value));
-                if (swing == null) continue;
-                swing.ToForehand = SwingAnalyzer.IsForehand(pair.Value, sequence.IndexOf(pair.Value));
-                swing.FromForehand = SwingAnalyzer.IsForehand(pair.Key, sequence.IndexOf(pair.Key));
-                swing.ToDirection = SwingColors.ArrowOf(pair.Value.CutDirection);
-
-                string key = pair.Key.LineIndex + "," + pair.Key.LineLayer + ">" + pair.Value.LineIndex + "," + pair.Value.LineLayer;
-                List<Swing> list;
-                if (!groups.TryGetValue(key, out list)) groups[key] = list = new List<Swing>();
-                list.Add(swing);
-            }
-
-            foreach (var group in groups.Values)
-            {
-                if (group.Count < 2) continue;
-                _swings.AddRange(group);
-                _means.Add(new Swing
-                {
-                    SaberType = saberType,
-                    ToForehand = group[0].ToForehand,
-                    FromForehand = group[0].FromForehand,
-                    ToDirection = group[0].ToDirection,
-                    Tips = Mean(group.Select(s => s.Tips).ToList()),
-                    Hilts = Mean(group.Select(s => s.Hilts).ToList()),
-                });
-            }
-        }
-
-        /// <summary>
-        /// 切った瞬間から次に切った瞬間までの刃。先端の弧長で等間隔に取り、手元も同じ瞬間で取る。
-        /// </summary>
-        private static Swing Extract(Replay replay, int saberType, float from, float to)
-        {
-            var tips = new List<Vector3>();
-            var hilts = new List<Vector3>();
-
-            Vector3 hilt, tip;
-            CutMoments.BladeAt(replay, saberType, from, out hilt, out tip);
-            tips.Add(tip);
-            hilts.Add(hilt);
-            foreach (var frame in replay.Frames)
-            {
-                if (frame.Time <= from) continue;
-                if (frame.Time >= to) break;
-                tips.Add(frame.SaberTip(saberType));
-                hilts.Add(frame.Saber(saberType).Position);
-            }
-            CutMoments.BladeAt(replay, saberType, to, out hilt, out tip);
-            tips.Add(tip);
-            hilts.Add(hilt);
-            if (tips.Count < 4) return null;
-
-            // 先端の弧長で取り直し、手元も同じ位置（同じ瞬間）で取る
-            int samples = SwingAnalyzer.SamplesPerSwing;
-            var cumulative = new double[tips.Count];
-            for (int i = 1; i < tips.Count; i++) cumulative[i] = cumulative[i - 1] + Vector3.Distance(tips[i - 1], tips[i]);
-            double total = cumulative[tips.Count - 1];
-
-            var outTips = new Vector3[samples];
-            var outHilts = new Vector3[samples];
-            int cursor = 0;
-            for (int i = 0; i < samples; i++)
-            {
-                double target = total * i / (samples - 1);
-                while (cursor < tips.Count - 2 && cumulative[cursor + 1] < target) cursor++;
-                double segment = cumulative[cursor + 1] - cumulative[cursor];
-                float t = segment <= 1e-9 ? 0f : (float)((target - cumulative[cursor]) / segment);
-                outTips[i] = CutMoments.Lerp(tips[cursor], tips[cursor + 1], t);
-                outHilts[i] = CutMoments.Lerp(hilts[cursor], hilts[cursor + 1], t);
-            }
-
-            return new Swing { SaberType = saberType, Tips = outTips, Hilts = outHilts };
-        }
-
-        private static Vector3[] Mean(List<Vector3[]> paths)
-        {
-            int samples = paths[0].Length;
-            var mean = new Vector3[samples];
-            for (int i = 0; i < samples; i++)
-                mean[i] = new Vector3
-                {
-                    X = paths.Average(p => p[i].X),
-                    Y = paths.Average(p => p[i].Y),
-                    Z = paths.Average(p => p[i].Z),
-                };
-            return mean;
-        }
-
-        /// <summary>
-        /// 切った瞬間のノーツの中心を、配置（手・マス・向き）ごとに平均する。
-        /// 中心は「打点 ± 法線 × 距離」の2つの候補のうち、マスに近い方（正面図と同じ）。
-        /// </summary>
-        private void LoadNotes(Replay replay)
-        {
-            double residual;
-            var grid = NoteGrid.FitTo(replay, out residual);
-
-            foreach (var group in replay.Notes
-                .Where(n => n.EventType == NoteEventType.Good && n.Cut != null && !n.IsStandIn)
-                .GroupBy(n => new { n.ColorType, n.LineIndex, n.LineLayer, n.CutDirection }))
-            {
-                float gx = grid.X(group.Key.LineIndex), gy = grid.Y(group.Key.LineLayer);
-                double x = 0, y = 0, z = 0;
-                int count = 0;
-                foreach (var note in group)
-                {
-                    var p = note.Cut.CutPoint;
-                    if (p.X == 0 && p.Y == 0 && p.Z == 0) continue;
-                    var n = note.Cut.CutNormal;
-                    double d = note.Cut.CutDistanceToCenter;
-                    double plus = Sq(p.X + n.X * d - gx) + Sq(p.Y + n.Y * d - gy);
-                    double minus = Sq(p.X - n.X * d - gx) + Sq(p.Y - n.Y * d - gy);
-                    double sign = plus <= minus ? 1.0 : -1.0;
-                    x += p.X + sign * n.X * d;
-                    y += p.Y + sign * n.Y * d;
-                    z += p.Z + sign * n.Z * d;
-                    count++;
-                }
-                if (count == 0) continue;
-
-                _notes.Add(new Note
-                {
-                    ColorType = group.Key.ColorType,
-                    Forehand = SwingAnalyzer.IsForehand(group.First(), 0),
-                    CutDirection = group.Key.CutDirection,
-                    Center = new Vector3 { X = (float)(x / count), Y = (float)(y / count), Z = (float)(z / count) },
-                });
-            }
-        }
-
-        private static double Sq(double v) { return v * v; }
-
-        /// <summary>切った瞬間の頭の位置（平均）。プレイヤーがどこに立っていたかの目印。</summary>
-        private void LoadHead(Replay replay)
-        {
-            var cuts = replay.Notes.Where(n => n.EventType == NoteEventType.Good && n.Cut != null).ToList();
-            if (cuts.Count == 0 || replay.Frames.Count == 0) return;
-
-            double x = 0, y = 0, z = 0;
-            foreach (var note in cuts)
-            {
-                int i = replay.Frames.FindIndex(f => f.Time >= note.EventTime);
-                var head = replay.Frames[i < 0 ? replay.Frames.Count - 1 : i].Head.Position;
-                x += head.X; y += head.Y; z += head.Z;
-            }
-            _head = new Vector3 { X = (float)(x / cuts.Count), Y = (float)(y / cuts.Count), Z = (float)(z / cuts.Count) };
-            _hasHead = true;
         }
 
         // ───────── 視点 ─────────
@@ -472,7 +285,7 @@ namespace JumpDrill.Gui
             var onTop = new List<Item>();
             if (_hasHead) AddHead(items);
             foreach (var note in _notes)
-                if (Shown(note.ColorType) && ShownSide(note.Forehand)) AddNote(items, onTop, note);
+                if (Shown(note.ColorType) && SwingSides.NoteShown(note.CutDirection, OnlyForehand)) AddNote(items, onTop, note);
 
             if (!ShowMeanOnly)
                 foreach (var swing in _swings)
@@ -530,7 +343,7 @@ namespace JumpDrill.Gui
         private Color VisibleColor(Swing swing, int i)
         {
             i = Math.Max(1, Math.Min(swing.Tips.Length - 1, i));
-            bool forehand = SwingColors.SegmentForehand(i, SwingColors.TurnIndex(swing.Tips, swing.ToDirection), swing.ToForehand, swing.FromForehand);
+            bool forehand = swing.SegmentForehand(i);
             return ShownSide(forehand) ? HandColor(swing.SaberType, forehand) : Color.Empty;
         }
 
@@ -539,14 +352,14 @@ namespace JumpDrill.Gui
         private static Color Lighter(Color color, float amount) { return color.IsEmpty ? color : ControlPaint.Light(color, amount); }
 
         /// <summary>
-        /// 振りの i 番目の区間（i-1 → i）の色。折り返し点の前後でフォア・バックを決める（<see cref="SwingColors.TurnIndex"/>）。
+        /// 振りの i 番目の区間（i-1 → i）の色。折り返し点の前後でフォア・バックを決める（<see cref="SwingScene.Swing.SegmentForehand"/>）。
         /// 手元の道のりも、同じ瞬間の先端の動きで決める。
         /// </summary>
         private static Color SegmentColor(Swing swing, int i)
         {
             i = Math.Max(1, Math.Min(swing.Tips.Length - 1, i));
             return HandColor(swing.SaberType,
-                SwingColors.SegmentForehand(i, SwingColors.TurnIndex(swing.Tips, swing.ToDirection), swing.ToForehand, swing.FromForehand));
+                swing.SegmentForehand(i));
         }
 
         /// <summary>床（高さ 0）の格子。50 cm 刻み。前後左右の向きが分かるように、プレイヤーの前を少し明るく。</summary>
@@ -803,33 +616,13 @@ namespace JumpDrill.Gui
         {
             foreach (var note in _notes)
             {
-                if (note.ColorType != mean.SaberType || !ShownSide(note.Forehand)) continue;
+                if (note.ColorType != mean.SaberType || !SwingSides.NoteShown(note.CutDirection, OnlyForehand)) continue;
 
-                double turn = ArrowAngle(note.CutDirection);
-                if (double.IsNaN(turn)) turn = 0.0;
-                // 立方体の軸（AddNote と同じ回し方）
-                var axisU = new Vector3 { X = (float)Math.Cos(turn), Y = (float)-Math.Sin(turn), Z = 0f };
-                var axisV = new Vector3 { X = (float)Math.Sin(turn), Y = (float)Math.Cos(turn), Z = 0f };
-                var axisW = new Vector3 { Z = 1f };
-                var center = note.Center;
-
-                for (int i = 1; i < mean.Tips.Length; i++)
+                foreach (var piece in SwingScene.InsideNote(mean, note))
                 {
-                    if (VisibleColor(mean, i).IsEmpty) continue;
+                    if (VisibleColor(mean, piece.Key).IsEmpty) continue;
 
-                    var polygon = new List<Vector3> { mean.Hilts[i - 1], mean.Tips[i - 1], mean.Tips[i], mean.Hilts[i] };
-                    foreach (var axis in new[] { axisU, axisV, axisW })
-                        foreach (float sign in new[] { 1f, -1f })
-                        {
-                            // 中心からの、この軸の向きの距離が NoteSize / 2 以下の側を残す
-                            Func<Vector3, float> inside = p => NoteSize / 2 - sign * Dot(axis,
-                                new Vector3 { X = p.X - center.X, Y = p.Y - center.Y, Z = p.Z - center.Z });
-                            polygon = ClipPolygon(polygon, inside);
-                            if (polygon.Count < 3) break;
-                        }
-                    if (polygon.Count < 3) continue;
-
-                    var clipped = polygon.ToArray();
+                    var clipped = piece.Value;
                     items.Add(new Item
                     {
                         Depth = clipped.Average(p => DepthOf(p)),
@@ -848,21 +641,6 @@ namespace JumpDrill.Gui
 
         /// <summary>刃がノーツの中を通った所の濃さ (0-255)。</summary>
         private const int InsideNoteAlpha = 70;
-
-        /// <summary>多角形のうち <paramref name="inside"/> が 0 以上の側だけを残す（Sutherland–Hodgman の1枚ぶん）。</summary>
-        private static List<Vector3> ClipPolygon(List<Vector3> polygon, Func<Vector3, float> inside)
-        {
-            var result = new List<Vector3>();
-            for (int i = 0; i < polygon.Count; i++)
-            {
-                var a = polygon[i];
-                var b = polygon[(i + 1) % polygon.Count];
-                float da = inside(a), db = inside(b);
-                if (da >= 0) result.Add(a);
-                if ((da >= 0) != (db >= 0)) result.Add(CutMoments.Lerp(a, b, da / (da - db)));
-            }
-            return result;
-        }
 
         /// <summary>
         /// 切る向きの角度（上向きから右回りのラジアン）。面の v 軸がこの向きになる（(sin, cos)）。

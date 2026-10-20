@@ -296,6 +296,83 @@ namespace JumpDrillMod.UI.Leaderboard
             Fill();
         }
 
+        /// <summary>振りを空間に置く（VR 表示）。リーダーボードが2か所にあっても置くのは1つだけ。</summary>
+        private static SwingSceneService room => SwingSceneService.Shared;
+
+        private const string RoomOff = "3D off";
+        private const string RoomOn = "3D on";
+
+        private static bool ShowInRoom => PluginConfig.Instance?.DiagramRoom ?? false;
+
+        [UIValue("room-options")]
+        public List<object> RoomOptions => new List<object> { RoomOff, RoomOn };
+
+        [UIValue("room")]
+        public string Room
+        {
+            get => ShowInRoom ? RoomOn : RoomOff;
+            set { }
+        }
+
+        /// <summary>
+        /// 選んでいる記録の振りを空間に出すか。今どちらかが分かるようにプルダウンにする。
+        /// </summary>
+        [UIAction("room-changed")]
+        public void RoomChanged(object value)
+        {
+            if (PluginConfig.Instance != null) PluginConfig.Instance.DiagramRoom = (value as string) == RoomOn;
+            UpdateRoom();
+        }
+
+        /// <summary>選んでいる記録の振りを空間に出し直す。出さない設定か、記録が無ければ消す。</summary>
+        private void UpdateRoom()
+        {
+            var score = selected < scores.Count ? scores[selected] : null;
+            if (!ShowInRoom || score == null || !isActiveAndEnabled)
+            {
+                room.Hide();
+                return;
+            }
+            room.Show(score.ReplayPath, OnlyForehand);
+        }
+
+        private const string StrokeBoth = "Fore + back";
+        private const string StrokeFore = "Forehand";
+        private const string StrokeBack = "Backhand";
+
+        /// <summary>軌道の図でフォアだけ（true）かバックだけ（false）。両方なら null（GUI の「フォアとバック」）。</summary>
+        private static bool? OnlyForehand
+        {
+            get
+            {
+                string value = PluginConfig.Instance?.DiagramStroke ?? string.Empty;
+                return value == "fore" ? true : value == "back" ? (bool?)false : null;
+            }
+        }
+
+        [UIValue("stroke-options")]
+        public List<object> StrokeOptions => new List<object> { StrokeBoth, StrokeFore, StrokeBack };
+
+        [UIValue("stroke")]
+        public string Stroke
+        {
+            get => OnlyForehand == true ? StrokeFore : OnlyForehand == false ? StrokeBack : StrokeBoth;
+            set { }
+        }
+
+        /// <summary>
+        /// フォアだけ・バックだけを切り替える。2択以上なのでボタンにはせずプルダウンにする
+        /// （ボタンの字からは今どちらを出しているかが読めない）。
+        /// </summary>
+        [UIAction("stroke-changed")]
+        public void StrokeChanged(object value)
+        {
+            string stroke = value as string ?? StrokeBoth;
+            if (PluginConfig.Instance != null)
+                PluginConfig.Instance.DiagramStroke = stroke == StrokeFore ? "fore" : stroke == StrokeBack ? "back" : string.Empty;
+            FillDiagram();
+        }
+
         [UIAction("toggle-mean")]
         public void ToggleMean()
         {
@@ -344,6 +421,8 @@ namespace JumpDrillMod.UI.Leaderboard
         protected override void DidDeactivate(bool removedFromHierarchy, bool screenSystemDisabling)
         {
             base.DidDeactivate(removedFromHierarchy, screenSystemDisabling);
+            // 曲を始めるときやほかのリーダーボードに切り替えたときに、空間に振りが残らないように
+            room.Hide();
             RankSetting.Changed -= Rerank;
             RestoreCovered();
             gameObject.SetActive(false);
@@ -360,11 +439,14 @@ namespace JumpDrillMod.UI.Leaderboard
             RankSetting.Changed -= Rerank;
             RankSetting.Changed += Rerank;
             if (rankedMetric != RankSetting.Current) Rerank();
+
+            UpdateRoom();
         }
 
         /// <summary>DidDeactivate を通らずに消えたときも、基準の知らせを受けないようにする。</summary>
         protected override void OnDestroy()
         {
+            room.Hide();
             RankSetting.Changed -= Rerank;
             base.OnDestroy();
         }
@@ -822,11 +904,12 @@ namespace JumpDrillMod.UI.Leaderboard
             if (diagram == null) return;
 
             var score = selected < scores.Count ? scores[selected] : null;
-            var sprite = score == null || diagrams == null ? null : diagrams.For(score.ReplayPath, MeanOnly);
+            var sprite = score == null || diagrams == null ? null : diagrams.For(score.ReplayPath, MeanOnly, OnlyForehand);
 
             diagram.gameObject.SetActive(sprite != null);
             if (sprite != null) diagram.sprite = sprite;
             FillFigureLabels(sprite != null ? score : null);
+            UpdateRoom();
 
             // ボタンには押すと切り替わる先を出す（Drill / Other と同じ）
             if (viewButton != null)

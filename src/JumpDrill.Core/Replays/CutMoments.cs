@@ -50,6 +50,14 @@ namespace JumpDrill.Replays
         public static void BladeAt(Replay replay, int saberType, float time, out Vector3 hilt, out Vector3 tip)
         {
             var frames = replay.Frames;
+            if (frames.Count == 0)
+            {
+                // フレームが無いリプレイ。刃は分からないので原点に置く（呼んだ側は点が足りずに振りを捨てる）
+                hilt = new Vector3();
+                tip = new Vector3();
+                return;
+            }
+
             int lo = 0, hi = frames.Count - 1;
             while (lo < hi)
             {

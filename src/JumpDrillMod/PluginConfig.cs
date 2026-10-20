@@ -88,6 +88,17 @@ namespace JumpDrillMod
         public virtual bool DiagramMeanOnly { get; set; } = false;
 
         /// <summary>
+        /// 軌道の図でフォアだけ（"fore"）かバックだけ（"back"）を出すか。両方なら空（GUI の「フォアとバック」）。
+        /// タワー・スタックでは行きと帰りが重なるので、片方ずつ見られるようにする。
+        /// </summary>
+        public virtual string DiagramStroke { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 選んでいる記録の振りを、メニューの空間に実物大で出すか（GUI の 3D 表示の VR 版）。
+        /// </summary>
+        public virtual bool DiagramRoom { get; set; } = false;
+
+        /// <summary>
         /// リーダーボードを新しい順に並べるか。false なら順位（<see cref="RankByAccuracy"/> の数字の高い順）。
         /// 叩くたびに切り替え直さなくて済むように残しておく。
         /// </summary>

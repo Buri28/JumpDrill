@@ -323,7 +323,10 @@ namespace JumpDrill.Model
 
         /// <summary>
         /// 全ステージを入れた1ファイルを、ステージごとのファイルに分けて <paramref name="folder"/> に置き、元を消す。
-        /// 同じ名前のファイルが既にあればそのステージは書かない。読めなければ例外で、元のファイルは残る。
+        /// 同じ名前のファイルが既にあれば、後ろに番号を付けた名前（<c>名前 (2)</c>）で書く。
+        /// 旧版は名前の大文字と小文字を区別していたので「abc」と「ABC」が並んでいることがあり、
+        /// ファイル名にすると同じになる（名前の置き換えで同じになる組や、2か所の旧ファイルに同じ名前がある場合も）。
+        /// 飛ばしてから元を消すと、そのステージが失われる。読めなければ例外で、元のファイルは残る。
         /// </summary>
         public static void SplitSingleFile(string file, string folder)
         {
@@ -332,8 +335,9 @@ namespace JumpDrill.Model
             Directory.CreateDirectory(folder);
             foreach (var stage in stages)
             {
-                string path = Path.Combine(folder, SafeFileName(stage.Name) + ".json");
-                if (File.Exists(path)) continue;
+                string name = SafeFileName(stage.Name);
+                string path = Path.Combine(folder, name + ".json");
+                for (int i = 2; File.Exists(path); i++) path = Path.Combine(folder, name + " (" + i + ").json");
                 WriteStage(path, stage);
             }
             File.Delete(file);
@@ -439,6 +443,17 @@ namespace JumpDrill.Model
         public void Save(string folder)
         {
             Directory.CreateDirectory(folder);
+
+            // 読んだ後でほか（MOD や別の窓）が同じ名前のファイルを作っていたら、上書きせずに断る。
+            // 先に全部見てから書く（途中まで書いてから断ると、ステージの組がばらばらになる）
+            foreach (var stage in Stages)
+            {
+                string path = Path.Combine(folder, stage.Name + ".json");
+                if (!_onDisk.Contains(stage.Name) && File.Exists(path))
+                    throw new IOException(string.Format(Lang.T(
+                        "ステージ「{0}」のファイルがほかで作られています。開き直してから、別の名前にしてください。",
+                        "A file for the stage \"{0}\" was created elsewhere. Reopen and choose another name."), stage.Name));
+            }
 
             foreach (var stage in Stages)
             {

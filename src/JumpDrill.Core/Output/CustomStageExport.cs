@@ -119,6 +119,14 @@ namespace JumpDrill.Output
                 if (id != null && !local.ContainsKey(id)) local[id] = name;
             }
 
+            // 外から来たファイルなので、行と1行の本数の上限と、同じドリルの重複をここで整える
+            // （画面で組んだステージと同じ決まり。上限を超えた分と重複は取り込まない）
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var rows = exported.Stage.Rows.Take(CustomStage.MaxRows).ToList();
+            foreach (var row in rows)
+                row.Drills = row.Drills.Where(d => seen.Add(DrillNaming.ExtractId(d) ?? d)).Take(CustomStage.MaxDrillsPerRow).ToList();
+            exported.Stage.Rows = rows.Where(r => r.Drills.Count > 0).ToList();
+
             var plan = new ImportPlan { Stage = exported.Stage };
             var planned = new HashSet<string>(StringComparer.Ordinal);
             foreach (var row in exported.Stage.Rows)
