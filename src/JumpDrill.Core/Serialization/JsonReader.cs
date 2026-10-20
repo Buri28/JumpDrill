@@ -19,20 +19,27 @@ namespace JumpDrill.Serialization
             if (text == null) throw new ArgumentNullException(nameof(text));
 
             int pos = 0;
-            object value = ReadValue(text, ref pos);
+            object value = ReadValue(text, ref pos, 0);
             SkipSpace(text, ref pos);
             if (pos < text.Length) throw Error(pos, "余分な文字があります");
             return value;
         }
 
-        private static object ReadValue(string s, ref int pos)
+        /// <summary>
+        /// 入れ子の深さの上限。再帰で読むので、外から来たファイル（取り込んだステージなど）が極端に深いと
+        /// スタックが尽きてアプリごと落ちる（その例外は捕まえられない）。ふつうのファイルはせいぜい数段。
+        /// </summary>
+        private const int MaxDepth = 64;
+
+        private static object ReadValue(string s, ref int pos, int depth)
         {
             SkipSpace(s, ref pos);
             if (pos >= s.Length) throw Error(pos, "値がありません");
+            if (depth > MaxDepth) throw Error(pos, "入れ子が深すぎます");
 
             char c = s[pos];
-            if (c == '{') return ReadObject(s, ref pos);
-            if (c == '[') return ReadArray(s, ref pos);
+            if (c == '{') return ReadObject(s, ref pos, depth);
+            if (c == '[') return ReadArray(s, ref pos, depth);
             if (c == '"') return ReadString(s, ref pos);
             if (c == '-' || (c >= '0' && c <= '9')) return ReadNumber(s, ref pos);
             if (Match(s, ref pos, "true")) return true;
@@ -41,7 +48,7 @@ namespace JumpDrill.Serialization
             throw Error(pos, "読めない値です");
         }
 
-        private static Dictionary<string, object> ReadObject(string s, ref int pos)
+        private static Dictionary<string, object> ReadObject(string s, ref int pos, int depth)
         {
             var result = new Dictionary<string, object>(StringComparer.Ordinal);
             pos++;
@@ -58,7 +65,7 @@ namespace JumpDrill.Serialization
                 if (pos >= s.Length || s[pos] != ':') throw Error(pos, "':' がありません");
                 pos++;
 
-                result[name] = ReadValue(s, ref pos);
+                result[name] = ReadValue(s, ref pos, depth + 1);
 
                 SkipSpace(s, ref pos);
                 if (pos >= s.Length) throw Error(pos, "'}' がありません");
@@ -68,7 +75,7 @@ namespace JumpDrill.Serialization
             }
         }
 
-        private static List<object> ReadArray(string s, ref int pos)
+        private static List<object> ReadArray(string s, ref int pos, int depth)
         {
             var result = new List<object>();
             pos++;
@@ -77,7 +84,7 @@ namespace JumpDrill.Serialization
 
             while (true)
             {
-                result.Add(ReadValue(s, ref pos));
+                result.Add(ReadValue(s, ref pos, depth + 1));
 
                 SkipSpace(s, ref pos);
                 if (pos >= s.Length) throw Error(pos, "']' がありません");

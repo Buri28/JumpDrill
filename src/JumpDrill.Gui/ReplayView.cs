@@ -919,10 +919,11 @@ namespace JumpDrill.Gui
             {
                 // 局所座標は画素で、そのまま面の軸に載せ替える（画面は下が正なので Y を反転）。
                 // 単位ベクトルなので倍率は要らない。正面を向いていなければ短くなる＝縮んで見える。
-                g.MultiplyTransform(new Matrix(
+                using (var axes = new Matrix(
                     (float)note.RightX, (float)-note.RightY,
                     (float)-note.UpX, (float)note.UpY,
-                    0f, 0f));
+                    0f, 0f))
+                    g.MultiplyTransform(axes);
             }
             else if (arrow.HasValue)
             {

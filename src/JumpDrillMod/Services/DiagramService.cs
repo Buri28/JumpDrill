@@ -33,7 +33,7 @@ namespace JumpDrillMod.Services
         private readonly Dictionary<string, Sprite?> cache =
             new Dictionary<string, Sprite?>(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary><see cref="cache"/> に入れた順。古いものから捨てる（1枚が 900×380 の Texture なので際限なく持たない）。</summary>
+        /// <summary><see cref="cache"/> に入れた順。古いものから捨てる（1枚が 904×294 の Texture なので際限なく持たない）。</summary>
         private readonly List<string> order = new List<string>();
 
         /// <summary>持っておく図の数。記録の選び直しと、平均だけ・フォアとバックの切り替えで行き来する分。</summary>

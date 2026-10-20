@@ -8,7 +8,7 @@ using Xunit;
 
 namespace JumpDrill.Tests
 {
-    /// <summary>レビューで見つかった問題の直し（ステージの移行・保存、取り込み、フレームの無いリプレイ、フォア・バックの絞り込み）。</summary>
+    /// <summary>ステージの移行・保存、取り込み、フレームの無いリプレイ、フォア・バックの絞り込みの境目の扱い。</summary>
     public class ReviewFixTests
     {
         private static string NewFolder()
@@ -114,6 +114,90 @@ namespace JumpDrill.Tests
             Assert.Equal(-Math.PI / 2, SwingSides.ArrowAngle(2), 6);        // Left
             Assert.Equal(Math.PI * 3 / 4, SwingSides.ArrowAngle(7), 6);     // DownRight
             Assert.True(double.IsNaN(SwingSides.ArrowAngle(8)));
+        }
+
+        [Fact]
+        public void Saving_keeps_a_stage_changed_or_deleted_elsewhere_and_writes_only_edited_stages()
+        {
+            string folder = NewFolder();
+            try
+            {
+                var book = new CustomStageBook();
+                book.Stages.Add(new CustomStage { Name = "X" });
+                book.Stages.Add(new CustomStage { Name = "Y" });
+                book.Save(folder);
+
+                var gui = CustomStageBook.Load(folder);
+
+                // 読んだ後で MOD が X に行を足し、Z を作り直すように消した
+                File.WriteAllText(Path.Combine(folder, "X.json"), "{ \"rows\": [ { \"name\": \"mod\", \"drills\": [] } ] }");
+
+                // GUI が Y だけ変えて保存しても、X は MOD の中身のまま
+                gui.Find("Y").Rows.Add(new CustomStageRow { Name = "gui" });
+                gui.Save(folder);
+                Assert.Contains("mod", File.ReadAllText(Path.Combine(folder, "X.json")));
+                Assert.Contains("gui", File.ReadAllText(Path.Combine(folder, "Y.json")));
+
+                // GUI が X も変えようとしたら、上書きせずに断る
+                gui.Find("X").Rows.Add(new CustomStageRow { Name = "gui" });
+                Assert.Throws<IOException>(() => gui.Save(folder));
+                Assert.DoesNotContain("gui", File.ReadAllText(Path.Combine(folder, "X.json")));
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        }
+
+        [Fact]
+        public void A_stage_deleted_elsewhere_is_not_written_back()
+        {
+            string folder = NewFolder();
+            try
+            {
+                var book = new CustomStageBook();
+                book.Stages.Add(new CustomStage { Name = "X" });
+                book.Stages.Add(new CustomStage { Name = "Y" });
+                book.Save(folder);
+
+                var gui = CustomStageBook.Load(folder);
+                File.Delete(Path.Combine(folder, "X.json"));   // MOD で消した
+
+                gui.Find("Y").Rows.Add(new CustomStageRow { Name = "gui" });
+                gui.Save(folder);
+                Assert.False(File.Exists(Path.Combine(folder, "X.json")));
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        }
+
+        [Fact]
+        public void Importing_refuses_drills_with_extreme_settings()
+        {
+            string file = Path.Combine(Path.GetTempPath(), "jumpdrill-review-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                const string Drill = "[AAAAA] Drill R8b L5a axis 300 BPM 10s";
+                File.WriteAllText(file, "{ \"jumpDrillStage\": 1, \"name\": \"S\", \"rows\": [ { \"name\": \"R\", \"drills\": [ \"" + Drill +
+                    "\" ] } ], \"drills\": { \"" + Drill + "\": { \"tail\": 1000000 } } }");
+
+                var plan = CustomStageExport.Plan(CustomStageExport.Read(file), Enumerable.Empty<string>());
+                Assert.Empty(plan.ToGenerate);
+                Assert.Equal(Drill, Assert.Single(plan.CannotGenerate));
+            }
+            finally
+            {
+                File.Delete(file);
+            }
+        }
+
+        [Fact]
+        public void Very_deep_json_is_refused_instead_of_crashing()
+        {
+            string deep = new string('[', 100000) + new string(']', 100000);
+            Assert.Throws<FormatException>(() => JumpDrill.Serialization.JsonReader.Parse(deep));
         }
     }
 }

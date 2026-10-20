@@ -1917,9 +1917,15 @@ namespace JumpDrill.Gui
 
             if (lastCopy)
             {
-                // メダル画面を開いていれば、そちらの持っている中身を直して保存する（ファイルだけ直すと上書きで戻る）
-                if (_medalForm != null && !_medalForm.IsDisposed) _medalForm.DrillDeleted(drill.SongName, true);
-                else RemoveFromStages(drill.SongName, drill.Path);
+                // その Beat Saber のステージをメダル画面が持っていれば、そちらの中身を直して保存する（ファイルだけ直すと上書きで戻る）。
+                // 別の版を見ている・持てていないときは、ファイルを直す
+                bool medalOpen = _medalForm != null && !_medalForm.IsDisposed;
+                if (medalOpen && _medalForm.HoldsStagesOf(drill.Path)) _medalForm.DrillDeleted(drill.SongName, true);
+                else
+                {
+                    RemoveFromStages(drill.SongName, drill.Path);
+                    if (medalOpen) _medalForm.DrillDeleted(drill.SongName, false);
+                }
             }
             else if (_medalForm != null && !_medalForm.IsDisposed)
             {

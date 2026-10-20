@@ -184,13 +184,13 @@ namespace JumpDrillMod.UI.Medals
             sb.Append("<bg><vertical pref-width='").Append(width)
               .Append("' spacing='0.3' pad='2' child-expand-height='false' child-align='UpperCenter'>");
 
-            // 総合と切り替え。2段に分ける（ユーザー指定の並び）。
+            // 総合と切り替え。2段に分ける。
             // 1段目: 総合とメダル数（左端）・ステージ（Standard / Other / カスタム）・New、右端に Make drill。
             // 2段目: 基準（REPRO / ACC）・Rescan を左寄せ。
             // 基準とステージは2択でもボタンにはしない（今どちらか読めない）。
             // 総合は入れ物いっぱいに広げて左寄せにする。広げないと入れ物の真ん中に出た（ゲーム内で確認）。
             // 1段目の幅: 総合 30 + Standard 30 + New 12 + 空き + Make drill 24、間 1×4 で表の内側（TableWidth - 4）。
-            // 画面を移るボタンは色ではなく字の後ろの「→」で示す（ユーザー指定。→ は ▲▼ と同じく JIS の記号で、本体の日本語フォントで出る見込み）
+            // 画面を移るボタンは色ではなく字の後ろの「→」で示す（→ は ▲▼ と同じく JIS の記号で、本体の日本語フォントで出る見込み）
             sb.Append("<horizontal pref-height='7' spacing='1' child-expand-width='false' child-control-width='true' child-align='MiddleLeft'>");
             // 入れ物は Box と同じだが、幅も中身に合わせて広げる（child-control-width）。広げないと文字が真ん中に寄る
             sb.Append("<horizontal pref-width='30' min-width='30' child-align='MiddleLeft' child-expand-width='true' child-control-width='true'")
@@ -340,7 +340,7 @@ namespace JumpDrillMod.UI.Medals
         }
 
         /// <summary>
-        /// 削除のボタンの字。橙赤（警告の文と同じ #FF8060）にして、押す前に目に入るようにする（ユーザー指定）。
+        /// 削除のボタンの字。橙赤（警告の文と同じ #FF8060）にして、押す前に目に入るようにする。
         /// 押せば確かめずに消えるので、見た目で注意させる。字の色はリッチテキストで付ける
         /// （マークアップの属性に書くので &lt; &gt; はエスケープする）。
         /// </summary>

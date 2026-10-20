@@ -285,7 +285,14 @@ namespace JumpDrillMod.UI.Medals
             catch (Exception e)
             {
                 Plugin.Log?.Error("could not save the stage file: " + e);
-                SetStatus("Could not save the stage. See the log.");
+
+                // 保存できなかった変更を残すと、画面とファイルが食い違い、次の保存も同じ理由で失敗し続ける。
+                // ファイルから読み直して、ほか（GUI など）での変更も取り込んだ今の中身に戻す
+                LoadBook();
+                Fill();
+                SetStatus(e is System.IO.IOException
+                    ? "The stage was changed elsewhere, so it was not saved. Reloaded."
+                    : "Could not save the stage. See the log.");
                 return false;
             }
         }

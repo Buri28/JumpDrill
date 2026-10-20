@@ -373,10 +373,10 @@ namespace JumpDrillMod.UI.Leaderboard
             var score = selected < scores.Count ? scores[selected] : null;
             if (!ShowInRoom || score == null || !isActiveAndEnabled)
             {
-                room.Hide();
+                room.Hide(this);
                 return;
             }
-            room.Show(score.ReplayPath, OnlyForehand, RoomForward);
+            room.Show(this, score.ReplayPath, OnlyForehand, RoomForward);
         }
 
         private const string StrokeBoth = "Fore + back";
@@ -465,7 +465,7 @@ namespace JumpDrillMod.UI.Leaderboard
         {
             base.DidDeactivate(removedFromHierarchy, screenSystemDisabling);
             // 曲を始めるときやほかのリーダーボードに切り替えたときに、空間に振りが残らないように
-            room.Hide();
+            room.Hide(this);
             RankSetting.Changed -= Rerank;
             RestoreCovered();
             gameObject.SetActive(false);
@@ -489,7 +489,7 @@ namespace JumpDrillMod.UI.Leaderboard
         /// <summary>DidDeactivate を通らずに消えたときも、基準の知らせを受けないようにする。</summary>
         protected override void OnDestroy()
         {
-            room.Hide();
+            room.Hide(this);
             RankSetting.Changed -= Rerank;
             base.OnDestroy();
         }

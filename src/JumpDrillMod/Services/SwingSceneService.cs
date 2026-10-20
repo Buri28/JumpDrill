@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+using IPA.Utilities.Async;
 using JumpDrill.Replays;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -81,8 +83,10 @@ namespace JumpDrillMod.Services
         /// </summary>
         /// <param name="onlyForehand">フォアだけ（true）かバックだけ（false）。両方なら null。</param>
         /// <param name="forward">プレイしたときの位置から前へずらす量 (m)。</param>
-        internal void Show(string? replayPath, bool? onlyForehand, float forward = 0f)
+        /// <param name="owner">出す側（リーダーボード）。消すときは出した側だけが消せる（<see cref="Hide(object)"/>）。</param>
+        internal void Show(object owner, string? replayPath, bool? onlyForehand, float forward = 0f)
         {
+            this.owner = owner;
             if (string.IsNullOrEmpty(replayPath))
             {
                 Hide();
@@ -99,8 +103,30 @@ namespace JumpDrillMod.Services
             }
 
             Hide();
+            pendingKey = key;
 
-            var scene = SceneFor(replayPath!);
+            // リプレイを読んで中身を作るのは重い（数千フレームを走らせる）ので、描画のスレッドの外でする。
+            // 持っていればすぐ置く
+            SwingScene? cached;
+            if (TryCached(replayPath!, out cached))
+            {
+                Place(key, cached, onlyForehand, forward);
+                return;
+            }
+
+            string path = replayPath!;
+            Task.Run(() => ReadScene(path)).ContinueWith(task =>
+            {
+                var scene = task.IsFaulted ? null : task.Result;
+                Remember(path, scene);
+                // 読んでいる間に別の記録を選んだ・消したなら置かない
+                if (pendingKey == key) Place(key, scene, onlyForehand, forward);
+            }, UnityMainThreadTaskScheduler.Default);
+        }
+
+        private void Place(string key, SwingScene? scene, bool? onlyForehand, float forward)
+        {
+            pendingKey = null;
             if (scene == null || scene.Means.Count == 0) return;
 
             try
@@ -117,9 +143,25 @@ namespace JumpDrillMod.Services
             }
         }
 
+        /// <summary>今出しているのを頼んだ側。</summary>
+        private object? owner;
+
+        /// <summary>読み込み中の表示の鍵。読み終えたときに、まだこれを出すつもりかを見る。</summary>
+        private string? pendingKey;
+
+        /// <summary>
+        /// <paramref name="from"/> が出したものなら消す。リーダーボードは2か所にあり、片方が隠れたときに、
+        /// もう片方が出している振りまで消さないように。
+        /// </summary>
+        internal void Hide(object from)
+        {
+            if (ReferenceEquals(from, owner)) Hide();
+        }
+
         /// <summary>出していたものを消す。</summary>
         internal void Hide()
         {
+            pendingKey = null;
             if (root != null) UnityEngine.Object.Destroy(root);
             foreach (var mesh in meshes) UnityEngine.Object.Destroy(mesh);
             meshes.Clear();
@@ -135,23 +177,32 @@ namespace JumpDrillMod.Services
             return replayPath + "|" + written;
         }
 
-        private SwingScene? SceneFor(string replayPath)
+        private bool TryCached(string replayPath, out SwingScene? scene)
         {
-            string key = SceneKey(replayPath);
-            SwingScene? scene;
-            if (scenes.TryGetValue(key, out scene)) return scene;
+            return scenes.TryGetValue(SceneKey(replayPath), out scene);
+        }
 
+        /// <summary>リプレイを読んで中身を作る。別のスレッドで呼ぶ（Unity のものには触らない）。</summary>
+        private static SwingScene? ReadScene(string replayPath)
+        {
             try
             {
                 if (!File.Exists(replayPath)) return null;
                 var original = ReplayReader.Read(replayPath);
-                scene = SwingScene.Build(TowerReplay.Collapse(original), original);
+                return SwingScene.Build(TowerReplay.Collapse(original), original);
             }
             catch (Exception e)
             {
                 Plugin.Log?.Error("could not read the replay for the room view: " + e);
-                scene = null;
+                return null;
             }
+        }
+
+        /// <summary>作った中身を覚えておく（描画のスレッドで呼ぶ）。</summary>
+        private void Remember(string replayPath, SwingScene? scene)
+        {
+            string key = SceneKey(replayPath);
+            if (scenes.ContainsKey(key)) return;
             scenes[key] = scene;
             sceneOrder.Add(key);
             while (sceneOrder.Count > MaxScenes)
@@ -159,7 +210,6 @@ namespace JumpDrillMod.Services
                 scenes.Remove(sceneOrder[0]);
                 sceneOrder.RemoveAt(0);
             }
-            return scene;
         }
 
         // ───────── 置く ─────────
@@ -463,7 +513,6 @@ namespace JumpDrillMod.Services
             return Rgb(SwingPalette.Of(hand, forehand));
         }
 
-        /// <summary>白へ寄せる（GUI の ControlPaint.Light と同じ効き方）。</summary>
         /// <summary>明るくする。GUI の <c>ControlPaint.Light</c> と同じ計算（JumpDrill.Core の <c>SwingPalette.Light</c>）。</summary>
         private static Color? Lighten(Color? color, float amount)
         {

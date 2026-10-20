@@ -198,6 +198,14 @@ namespace JumpDrill.Model
         /// <summary>読んだときにあったファイルのステージ名。保存のとき、ここにあって今は無いものを消す。</summary>
         private readonly HashSet<string> _onDisk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// 読んだとき（と最後に書いたとき）のファイルの中身。保存のとき、ほか（MOD や別の窓）が中身を変えていないかを見る。
+        /// </summary>
+        private readonly Dictionary<string, string> _diskText = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>読んだとき（と最後に書いたとき）のステージの中身（<see cref="ToJson"/>）。こちらで変えたかを見る。</summary>
+        private readonly Dictionary<string, string> _loadedJson = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>ファイル名なので大文字と小文字は区別しない。</summary>
         public CustomStage Find(string name)
         {
@@ -411,9 +419,12 @@ namespace JumpDrill.Model
                 try
                 {
                     // 名前はファイル名。中に名前が書いてあっても使わない
-                    var stage = FromJson(File.ReadAllText(path, Encoding.UTF8), name);
+                    string text = File.ReadAllText(path, Encoding.UTF8);
+                    var stage = FromJson(text, name);
                     stage.Name = name;
                     book.Stages.Add(stage);
+                    book._diskText[name] = text;
+                    book._loadedJson[name] = ToJson(stage);
                 }
                 catch (Exception e) when (e is FormatException || e is IOException || e is UnauthorizedAccessException)
                 {
@@ -436,26 +447,49 @@ namespace JumpDrill.Model
         }
 
         /// <summary>
-        /// ステージごとにファイルへ書く。中身の変わっていないファイルは書かない。
+        /// ステージごとにファイルへ書く。こちらで変えたステージだけを書き、読んだときから変えていないステージには触らない。
         /// 読んだときにあって今は無いステージ（削除・名前の変更）のファイルは消す。
-        /// 読めなかったファイルと、読んだあとでほかで作られたファイルには触らない。
+        /// 読めなかったファイルには触らない。
         /// </summary>
+        /// <remarks>
+        /// GUI と MOD は同じフォルダを読み書きする。読んだ後でほかが中身を変えた（または作った・消した）ファイルを、
+        /// こちらの古い中身で書き直したり消したりすると、ほかでの変更が失われる（消したステージが戻る、足したドリルが消える）。
+        /// そういうファイルに書く・消す必要があるときは、何も書かずに <see cref="IOException"/> で断る（開き直してもらう）。
+        /// 先に全部見てから書く（途中まで書いてから断ると、ステージの組がばらばらになる）。
+        /// </remarks>
         public void Save(string folder)
         {
             Directory.CreateDirectory(folder);
 
-            // 読んだ後でほか（MOD や別の窓）が同じ名前のファイルを作っていたら、上書きせずに断る。
-            // 先に全部見てから書く（途中まで書いてから断ると、ステージの組がばらばらになる）
+            var writes = new List<CustomStage>();
             foreach (var stage in Stages)
             {
                 string path = Path.Combine(folder, stage.Name + ".json");
-                if (!_onDisk.Contains(stage.Name) && File.Exists(path))
+                string loaded;
+                if (_loadedJson.TryGetValue(stage.Name, out loaded))
+                {
+                    // こちらでは変えていない（大文字と小文字だけ変えた名前は、ファイル名の付け替えが要るので書く）
+                    // （ほかで消されたファイルは、変えていなければ書き戻さない）
+                    bool caseRename = Directory.GetFiles(folder, stage.Name + ".json").Any(f => Path.GetFileName(f) != stage.Name + ".json");
+                    if (loaded == ToJson(stage) && !caseRename) continue;
+                    if (ChangedElsewhere(path, stage.Name)) throw Conflict(stage.Name);
+                }
+                else if (!_onDisk.Contains(stage.Name) && File.Exists(path))
+                {
                     throw new IOException(string.Format(Lang.T(
                         "ステージ「{0}」のファイルがほかで作られています。開き直してから、別の名前にしてください。",
                         "A file for the stage \"{0}\" was created elsewhere. Reopen and choose another name."), stage.Name));
+                }
+                writes.Add(stage);
             }
 
-            foreach (var stage in Stages)
+            var deletes = _onDisk
+                .Where(name => Find(name) == null && !Unreadable.Contains(name, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            foreach (string name in deletes)
+                if (ChangedElsewhere(Path.Combine(folder, name + ".json"), name)) throw Conflict(name);
+
+            foreach (var stage in writes)
             {
                 string path = Path.Combine(folder, stage.Name + ".json");
 
@@ -469,17 +503,38 @@ namespace JumpDrill.Model
 
                 WriteStage(path, stage);
                 _onDisk.Add(stage.Name);
+                _diskText[stage.Name] = ToJson(stage);
+                _loadedJson[stage.Name] = ToJson(stage);
             }
 
-            foreach (string name in _onDisk.ToList())
+            foreach (string name in deletes)
             {
-                if (Find(name) != null || Unreadable.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+                // 大文字と小文字だけ変えた名前の古い方は、上で付け替えたファイルそのもの。消さない
+                if (Find(name) != null) continue;
                 string path = Path.Combine(folder, name + ".json");
                 if (File.Exists(path)) File.Delete(path);
                 _onDisk.Remove(name);
+                _diskText.Remove(name);
+                _loadedJson.Remove(name);
             }
 
             Sort();
+        }
+
+        /// <summary>読んだ後で、ほかがそのステージのファイルの中身を変えたか消したか。</summary>
+        private bool ChangedElsewhere(string path, string name)
+        {
+            string known;
+            if (!_diskText.TryGetValue(name, out known)) return false;
+            if (!File.Exists(path)) return true;
+            return File.ReadAllText(path, Encoding.UTF8) != known;
+        }
+
+        private static IOException Conflict(string name)
+        {
+            return new IOException(string.Format(Lang.T(
+                "ステージ「{0}」がほか（MOD など）で変わっています。上書きしないように保存をやめました。開き直してください。",
+                "The stage \"{0}\" was changed elsewhere (e.g. in the mod). Not saved to keep that change. Please reopen."), name));
         }
 
         /// <summary>

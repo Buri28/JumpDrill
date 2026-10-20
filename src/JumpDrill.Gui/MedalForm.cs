@@ -655,6 +655,13 @@ namespace JumpDrill.Gui
             {
                 MessageBox.Show(this, Lang.T("ステージを保存できませんでした。", "Could not save the stage.") + Environment.NewLine + ex.Message,
                     "JumpDrill", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                // 保存できなかった変更（名前の変更など）を残すと、画面とファイルが食い違い、次の保存も同じ理由で失敗し続ける。
+                // ファイルから読み直して、ほか（MOD など）での変更も取り込んだ今の中身に戻す
+                string current = CurrentStage?.Name ?? "";
+                LoadStages();
+                if (_book.Find(current) != null) FillStagePicker(current);
+                ShowStage();
                 return false;
             }
         }
@@ -874,6 +881,19 @@ namespace JumpDrill.Gui
         /// その他の一覧を探し直す。ステージはこの画面が持っている中身を直して保存する
         /// （ファイルだけ直すと、あとでこの画面が保存したときに元に戻ってしまう）。
         /// </summary>
+        /// <summary>
+        /// この画面が、その Beat Saber のステージを持って編集しているか。持っていれば、ステージから曲名を外すのはこの画面がする
+        /// （ファイルだけ直すと、この画面の保存で戻る）。持っていなければ、呼んだ側がファイルを直す。
+        /// </summary>
+        internal bool HoldsStagesOf(string folder)
+        {
+            if (_bookBroken || _stagesPath == null || string.IsNullOrEmpty(folder)) return false;
+            string install = CustomStageBook.InstallRootOf(folder);
+            if (install == null) return false;
+            return string.Equals(Path.GetFullPath(CustomStageBook.PathFor(install)).TrimEnd('\\', '/'),
+                Path.GetFullPath(_stagesPath).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+        }
+
         internal void DrillDeleted(string songName, bool removeFromStages)
         {
             if (removeFromStages && !_bookBroken)

@@ -62,9 +62,20 @@ namespace JumpDrillMod.UI
             }
         }
 
+        /// <summary>削除の前の確かめの窓（<see cref="ConfirmPrompt"/>）。</summary>
+        private readonly ConfirmPrompt confirm = new ConfirmPrompt();
+
+        [UIComponent("confirm-text")] private TMPro.TextMeshProUGUI? confirmText = null;
+
+        [UIAction("confirm-yes")]
+        public void ConfirmYes() => confirm.Yes(parserParams);
+
+        [UIAction("confirm-no")]
+        public void ConfirmNo() => confirm.No(parserParams);
+
         /// <summary>
-        /// 全部のドリルについて、上位より下の記録を消す。押したらすぐ消す
-        /// （2回押す形は慣れないとのことでやめた、ユーザー指定）。消したものは下の文に出す。
+        /// 全部のドリルについて、上位より下の記録を消す。先に何件消えるかを数え、窓で確かめてから消す。
+        /// 消したものは下の文に出す。
         /// </summary>
         [UIAction("replay-delete")]
         public void DeleteReplays()
@@ -72,7 +83,7 @@ namespace JumpDrillMod.UI
             if (planning) return;
 
             planning = true;
-            SetReplayNote("Deleting...");
+            SetReplayNote("Counting...");
             cleanup.Prepare();
             int keep = ReplayCleanupService.Keep;
 
@@ -93,12 +104,18 @@ namespace JumpDrillMod.UI
                     return;
                 }
 
-                var result = ReplayCleanupService.DeleteFiles(plan.Files, plan.Targets.Count);
-                SetReplayNote(string.Format(CultureInfo.InvariantCulture,
-                    "Deleted {0} record(s) outside the top {1} by REPRO and ACC ({2} file(s), {3}).{4}",
-                    result.Plays, keep, result.Files, ReplayCleanupService.Megabytes(result.Bytes),
-                    result.Failed > 0 ? " Some files could not be deleted. See the log." : string.Empty));
-                RefreshReplayUsage();
+                SetReplayNote(string.Empty);
+                confirm.Ask(parserParams, confirmText, string.Format(CultureInfo.InvariantCulture,
+                    "Delete {0} record(s) outside the top {1}\n({2} file(s))?\nThis cannot be undone.",
+                    plan.Targets.Count, keep, plan.Files.Count), () =>
+                {
+                    var result = ReplayCleanupService.DeleteFiles(plan.Files, plan.Targets.Count);
+                    SetReplayNote(string.Format(CultureInfo.InvariantCulture,
+                        "Deleted {0} record(s) outside the top {1} by REPRO and ACC ({2} file(s), {3}).{4}",
+                        result.Plays, keep, result.Files, ReplayCleanupService.Megabytes(result.Bytes),
+                        result.Failed > 0 ? " Some files could not be deleted. See the log." : string.Empty));
+                    RefreshReplayUsage();
+                });
             }, UnityMainThreadTaskScheduler.Default);
         }
 

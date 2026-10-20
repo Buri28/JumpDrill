@@ -93,6 +93,30 @@ namespace JumpDrill.Output
             return exported;
         }
 
+        /// <summary>
+        /// 取り込んで作ってよい指定か。画面で作れる範囲より十分広く取り、壊れた・いたずらのファイルで
+        /// 何時間もある譜面や巨大な音声を作らないようにする。
+        /// </summary>
+        internal static bool Reasonable(DrillOptions options)
+        {
+            return Within(options.DurationSeconds, 0.1, 600)
+                && options.Sets >= 1 && options.Sets <= 50
+                && Within(options.IntervalMs, 10, 10000)
+                && Within(options.NotesPerBeat, 0.0625, 16)
+                && Within(options.Bpm, 1, 2000)
+                && Within(options.Njs, 1, 50)
+                && (!options.NoteJumpStartBeatOffset.HasValue || Within(options.NoteJumpStartBeatOffset.Value, -10, 10))
+                && Within(options.TailSeconds, 0, 30)
+                && Within(options.MinLeadInSeconds, 0, 30)
+                && (!options.GapSeconds.HasValue || Within(options.GapSeconds.Value, -30, 60))
+                && options.CountInClicks >= 0 && options.CountInClicks <= 64;
+        }
+
+        private static bool Within(double value, double min, double max)
+        {
+            return !double.IsNaN(value) && value >= min && value <= max;
+        }
+
         /// <summary>取り込みの段取り。</summary>
         public sealed class ImportPlan
         {
@@ -149,6 +173,8 @@ namespace JumpDrill.Output
                             options = DrillRebuild.FromName(drill);
                             if (exported.Settings.TryGetValue(drill, out var settings)) DrillRebuild.ApplySettings(options, settings);
                         }
+                        // 外から来たファイルなので、極端な値（とても長い尺・余白など）は作らずに知らせる
+                        if (!Reasonable(options)) throw new FormatException(drill);
                         plan.ToGenerate.Add(options);
                     }
                     catch (FormatException)
