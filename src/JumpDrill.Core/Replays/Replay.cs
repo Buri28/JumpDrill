@@ -150,13 +150,26 @@ namespace JumpDrill.Replays
 
         /// <summary>
         /// noteID には配置が埋め込まれている。
-        /// scoringType*10000 + lineIndex*1000 + lineLayer*100 + colorType*10 + cutDirection
+        /// (scoringType + 2)*10000 + lineIndex*1000 + lineLayer*100 + colorType*10 + cutDirection
         /// （古い形式では先頭の scoringType が無い）。
         /// </summary>
-        public int LineIndex { get { return (NoteId / 1000) % 10; } }
-        public int LineLayer { get { return (NoteId / 100) % 10; } }
-        public int ColorType { get { return (NoteId / 10) % 10; } }
-        public int CutDirection { get { return NoteId % 10; } }
+        /// <remarks>
+        /// <see cref="ScoringType"/> は本体の <c>NoteData.ScoringType</c>（1 = 普通、4 = チェーンの頭、5 = チェーンの輪 など）。
+        /// 古い形式で入っていなければ 1（普通）とみなす。
+        /// </remarks>
+        /// <remarks>
+        /// 爆弾は colorType = −1、cutDirection = 9 なので、下2桁が −10 + 9 = −1 になり桁が繰り下がる
+        /// （例: 列 0・段 0 の爆弾は 19999）。下2桁が 99 になるのは爆弾だけなので、1 足して戻してから読む。
+        /// </remarks>
+        public bool IsBombId { get { return (NoteId + 1) % 100 == 0; } }
+
+        private int Placement { get { return IsBombId ? NoteId + 1 : NoteId; } }
+
+        public int ScoringType { get { int raw = Placement / 10000; return raw == 0 ? 1 : raw - 2; } }
+        public int LineIndex { get { return (Placement / 1000) % 10; } }
+        public int LineLayer { get { return (Placement / 100) % 10; } }
+        public int ColorType { get { return IsBombId ? -1 : (NoteId / 10) % 10; } }
+        public int CutDirection { get { return IsBombId ? 9 : NoteId % 10; } }
     }
 
     public sealed class ReplayInfo

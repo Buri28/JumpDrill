@@ -210,10 +210,8 @@ namespace JumpDrill.Output
 
         private static Dictionary<string, object> FirstDifficulty(Dictionary<string, object> root)
         {
-            var sets = (root.TryGetValue("_difficultyBeatmapSets", out var s) ? s : null) as List<object>;
-            var set = sets?.FirstOrDefault() as Dictionary<string, object>;
-            var maps = (set != null && set.TryGetValue("_difficultyBeatmaps", out var m) ? m : null) as List<object>;
-            return maps?.FirstOrDefault() as Dictionary<string, object>;
+            foreach (var entry in InfoDat.Difficulties(root)) return entry.Value;
+            return null;
         }
 
         /// <summary>曲名の尺とセット数（<see cref="DrillNaming.ParseLength"/>）。</summary>

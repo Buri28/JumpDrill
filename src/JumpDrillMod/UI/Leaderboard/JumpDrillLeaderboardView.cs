@@ -376,7 +376,7 @@ namespace JumpDrillMod.UI.Leaderboard
                 room.Hide(this);
                 return;
             }
-            room.Show(this, score.ReplayPath, OnlyForehand, RoomForward);
+            room.Show(this, score.ReplayPath, OnlyForehand, RoomForward, Hitbox);
         }
 
         private const string StrokeBoth = "Fore + back";
@@ -413,6 +413,30 @@ namespace JumpDrillMod.UI.Leaderboard
             string stroke = value as string ?? StrokeBoth;
             if (PluginConfig.Instance != null)
                 PluginConfig.Instance.DiagramStroke = stroke == StrokeFore ? "fore" : stroke == StrokeBack ? "back" : string.Empty;
+            FillDiagram();
+        }
+
+        private const string SizeVisual = "Notes";
+        private const string SizeHitbox = "Hitbox";
+
+        /// <summary>ノーツを良い切りの当たり判定の大きさで描くか（GUI の「当たり判定の大きさ」）。</summary>
+        private static bool Hitbox => PluginConfig.Instance?.DiagramHitbox ?? false;
+
+        [UIValue("size-options")]
+        public List<object> SizeOptions => new List<object> { SizeVisual, SizeHitbox };
+
+        [UIValue("size")]
+        public string Size
+        {
+            get => Hitbox ? SizeHitbox : SizeVisual;
+            set { }
+        }
+
+        /// <summary>ノーツの大きさ（見た目か当たり判定か）。図と空間の振りの両方に効く。</summary>
+        [UIAction("size-changed")]
+        public void SizeChanged(object value)
+        {
+            if (PluginConfig.Instance != null) PluginConfig.Instance.DiagramHitbox = (value as string) == SizeHitbox;
             FillDiagram();
         }
 
@@ -934,6 +958,13 @@ namespace JumpDrillMod.UI.Leaderboard
             FillDiagram();
         }
 
+        /// <summary>譜面の NJS（GUI の譜面の情報と同じ）。図を描いたときに読んだ値（遊んだ難易度のもの）。分からなければ空。</summary>
+        private string NoteJumpSpeedText(DrillScore score)
+        {
+            float? njs = diagrams?.NoteJumpSpeedOf(score.ReplayPath);
+            return njs.HasValue ? string.Format(CultureInfo.InvariantCulture, "  NJS {0:0.##}", njs.Value) : string.Empty;
+        }
+
         /// <summary>
         /// 選んでいる記録の軌道を出す。
         /// </summary>
@@ -947,7 +978,7 @@ namespace JumpDrillMod.UI.Leaderboard
             if (diagram == null) return;
 
             var score = selected < scores.Count ? scores[selected] : null;
-            var sprite = score == null || diagrams == null ? null : diagrams.For(score.ReplayPath, MeanOnly, OnlyForehand);
+            var sprite = score == null || diagrams == null ? null : diagrams.For(score.ReplayPath, MeanOnly, OnlyForehand, Hitbox);
 
             diagram.gameObject.SetActive(sprite != null);
             if (sprite != null) diagram.sprite = sprite;
@@ -965,9 +996,9 @@ namespace JumpDrillMod.UI.Leaderboard
             {
                 diagramNote.text = sprite == null
                     ? string.Empty
-                    : score!.CountsAsRecord
+                    : (score!.CountsAsRecord
                         ? string.Format(CultureInfo.InvariantCulture, "#{0}  swing paths", RankOf(score!))
-                        : "swing paths";
+                        : "swing paths") + NoteJumpSpeedText(score!);
             }
 
         }

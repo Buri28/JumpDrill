@@ -54,6 +54,36 @@ namespace JumpDrill.Replays
             public Vector3 Center { get; internal set; }
 
             /// <summary>
+            /// 本体の打点（世界座標、<see cref="NoteFigure.TryCutPoint"/>）。刃が通った面を広げた平面の上で中心にいちばん近い点で、
+            /// 中心からの長さが中心の 15 点に効く距離。分からなければ <see cref="HasContact"/> が false。
+            /// </summary>
+            public Vector3 Contact { get; internal set; }
+            public bool HasContact { get; internal set; }
+
+            /// <summary>中心の点を測る平面（<see cref="NoteFigure.TryCutPlane"/>）の、通る点と向き。</summary>
+            public Vector3 PlanePoint { get; internal set; }
+            public Vector3 PlaneNormal { get; internal set; }
+            public bool HasPlane { get; internal set; }
+
+            /// <summary>中心の点を測る平面で、箱（<paramref name="box"/>）を切った断面。平面が分からないか交わらなければ空。</summary>
+            public List<Vector3> PlaneSection(NoteBox box)
+            {
+                return HasPlane ? box.PlaneSection(Center, AxisU, AxisV, AxisW, PlanePoint, PlaneNormal) : new List<Vector3>();
+            }
+
+            /// <summary>刃がヒットボックスに当たった所（<see cref="NoteFigure.HitPoint"/>）。中心の点はここで掃いた面を広げた平面で測る。</summary>
+            public Vector3 HitPoint { get; internal set; }
+            public bool HasHitPoint { get; internal set; }
+
+            /// <summary>1ノーツの点数（115 点満点）の平均（<see cref="NoteFigure.MeanScore"/>）。切っていなければ NaN。</summary>
+            public double MeanScore { get; internal set; } = double.NaN;
+
+            /// <summary>振りかぶり（70）・振り抜き（30）・中心（15）の点の平均（<see cref="NoteFigure"/> と同じ）。切っていなければ NaN。</summary>
+            public double MeanBeforeCut { get; internal set; } = double.NaN;
+            public double MeanAfterCut { get; internal set; } = double.NaN;
+            public double MeanCutDistance { get; internal set; } = double.NaN;
+
+            /// <summary>
             /// 立方体の軸（長さ 1）。V が切る向き、U がその右、W が前（プレイヤーから遠ざかる向き）。
             /// 本体と同じく、ノーツはプレイヤー（頭）の方を向く（<see cref="NotePose.LookAtPlayer"/>）。
             /// 外側の列のノーツほど中央へ向けて大きく回る。傾きは角度オフセットを当てた後のもの（<see cref="NoteFigure.Tilt"/>）。
@@ -76,14 +106,10 @@ namespace JumpDrill.Replays
                 };
             }
 
-            /// <summary>立方体の 8 隅。番号の 1・2・4 の桁が u・v・w の正負（0 が負）。</summary>
-            public Vector3[] Corners()
+            /// <summary>箱の 8 隅。番号の 1・2・4 の桁が u・v・w の正負（0 が負）。</summary>
+            public Vector3[] Corners(NoteBox box)
             {
-                float h = NoteSize / 2;
-                var corners = new Vector3[8];
-                for (int i = 0; i < 8; i++)
-                    corners[i] = At((i & 1) == 0 ? -h : h, (i & 2) == 0 ? -h : h, (i & 4) == 0 ? -h : h);
-                return corners;
+                return box.Corners(Center, AxisU, AxisV, AxisW);
             }
         }
 
@@ -102,7 +128,8 @@ namespace JumpDrill.Replays
         /// <param name="replay">軌道に使うリプレイ（タワー・スタックは端の点だけにまとめたもの）。</param>
         /// <param name="notesFrom">ノーツを置くリプレイ（まとめる前）。null なら <paramref name="replay"/>。</param>
         /// <param name="withNotes">3D に置くノーツと頭の位置も作るか。正面・横の図は振りだけ使う（ノーツは <see cref="NoteFigures"/>）。</param>
-        public static SwingScene Build(Replay replay, Replay notesFrom = null, bool withNotes = true)
+        /// <param name="noteJumpSpeed">譜面の NJS。分かればノーツの向きを本体と同じ計算で出す（<see cref="NoteFigures.Build"/>）。</param>
+        public static SwingScene Build(Replay replay, Replay notesFrom = null, bool withNotes = true, float? noteJumpSpeed = null)
         {
             var scene = new SwingScene();
             if (replay == null) return scene;
@@ -110,7 +137,7 @@ namespace JumpDrill.Replays
             foreach (int saberType in new[] { 0, 1 }) scene.LoadHand(replay, saberType);
             if (withNotes)
             {
-                scene.LoadNotes(NoteFigures.Build(notesFrom ?? replay));
+                scene.LoadNotes(NoteFigures.Build(notesFrom ?? replay, noteJumpSpeed: noteJumpSpeed));
                 scene.LoadHead(notesFrom ?? replay);
             }
             return scene;
@@ -238,6 +265,9 @@ namespace JumpDrill.Replays
             {
                 if (!figure.HasCutCenter) continue;
 
+                Vector3 contact, planePoint, planeNormal;
+                bool hasContact = figure.TryCutPoint(out contact);
+                bool hasPlane = figure.TryCutPlane(out planePoint, out planeNormal);
                 Notes.Add(new Note
                 {
                     ColorType = figure.ColorType,
@@ -247,6 +277,17 @@ namespace JumpDrill.Replays
                     AxisU = figure.FaceRight,
                     AxisV = figure.FaceUp,
                     AxisW = figure.FaceForward,
+                    MeanScore = figure.MeanScore,
+                    MeanBeforeCut = figure.MeanBeforeCut,
+                    MeanAfterCut = figure.MeanAfterCut,
+                    MeanCutDistance = figure.MeanCutDistance,
+                    Contact = contact,
+                    HasContact = hasContact,
+                    PlanePoint = planePoint,
+                    PlaneNormal = planeNormal,
+                    HasPlane = hasPlane,
+                    HitPoint = figure.HitPoint,
+                    HasHitPoint = figure.HasHitPoint,
                 });
             }
         }
@@ -257,52 +298,6 @@ namespace JumpDrill.Replays
             if (!replay.Notes.Any(n => n.EventType == NoteEventType.Good && n.Cut != null) || replay.Frames.Count == 0) return;
             Head = NoteFigures.HeadAtCuts(replay);
             HasHead = true;
-        }
-
-        /// <summary>
-        /// 振りの刃が通った面（帯）のうち、ノーツの立方体の中を通った部分。
-        /// 帯の区間ごとの四角を立方体の 6 枚の面で順に切り取ったもの（凸な多角形の切り取り）。
-        /// 区間の番号（i-1 → i の i）と多角形の組で返す。
-        /// </summary>
-        public static List<KeyValuePair<int, Vector3[]>> InsideNote(Swing swing, Note note)
-        {
-            var result = new List<KeyValuePair<int, Vector3[]>>();
-            var axes = new[] { note.AxisU, note.AxisV, note.AxisW };
-            var center = note.Center;
-
-            for (int i = 1; i < swing.Tips.Length; i++)
-            {
-                var polygon = new List<Vector3> { swing.Hilts[i - 1], swing.Tips[i - 1], swing.Tips[i], swing.Hilts[i] };
-                foreach (var axis in axes)
-                {
-                    if (polygon.Count < 3) break;
-                    foreach (float sign in new[] { 1f, -1f })
-                    {
-                        // 中心からの、この軸の向きの距離が NoteSize / 2 以下の側を残す
-                        var a = axis;
-                        float s = sign;
-                        polygon = Clip(polygon, p => NoteSize / 2 - s * (a.X * (p.X - center.X) + a.Y * (p.Y - center.Y) + a.Z * (p.Z - center.Z)));
-                        if (polygon.Count < 3) break;
-                    }
-                }
-                if (polygon.Count >= 3) result.Add(new KeyValuePair<int, Vector3[]>(i, polygon.ToArray()));
-            }
-            return result;
-        }
-
-        /// <summary>多角形のうち <paramref name="inside"/> が 0 以上の側だけを残す（Sutherland–Hodgman の1枚ぶん）。</summary>
-        private static List<Vector3> Clip(List<Vector3> polygon, Func<Vector3, float> inside)
-        {
-            var result = new List<Vector3>();
-            for (int i = 0; i < polygon.Count; i++)
-            {
-                var a = polygon[i];
-                var b = polygon[(i + 1) % polygon.Count];
-                float da = inside(a), db = inside(b);
-                if (da >= 0) result.Add(a);
-                if ((da >= 0) != (db >= 0)) result.Add(CutMoments.Lerp(a, b, da / (da - db)));
-            }
-            return result;
         }
     }
 }

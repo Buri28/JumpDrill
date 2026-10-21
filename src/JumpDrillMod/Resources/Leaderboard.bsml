@@ -94,9 +94,9 @@
     <!-- 選んでいる記録の軌道。GUI の横から見た図と同じもの（JumpDrill.Core の SwingDiagram が描く）。
          枠が縦長なので行は5本までにして、残りを図に回す -->
     <!-- 2枚並べると横に長いので、幅いっぱいを使って高さを抑える -->
-    <!-- 図の下を2行にしたぶん、図の高さを下げる。画像の縦横比もこの枠に合わせて描く（DiagramService.Height） -->
-    <horizontal pref-height='28' pad='0' pad-top='1'>
-      <image id='diagram' src='#EmptySprite' pref-width='86' pref-height='28'/>
+    <!-- 図の下を3行にしたぶん、図の高さを下げる。画像の縦横比もこの枠に合わせて描く（DiagramService.Height） -->
+    <horizontal pref-height='23' pad='0' pad-top='1'>
+      <image id='diagram' src='#EmptySprite' pref-width='86' pref-height='23'/>
     </horizontal>
 
     <horizontal pref-height='5' pad='0' spacing='1'>
@@ -122,6 +122,14 @@
                              apply-on-change='true' bind-value='true' on-change='room-changed'
                              pref-width='30' pref-height='5'
                              hover-hint='Place the swings of the selected record around you at real size. Walk around to see them from any side.'/>
+    </horizontal>
+
+    <horizontal pref-height='5' pad='0' spacing='1' child-expand-width='false'>
+      <!-- ノーツを見た目の大きさで描くか、良い切りの当たり判定の大きさで描くか。図と空間の振りの両方に効く -->
+      <dropdown-list-setting id='size-dropdown' text='' value='size' options='size-options'
+                             apply-on-change='true' bind-value='true' on-change='size-changed'
+                             pref-width='30' pref-height='5'
+                             hover-hint='Draw notes at their visible size, or at the size of the hitbox for good cuts (wider, and longer toward you).'/>
       <!-- 曲選択の枠から Jump Drill 画面を開く。Jump Drill 画面の右の枠に出しているときは出さない。
            Mods タブの Drill・Jump Drill 画面の Make drill と同じく、画面を移るボタンは字の後ろの「→」で示す -->
       <button id='drill-set-button' text='Drill →' on-click='open-drill-set' pref-width='20' pref-height='5'

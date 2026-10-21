@@ -94,6 +94,12 @@ namespace JumpDrillMod
         public virtual string DiagramStroke { get; set; } = string.Empty;
 
         /// <summary>
+        /// 軌道の図と空間の振りで、ノーツを良い切りの当たり判定の大きさで描くか（GUI の「当たり判定の大きさ」）。
+        /// false なら見た目の大きさ。
+        /// </summary>
+        public virtual bool DiagramHitbox { get; set; } = false;
+
+        /// <summary>
         /// 選んでいる記録の振りを、メニューの空間に実物大で出すか（GUI の 3D 表示の VR 版）。
         /// </summary>
         public virtual bool DiagramRoom { get; set; } = false;

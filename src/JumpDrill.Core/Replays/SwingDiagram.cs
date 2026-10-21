@@ -62,6 +62,15 @@ namespace JumpDrill.Replays
             /// </summary>
             public bool? OnlyForehand { get; set; }
 
+            /// <summary>
+            /// ノーツを良い切りの当たり判定の大きさで描くか（<see cref="NoteBox.Hitbox"/>）。false なら見た目の大きさ。
+            /// 当たり判定は見た目より横に広く、手前に長いので、刃が見た目のノーツに届いていなくても切れていることがある。
+            /// </summary>
+            public bool Hitbox { get; set; }
+
+            /// <summary>譜面の NJS。分かればノーツの向きを本体と同じ計算で出す。null なら近似。</summary>
+            public float? NoteJumpSpeed { get; set; }
+
             /// <summary>10cm の目盛りを敷くか。</summary>
             public bool Grid { get; set; } = true;
         }
@@ -83,7 +92,7 @@ namespace JumpDrill.Replays
         public static byte[] Render(Replay replay, Options options)
         {
             options = options ?? new Options();
-            var content = Content.Of(replay);
+            var content = Content.Of(replay, options.NoteJumpSpeed);
             var canvas = Draw(content, options);
             return canvas == null ? null : PngWriter.Encode(canvas.Pixels, options.Width, options.Height);
         }
@@ -103,7 +112,7 @@ namespace JumpDrill.Replays
             int half = (options.Width - Divider) / 2;
             if (half <= 0) return null;
 
-            var content = Content.Of(replay);
+            var content = Content.Of(replay, options.NoteJumpSpeed);
             var front = Draw(content, Half(options, half, ViewAxis.Front));
             var side = Draw(content, Half(options, half, ViewAxis.Side));
             if (front == null && side == null) return null;
@@ -127,13 +136,13 @@ namespace JumpDrill.Replays
             public SwingScene Scene;
             public List<NoteFigure> Notes;
 
-            public static Content Of(Replay replay)
+            public static Content Of(Replay replay, float? noteJumpSpeed)
             {
                 if (replay == null) throw new ArgumentNullException(nameof(replay));
                 return new Content
                 {
                     Scene = SwingScene.Build(TowerReplay.Collapse(replay), withNotes: false),
-                    Notes = NoteFigures.Build(replay),
+                    Notes = NoteFigures.Build(replay, noteJumpSpeed: noteJumpSpeed),
                 };
             }
         }
@@ -149,6 +158,8 @@ namespace JumpDrill.Replays
                 OnlyHand = source.OnlyHand,
                 MeanOnly = source.MeanOnly,
                 OnlyForehand = source.OnlyForehand,
+                Hitbox = source.Hitbox,
+                NoteJumpSpeed = source.NoteJumpSpeed,
                 Grid = source.Grid,
             };
         }
@@ -231,6 +242,9 @@ namespace JumpDrill.Replays
                 DrawDirectionMarks(canvas, bounds, options, mean);
             }
 
+            // 刃がノーツに当たった所から、切った瞬間の先端（白丸）への矢印。軌道と切った線のつながり
+            foreach (var note in notes) DrawBladeLink(canvas, bounds, options, note);
+
             // 切った瞬間の先端。正面図では切った線（ノーツのどこを切ったか）と先端の軌道がここでつながる
             foreach (var mean in means)
             {
@@ -280,6 +294,15 @@ namespace JumpDrill.Replays
                 maxX = Math.Max(maxX, cx + NoteSize / 2);
                 minY = Math.Min(minY, cy - NoteSize / 2);
                 maxY = Math.Max(maxY, cy + NoteSize / 2);
+
+                // ヒットボックスを出していなくても範囲に入れる。切り替えで拡大率が変わると見比べられない
+                foreach (var p in HitboxOutline(note, options))
+                {
+                    minX = Math.Min(minX, p[0]);
+                    maxX = Math.Max(maxX, p[0]);
+                    minY = Math.Min(minY, p[1]);
+                    maxY = Math.Max(maxY, p[1]);
+                }
             }
 
             double padX = Math.Max(0.1, (maxX - minX) * 0.12);
@@ -440,9 +463,9 @@ namespace JumpDrill.Replays
         }
 
         /// <summary>
-        /// 横から見た図のノーツ。切った瞬間の中心（平均）に、一辺 <see cref="NoteSize"/> の四角を置く。
-        /// 向き（上下）ごとに別の四角で、中に切る向きの三角。色はフォア・バック。
-        /// 先端の印（白丸）が四角の手前にあれば、刃の先でノーツの手前側をかすめて切っている。
+        /// 横から見た図のノーツ。切った瞬間の中心（平均）に、向きを付けた立方体（ヒットボックスなら箱）を横から見た形で置く。
+        /// 見える面ごとに明るさを変えて塗り、見える辺を引き、手前の面に ▽、左右の面に ⇩ の印を貼る（GUI と同じ）。色はフォア・バック。
+        /// 先端の印（白丸）が箱の手前にあれば、刃の先でノーツの手前側をかすめて切っている。
         /// </summary>
         private static void DrawSideNote(PixelCanvas canvas, double[] bounds, Options options, NoteFigure note)
         {
@@ -450,38 +473,38 @@ namespace JumpDrill.Replays
 
             var color = SwingPalette.Of(note.ColorType, note.Forehand);
             var c = note.CutCenter;
-            double h = NoteSize / 2;
 
-            var corners = new[]
-            {
-                new Vector3 { X = c.X, Y = (float)(c.Y + h), Z = (float)(c.Z - h) },
-                new Vector3 { X = c.X, Y = (float)(c.Y + h), Z = (float)(c.Z + h) },
-                new Vector3 { X = c.X, Y = (float)(c.Y - h), Z = (float)(c.Z + h) },
-                new Vector3 { X = c.X, Y = (float)(c.Y - h), Z = (float)(c.Z - h) },
-            }.Select(p => ToScreen(Project(p, options), bounds, options)).ToArray();
+            var box = options.Hitbox ? NoteBox.Hitbox : NoteBox.Visual;
 
-            var xs = corners.Select(p => p[0]).ToArray();
-            var ys = corners.Select(p => p[1]).ToArray();
-            canvas.FillPolygon(xs, ys, color[0], color[1], color[2], 60.0 / 255.0);
+            // 箱を横から見た形（3D と同じ見え方）。見える面を塗り、見える辺を引く
+            var cube = box.Corners(note.CutCenter, note.FaceRight, note.FaceUp, note.FaceForward)
+                          .Select(p => ToScreen(Project(p, options), bounds, options)).ToArray();
 
             var edge = Lighten(color, 0.35);
-            for (int i = 0; i < 4; i++)
+            var toViewer = new Vector3 { X = options.FaceRight ? 1f : -1f };   // 奥が右なら、プレイヤーの右側（+X）から見ている（Unity は左手系）
+
+            // 見える面ごとに明るさを変えて塗る（輪郭だけだと立方体が裏返って見えることがある）
+            foreach (var face in NoteBox.VisibleFaces(note.FaceRight, note.FaceUp, note.FaceForward, toViewer))
             {
-                int next = (i + 1) % 4;
-                canvas.LineAA(xs[i], ys[i], xs[next], ys[next], edge[0], edge[1], edge[2], 1.8, 220.0 / 255.0);
+                double shade = NoteBox.FaceShade(face.Value, toViewer);
+                var lit = Lighten(color, shade * 0.6);
+                canvas.FillPolygon(face.Key.Select(i => cube[i][0]).ToArray(), face.Key.Select(i => cube[i][1]).ToArray(),
+                                   lit[0], lit[1], lit[2], (30 + 70 * shade) / 255.0);
             }
+            foreach (var e in NoteBox.VisibleEdges(note.FaceRight, note.FaceUp, note.FaceForward, toViewer))
+                canvas.LineAA(cube[e[0]][0], cube[e[0]][1], cube[e[1]][0], cube[e[1]][1], edge[0], edge[1], edge[2], 1.6, 220.0 / 255.0);
 
-            // 切る向きの上下だけ。横から見ると左右は奥行きに潰れる
+            // 切る向きの三角は立方体の面に貼る（3D と同じ）。手前の面と左右の面のうち見えるものに描くので、
+            // 面と一緒に傾き、どの面のどちら向きかで読める
             double arrowX, arrowY;
-            if (!SwingSides.ArrowOf(note.CutDirection, out arrowX, out arrowY) || arrowY == 0) return;
+            if (!SwingSides.ArrowOf(note.CutDirection, out arrowX, out arrowY)) return;
 
-            var center = ToScreen(Project(c, options), bounds, options);
-            double size = NoteSizeInPixels(bounds, options) * 0.18;
-            double dir = arrowY > 0 ? -1.0 : 1.0;   // 画像は下が正
-            canvas.FillPolygon(
-                new[] { center[0], center[0] - size, center[0] + size },
-                new[] { center[1] + dir * size, center[1] - dir * size * 0.6, center[1] - dir * size * 0.6 },
-                White[0], White[1], White[2], 200.0 / 255.0);
+            foreach (var tri in box.ArrowDecals(c, note.FaceRight, note.FaceUp, note.FaceForward, toViewer))
+            {
+                var points = tri.Select(p => ToScreen(Project(p, options), bounds, options)).ToArray();
+                canvas.FillPolygon(points.Select(p => p[0]).ToArray(), points.Select(p => p[1]).ToArray(),
+                                   White[0], White[1], White[2], 200.0 / 255.0);
+            }
         }
 
         // ───────── 正面図：ノーツ ─────────
@@ -523,9 +546,43 @@ namespace JumpDrill.Replays
             return NoteSize * scale;
         }
 
+        /// <summary>
+        /// 当たり判定の箱の輪郭（図の座標、m）。正面の図は面の断面（<see cref="NoteBox.FrontSlice"/>）、横の図は箱を横から見た輪郭。
+        /// 正面の図はノーツの中心（<see cref="NoteFigure.CenterX"/>）、横の図は切った瞬間の中心に置く。
+        /// </summary>
+        private static List<double[]> HitboxOutline(NoteFigure note, Options options)
+        {
+            return Outline(note, options, NoteBox.Hitbox);
+        }
+
+        private static List<double[]> Outline(NoteFigure note, Options options, NoteBox box)
+        {
+            if (options.Axis == ViewAxis.Side)
+            {
+                if (!note.HasCutCenter) return new List<double[]>();
+                return NoteBox.Hull(box.Corners(note.CutCenter, note.FaceRight, note.FaceUp, note.FaceForward)
+                                       .Select(p => Project(p, options)));
+            }
+
+            var center = new Vector3 { X = (float)note.CenterX, Y = (float)note.CenterY, Z = note.Depth };
+            // 向き指定なしのノーツは見た目の四角を回さずに描くので、輪郭もそろえる
+            var slice = note.Tilt.HasValue ? box.FrontSlice(center, note.FaceRight, note.FaceUp)
+                                           : box.FrontSlice(center, new Vector3 { X = 1f }, new Vector3 { Y = 1f });
+            return NoteBox.Hull(slice
+                                              .Select(p => new double[] { p.X, p.Y }));
+        }
+
         private static void NoteQuad(double[] bounds, Options options, NoteFigure note,
                                      out double[] xs, out double[] ys)
         {
+            if (options.Hitbox)
+            {
+                var outline = HitboxOutline(note, options).Select(p => ToScreen(p, bounds, options)).ToArray();
+                xs = outline.Select(p => p[0]).ToArray();
+                ys = outline.Select(p => p[1]).ToArray();
+                return;
+            }
+
             var center = ToScreen(new[] { note.CenterX, note.CenterY }, bounds, options);
             double half = NoteSizeInPixels(bounds, options) / 2.0;
 
@@ -574,9 +631,9 @@ namespace JumpDrill.Replays
             double thickness = Math.Max(1.6, size * 0.05);
 
             if (!headOnly)
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < xs.Length; i++)
                 {
-                    int next = (i + 1) % 4;
+                    int next = (i + 1) % xs.Length;
                     canvas.LineAA(xs[i], ys[i], xs[next], ys[next],
                                   color[0], color[1], color[2], thickness, 235.0 / 255.0);
                 }
@@ -611,6 +668,53 @@ namespace JumpDrill.Replays
             if (!headOnly)
                 canvas.Disc(center[0], center[1], Math.Max(1.0, size * 0.065),
                             White[0], White[1], White[2], 235.0 / 255.0);
+        }
+
+        /// <summary>
+        /// 刃がノーツに当たった所（切った線の真ん中）に点を打ち、そこから切った瞬間の先端（軌道の白丸）へ矢印を引く。
+        /// 矢印は切った瞬間の刃のうち、当たった所より先の部分（GUI の DrawBladeLinks と同じ）。
+        /// 正面の図はノーツの絵の上に、横の図は切った瞬間のノーツの中心から置く。
+        /// </summary>
+        private static void DrawBladeLink(PixelCanvas canvas, double[] bounds, Options options, NoteFigure note)
+        {
+            if (!note.HasCutTip) return;
+
+            double[] from;
+            if (options.Axis == ViewAxis.Front)
+            {
+                double u, v;
+                if (!note.TryContact(out u, out v)) return;
+                from = ToScreen(new[]
+                {
+                    note.CenterX + note.RightX * u + note.UpX * v,
+                    note.CenterY + note.RightY * u + note.UpY * v,
+                }, bounds, options);
+            }
+            else
+            {
+                Vector3 contact;
+                if (!note.TryContactAtCut(out contact)) return;
+                from = ToScreen(Project(contact, options), bounds, options);
+            }
+            var to = ToScreen(Project(note.CutTip, options), bounds, options);
+
+            double dx = to[0] - from[0], dy = to[1] - from[1];
+            double length = Math.Sqrt(dx * dx + dy * dy);
+            if (length > 12.0)
+            {
+                dx /= length;
+                dy /= length;
+                // 矢尻が白丸に隠れないよう、少し手前で止める
+                double endX = to[0] - dx * 6.0, endY = to[1] - dy * 6.0;
+                canvas.DashedLine(from[0], from[1], endX, endY, White[0], White[1], White[2], 1.4, 200.0 / 255.0, 3.0);
+                const double Head = 6.0;
+                canvas.FillPolygon(
+                    new[] { endX, endX - dx * Head + dy * Head * 0.55, endX - dx * Head - dy * Head * 0.55 },
+                    new[] { endY, endY - dy * Head - dx * Head * 0.55, endY - dy * Head + dx * Head * 0.55 },
+                    White[0], White[1], White[2], 220.0 / 255.0);
+            }
+
+            canvas.Disc(from[0], from[1], 3.0, White[0], White[1], White[2], 245.0 / 255.0);
         }
 
         /// <summary>実際に振った向きを示す線の長さ (m)。</summary>

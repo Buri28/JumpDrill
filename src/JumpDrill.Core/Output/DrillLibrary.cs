@@ -174,13 +174,33 @@ namespace JumpDrill.Output
             return FindByNameExact(songName, deepSearch, workspaceRoot, extraRoots);
         }
 
-        private static string FindByNameExact(string songName, bool deepSearch, string workspaceRoot, string[] extraRoots)
+        /// <summary>
+        /// 1つのインストールの中だけで、曲名から譜面フォルダを引く（MOD 用。機械の他の Beat Saber は見ない）。
+        /// 名前で直接ある場所だけを見る（CustomLevels・CustomWIPLevels・folders.xml の登録先）。無ければ null。
+        /// </summary>
+        public static string FindInInstall(string songName, string installRoot)
+        {
+            if (string.IsNullOrEmpty(songName) || string.IsNullOrEmpty(installRoot)) return null;
+
+            var roots = new List<string>
+            {
+                Path.Combine(installRoot, "Beat Saber_Data", "CustomWIPLevels"),
+                Path.Combine(installRoot, "Beat Saber_Data", "CustomLevels"),
+            };
+            foreach (var entry in SongCoreFolders.Read(SongCoreFolders.FoldersXmlFor(installRoot)))
+                if (!entry.IsExample) roots.Add(entry.Path);
+
+            string current = DrillNaming.CurrentName(songName);
+            return FindNamedIn(roots, current) ?? (current != songName ? FindNamedIn(roots, songName) : null);
+        }
+
+        /// <summary>置き場所の直下に、曲名から作ったフォルダ名で、その曲名の譜面があればそのフォルダ。</summary>
+        private static string FindNamedIn(IEnumerable<string> roots, string songName)
         {
             string folderName = LevelWriter.SanitizeFolderName(songName);
-
-            foreach (var root in Roots(workspaceRoot, extraRoots))
+            foreach (string root in roots)
             {
-                string candidate = Path.Combine(root.Path, folderName);
+                string candidate = Path.Combine(root, folderName);
                 if (!Directory.Exists(candidate)) continue;
 
                 // 名前が同じでも中身が別の譜面ということはある。曲名で確かめる。
@@ -188,8 +208,13 @@ namespace JumpDrill.Output
                 if (File.Exists(info) && string.Equals(ReadSongName(info), songName, StringComparison.Ordinal))
                     return candidate;
             }
+            return null;
+        }
 
-            if (!deepSearch) return null;
+        private static string FindByNameExact(string songName, bool deepSearch, string workspaceRoot, string[] extraRoots)
+        {
+            string found = FindNamedIn(Roots(workspaceRoot, extraRoots).Select(r => r.Path), songName);
+            if (found != null || !deepSearch) return found;
 
             // 手でフォルダ名を変えた譜面はここでしか拾えない。
             foreach (var level in Find(false, workspaceRoot, extraRoots))

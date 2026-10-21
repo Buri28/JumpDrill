@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using IPA.Utilities.Async;
+using JumpDrill.Output;
 using JumpDrill.Replays;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -50,7 +51,7 @@ namespace JumpDrillMod.Services
         /// <summary>ノーツの面の濃さ。GUI と同じ。</summary>
         private const float NoteAlpha = 210f / 255f;
 
-        /// <summary>刃がノーツの中を通った所（白）の濃さ。GUI と同じ。</summary>
+        /// <summary>中心の点を測る平面とノーツが交わる所（白）の濃さ。GUI と同じ。</summary>
         private const float InsideAlpha = 70f / 255f;
 
         /// <summary>刃の細い線を何本に1本描くか。</summary>
@@ -84,7 +85,8 @@ namespace JumpDrillMod.Services
         /// <param name="onlyForehand">フォアだけ（true）かバックだけ（false）。両方なら null。</param>
         /// <param name="forward">プレイしたときの位置から前へずらす量 (m)。</param>
         /// <param name="owner">出す側（リーダーボード）。消すときは出した側だけが消せる（<see cref="Hide(object)"/>）。</param>
-        internal void Show(object owner, string? replayPath, bool? onlyForehand, float forward = 0f)
+        /// <param name="hitbox">ノーツを当たり判定の大きさで置くか。</param>
+        internal void Show(object owner, string? replayPath, bool? onlyForehand, float forward = 0f, bool hitbox = false)
         {
             this.owner = owner;
             if (string.IsNullOrEmpty(replayPath))
@@ -94,7 +96,9 @@ namespace JumpDrillMod.Services
             }
 
             // 同じ名前で書き直されたリプレイは別物として置き直す
-            string key = SceneKey(replayPath!) + (onlyForehand == true ? "|fore" : onlyForehand == false ? "|back" : "|both");
+            string key = SceneKey(replayPath!) + (onlyForehand == true ? "|fore" : onlyForehand == false ? "|back" : "|both")
+                + (hitbox ? "|hitbox" : "|visual");
+            var box = hitbox ? NoteBox.Hitbox : NoteBox.Visual;
             if (root != null && key == shownKey)
             {
                 // ずらす量だけ変わったときは、置き直さずに動かす
@@ -110,7 +114,7 @@ namespace JumpDrillMod.Services
             SwingScene? cached;
             if (TryCached(replayPath!, out cached))
             {
-                Place(key, cached, onlyForehand, forward);
+                Place(key, cached, onlyForehand, forward, box);
                 return;
             }
 
@@ -120,11 +124,11 @@ namespace JumpDrillMod.Services
                 var scene = task.IsFaulted ? null : task.Result;
                 Remember(path, scene);
                 // 読んでいる間に別の記録を選んだ・消したなら置かない
-                if (pendingKey == key) Place(key, scene, onlyForehand, forward);
+                if (pendingKey == key) Place(key, scene, onlyForehand, forward, box);
             }, UnityMainThreadTaskScheduler.Default);
         }
 
-        private void Place(string key, SwingScene? scene, bool? onlyForehand, float forward)
+        private void Place(string key, SwingScene? scene, bool? onlyForehand, float forward, NoteBox box)
         {
             pendingKey = null;
             if (scene == null || scene.Means.Count == 0) return;
@@ -133,7 +137,7 @@ namespace JumpDrillMod.Services
             {
                 root = new GameObject("JumpDrillSwingScene");
                 root.transform.position = new UVector3(0f, 0f, forward);
-                Build(root.transform, scene, onlyForehand);
+                Build(root.transform, scene, onlyForehand, box);
                 shownKey = key;
             }
             catch (Exception e)
@@ -189,7 +193,8 @@ namespace JumpDrillMod.Services
             {
                 if (!File.Exists(replayPath)) return null;
                 var original = ReplayReader.Read(replayPath);
-                return SwingScene.Build(TowerReplay.Collapse(original), original);
+                float? njs = NoteFlight.NoteJumpSpeedOf(original, name => DrillLibrary.FindInInstall(name, InstallPaths.Root));
+                return SwingScene.Build(TowerReplay.Collapse(original), original, noteJumpSpeed: njs);
             }
             catch (Exception e)
             {
@@ -214,7 +219,7 @@ namespace JumpDrillMod.Services
 
         // ───────── 置く ─────────
 
-        private void Build(Transform parent, SwingScene scene, bool? onlyForehand)
+        private void Build(Transform parent, SwingScene scene, bool? onlyForehand, NoteBox box)
         {
             Func<bool, bool> shown = fore => !onlyForehand.HasValue || onlyForehand.Value == fore;
 
@@ -222,7 +227,9 @@ namespace JumpDrillMod.Services
             Func<Note, bool> noteShown = note => SwingSides.NoteShown(note.CutDirection, onlyForehand);
 
             foreach (var note in scene.Notes)
-                if (noteShown(note)) AddNote(parent, note);
+                if (noteShown(note)) AddNote(parent, note, box);
+            AddPlaneSections(parent, scene.Notes.Where(noteShown), box);
+            AddScoreLabels(parent, scene, scene.Notes.Where(noteShown).ToList());
 
             foreach (var mean in scene.Means)
             {
@@ -233,12 +240,101 @@ namespace JumpDrillMod.Services
                 };
 
                 AddBand(parent, mean, colorAt);
-                AddInsideNotes(parent, mean, scene.Notes.Where(n => n.ColorType == mean.SaberType && noteShown(n)), colorAt);
                 AddPath(parent, mean.Hilts, i => Fade(Lighten(colorAt(i), 0.2f), 200f / 255f), HiltWidth, marks: false);
                 AddPath(parent, mean.Tips, i => Lighten(colorAt(i), 0.4f), TipWidth, marks: true);
 
                 // 切った瞬間の刃と先端の白丸（振りの終わり＝次に切るノーツ）
                 if (shown(mean.ToForehand)) AddCut(parent, mean);
+            }
+        }
+
+        /// <summary>
+        /// ノーツごとの点の平均（振りかぶり・振り抜き・中心の順、GUI の 3D と同じ）。軌道を隠さないよう、
+        /// ノーツが頭より左なら左、右なら右の外側へ逃がし、打点と細い線でつなぐ。同じ側で重なるものは上下にずらす。
+        /// 文字は頭の方（手前）へ向けて置く。
+        /// </summary>
+        private void AddScoreLabels(Transform parent, SwingScene scene, List<Note> notes)
+        {
+            float middleX = scene.HasHead ? scene.Head.X : 0f;
+            const float Gap = 0.07f;        // ラベルの縦の間隔 (m)
+            const float Outside = 0.45f;    // ノーツの中心から外へ (m)
+
+            foreach (int side in new[] { -1, 1 })
+            {
+                var group = notes.Where(n => !double.IsNaN(n.MeanScore) && (n.Center.X < middleX ? -1 : 1) == side)
+                                 .OrderByDescending(n => n.Center.Y).ToList();
+                if (group.Count == 0) continue;
+
+                // 同じ側のラベルは、いちばん外のノーツのさらに外に縦に揃える
+                float column = side < 0 ? group.Min(n => n.Center.X) - Outside : group.Max(n => n.Center.X) + Outside;
+                float lastY = float.MaxValue;
+                foreach (var note in group)
+                {
+                    float y = Math.Min(note.Center.Y, lastY - Gap);
+                    lastY = y;
+                    var at = new UVector3(column, y, note.Center.Z);
+
+                    var color = Lighten(SideColor(note.ColorType, note.Forehand), 0.5f) ?? White;
+                    string text = ScoreFormat.Floor(note.MeanBeforeCut, 1) + "  " + ScoreFormat.Floor(note.MeanAfterCut, 1)
+                                  + "  " + ScoreFormat.Floor(note.MeanCutDistance, 1);
+                    if (!AddText(parent, text, at, side < 0 ? TMPro.TextAlignmentOptions.Right : TMPro.TextAlignmentOptions.Left, color)) return;
+
+                    var target = ToUnity(note.HasContact ? note.Contact : note.Center);
+                    AddLine(parent, new List<UVector3> { at + new UVector3(side * 0.01f, 0f, 0f), target },
+                            new Color(color.r, color.g, color.b, 140f / 255f), 0.002f);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 空間に置く文字。<paramref name="at"/> がラベルの内側の端（左の列なら右端）。手前（−Z）から読める向き。
+        /// 文字の部品が使えなければ false（以後のラベルは出さない）。
+        /// </summary>
+        private bool AddText(Transform parent, string text, UVector3 at, TMPro.TextAlignmentOptions alignment, Color color)
+        {
+            try
+            {
+                var go = new GameObject("ScoreLabel");
+                go.transform.SetParent(parent, false);
+                var label = go.AddComponent<TMPro.TextMeshPro>();
+                var font = BeatSaberMarkupLanguage.BeatSaberUI.MainTextFont;
+                if (font != null) label.font = font;
+                // 文字の素材は UI と同じもの（光らないもの）にする。既定の素材は画面のアルファを書くので、光り（ブルーム）で白く抜けうる
+                var uiMaterial = NoGlowFontMaterial;
+                if (uiMaterial != null) label.fontSharedMaterial = uiMaterial;
+                label.text = text;
+                label.fontSize = 0.45f;
+                label.color = color;
+                label.alignment = alignment;
+                label.rectTransform.sizeDelta = new UnityEngine.Vector2(0.6f, 0.08f);
+                // 文字の箱の内側の端を at に合わせる
+                label.rectTransform.pivot = new UnityEngine.Vector2(alignment == TMPro.TextAlignmentOptions.Right ? 1f : 0f, 0.5f);
+                go.transform.localPosition = at;
+                go.transform.localRotation = UnityEngine.Quaternion.identity;
+                return true;
+            }
+            catch (Exception e)
+            {
+                Plugin.Log?.Error("could not place a score label: " + e);
+                return false;
+            }
+        }
+
+        private static Material? noGlowFontMaterial;
+        private static bool noGlowSearched;
+
+        /// <summary>
+        /// 光らない文字の素材（本体の UI が使う "Teko-Medium SDF No Glow"）。BSML の版によって取り出す口が無いので、名前で探す。
+        /// 見つからなければ null（フォントの既定の素材のまま）。
+        /// </summary>
+        private static Material? NoGlowFontMaterial
+        {
+            get
+            {
+                if (noGlowSearched) return noGlowFontMaterial;
+                noGlowSearched = true;
+                noGlowFontMaterial = Resources.FindObjectsOfTypeAll<Material>().FirstOrDefault(m => m != null && m.name == "Teko-Medium SDF No Glow");
+                return noGlowFontMaterial;
             }
         }
 
@@ -328,8 +424,10 @@ namespace JumpDrillMod.Services
             }
         }
 
-        /// <summary>扇のうち、ノーツの立方体の中を通った所（刃がノーツの中を通った所）を白で塗る。</summary>
-        private void AddInsideNotes(Transform parent, Swing mean, IEnumerable<Note> notes, Func<int, Color?> colorAt)
+        /// <summary>
+        /// 中心の点を測る平面（当たったフレームで刃が掃いた三角形を広げた平面）と、ノーツの箱が交わる所を白で塗る（GUI の 3D と同じ）。
+        /// </summary>
+        private void AddPlaneSections(Transform parent, IEnumerable<Note> notes, NoteBox box)
         {
             var vertices = new List<UVector3>();
             var colors = new List<Color>();
@@ -337,25 +435,25 @@ namespace JumpDrillMod.Services
             var fill = new Color(White.r, White.g, White.b, InsideAlpha);
 
             foreach (var note in notes)
-                foreach (var piece in SwingScene.InsideNote(mean, note))
-                {
-                    if (!colorAt(piece.Key).HasValue) continue;
+            {
+                var section = note.PlaneSection(box);
+                if (section.Count < 3) continue;
 
-                    // 凸な多角形なので、最初の点から扇形に三角形へ分ける
-                    int first = vertices.Count;
-                    foreach (var p in piece.Value)
-                    {
-                        vertices.Add(ToUnity(p));
-                        colors.Add(fill);
-                    }
-                    for (int k = 1; k < piece.Value.Length - 1; k++)
-                    {
-                        triangles.Add(first);
-                        triangles.Add(first + k);
-                        triangles.Add(first + k + 1);
-                    }
+                // 凸な多角形なので、最初の点から扇形に三角形へ分ける
+                int first = vertices.Count;
+                foreach (var p in section)
+                {
+                    vertices.Add(ToUnity(p));
+                    colors.Add(fill);
                 }
-            AddMesh(parent, "InsideNotes", vertices, colors, triangles);
+                for (int k = 1; k < section.Count - 1; k++)
+                {
+                    triangles.Add(first);
+                    triangles.Add(first + k);
+                    triangles.Add(first + k + 1);
+                }
+            }
+            AddMesh(parent, "PlaneSections", vertices, colors, triangles);
         }
 
         /// <summary>切った瞬間の刃（振りの終わり）の白い線と、先端の白丸。</summary>
@@ -371,10 +469,10 @@ namespace JumpDrillMod.Services
         /// ノーツの立方体。面ごとに向きで濃淡を付ける（上から光が当たっている形）。
         /// プレイヤー側の面に切る向きの三角、中心に白い点。向きは本体と同じくプレイヤーの方を向く（GUI と同じ、SwingScene.Note の軸）。
         /// </summary>
-        private void AddNote(Transform parent, Note note)
+        private void AddNote(Transform parent, Note note, NoteBox box)
         {
             var color = SideColor(note.ColorType, note.Forehand);
-            var c = note.Corners().Select(ToUnity).ToArray();
+            var c = note.Corners(box).Select(ToUnity).ToArray();
 
             int[][] faces =
             {
@@ -385,6 +483,7 @@ namespace JumpDrillMod.Services
             };
 
             var center = ToUnity(note.Center);
+            var boxCenter = ToUnity(note.At(0f, 0f, box.Offset));   // 面の向きは箱の中心から（ヒットボックスは中心がずれている）
             var light = new UVector3(0.3f, 0.8f, -0.5f).normalized;
             var vertices = new List<UVector3>();
             var colors = new List<Color>();
@@ -392,27 +491,43 @@ namespace JumpDrillMod.Services
             foreach (var face in faces)
             {
                 var faceCenter = (c[face[0]] + c[face[1]] + c[face[2]] + c[face[3]]) / 4f;
-                float shade = 0.55f + 0.45f * Mathf.Abs(UVector3.Dot((faceCenter - center).normalized, light));
+                float shade = 0.55f + 0.45f * Mathf.Abs(UVector3.Dot((faceCenter - boxCenter).normalized, light));
                 var shaded = new Color(color.r * shade, color.g * shade, color.b * shade, NoteAlpha);
                 AddQuad(vertices, colors, triangles, shaded, c[face[0]], c[face[1]], c[face[2]], c[face[3]]);
             }
             AddMesh(parent, "Note", vertices, colors, triangles);
 
-            // 三角は切る向きと反対側に置き、先が切る向きを指す。手前の面から少しだけ浮かせる
+            // 三角は切る向きと反対側に置き、先が切る向きを指す。手前の面から少しだけ浮かせる。大きさは見た目のノーツのまま
             if (!double.IsNaN(SwingSides.ArrowAngle(note.CutDirection)))
             {
                 float h = SwingScene.NoteSize / 2;
+                float w = box.Front - 0.002f;
                 var tri = new[]
                 {
-                    ToUnity(note.At(0f, -h * 0.24f, -h - 0.002f)),
-                    ToUnity(note.At(-h * 0.68f, -h * 0.8f, -h - 0.002f)),
-                    ToUnity(note.At(h * 0.68f, -h * 0.8f, -h - 0.002f)),
+                    ToUnity(note.At(0f, -h * 0.24f, w)),
+                    ToUnity(note.At(-h * 0.68f, -h * 0.8f, w)),
+                    ToUnity(note.At(h * 0.68f, -h * 0.8f, w)),
                 };
                 var white = new Color(White.r, White.g, White.b, 200f / 255f);
                 AddMesh(parent, "Arrow", tri.ToList(), new List<Color> { white, white, white }, new List<int> { 0, 1, 2 });
             }
 
             AddDot(parent, center, 0.02f, White);
+
+            // 刃がノーツに当たった所（GUI の図と同じ）
+            if (note.HasContact)
+            {
+                // ヒットボックスに当たった所の点と、そこから打点への線（GUI の 3D と同じ）
+                if (note.HasHitPoint)
+                {
+                    AddLine(parent, new List<UVector3> { ToUnity(note.HitPoint), ToUnity(note.Contact) }, new Color(White.r, White.g, White.b, 140f / 255f), 0.002f);
+                    AddDot(parent, ToUnity(note.HitPoint), 0.012f, new Color(1f, 0.82f, 0.38f, 1f));
+                }
+
+                // 当たった所から中心への線。長さが中心からのずれ（中心の 15 点に効く）
+                AddLine(parent, new List<UVector3> { ToUnity(note.Contact), center }, new Color(White.r, White.g, White.b, 180f / 255f), 0.003f);
+                AddDot(parent, ToUnity(note.Contact), 0.012f, White);
+            }
         }
 
         private static void AddQuad(List<UVector3> vertices, List<Color> colors, List<int> triangles, Color color,

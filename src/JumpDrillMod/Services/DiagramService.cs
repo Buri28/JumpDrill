@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using JumpDrill.Output;
 using JumpDrill.Replays;
 using UnityEngine;
 
@@ -22,10 +23,10 @@ namespace JumpDrillMod.Services
         /// <summary>
         /// 図の大きさ (px)。枠に出す寸法より大きめに描いて縮小させる。
         /// 等倍だと VR で見たときに線がざらつく。
-        /// 縦横比は Leaderboard.bsml の図の枠（86 × 28）に合わせる（全体の幅 904 × 28 / 86 ≒ 294）。
+        /// 縦横比は Leaderboard.bsml の図の枠（86 × 23）に合わせる（全体の幅 904 × 23 / 86 ≒ 242）。
         /// 合っていないと図が横に伸びて見える。
         /// </summary>
-        private const int Height = 294;
+        private const int Height = 242;
 
         /// <summary>1枚ぶんの幅。正面と横を並べるので、全体はこの倍に仕切りを足したもの。</summary>
         private const int PaneWidth = 450;
@@ -44,7 +45,8 @@ namespace JumpDrillMod.Services
         /// </summary>
         /// <param name="meanOnly">平均軌道だけを描くか。1本1本の束を出さない。</param>
         /// <param name="onlyForehand">フォアだけ（true）かバックだけ（false）。両方なら null。</param>
-        internal Sprite? For(string? replayPath, bool meanOnly, bool? onlyForehand)
+        /// <param name="hitbox">ノーツを当たり判定の大きさで描くか。</param>
+        internal Sprite? For(string? replayPath, bool meanOnly, bool? onlyForehand, bool hitbox)
         {
             if (string.IsNullOrEmpty(replayPath)) return null;
 
@@ -54,7 +56,8 @@ namespace JumpDrillMod.Services
             catch (Exception) { written = 0; }
 
             string key = replayPath + "|" + written + (meanOnly ? "|mean" : "|all")
-                + (onlyForehand == true ? "|fore" : onlyForehand == false ? "|back" : "|both");
+                + (onlyForehand == true ? "|fore" : onlyForehand == false ? "|back" : "|both")
+                + (hitbox ? "|hitbox" : "|visual");
 
             Sprite? found;
             if (cache.TryGetValue(key, out found))
@@ -65,7 +68,10 @@ namespace JumpDrillMod.Services
                 return found;
             }
 
-            found = Render(replayPath!, meanOnly, onlyForehand);
+            float? njs;
+            found = Render(replayPath!, meanOnly, onlyForehand, hitbox, out njs);
+            if (speeds.Count > 256) speeds.Clear();   // 記録を見るたびに増えるので、増えすぎたら忘れる（描き直すとまた覚える）
+            speeds[SpeedKey(replayPath!)] = njs;
             cache[key] = found;
             order.Add(key);
             while (order.Count > MaxCached)
@@ -83,19 +89,41 @@ namespace JumpDrillMod.Services
             return found;
         }
 
-        private static Sprite? Render(string replayPath, bool meanOnly, bool? onlyForehand)
+        /// <summary>図を描いたときに使った NJS（譜面から読んだもの）。描いていないか、譜面が見つからなければ null。</summary>
+        /// <remarks>図と同じ値を出すため、また選ぶたびに譜面のファイルを読み直さないために、描いたときの値を覚えておく。</remarks>
+        internal float? NoteJumpSpeedOf(string? replayPath)
         {
+            float? njs;
+            return !string.IsNullOrEmpty(replayPath) && speeds.TryGetValue(SpeedKey(replayPath!), out njs) ? njs : null;
+        }
+
+        private readonly Dictionary<string, float?> speeds = new Dictionary<string, float?>(StringComparer.OrdinalIgnoreCase);
+
+        private static string SpeedKey(string replayPath)
+        {
+            long written;
+            try { written = File.GetLastWriteTimeUtc(replayPath).Ticks; }
+            catch (Exception) { written = 0; }
+            return replayPath + "|" + written;
+        }
+
+        private static Sprite? Render(string replayPath, bool meanOnly, bool? onlyForehand, bool hitbox, out float? njs)
+        {
+            njs = null;
             try
             {
                 if (!File.Exists(replayPath)) return null;
 
                 var replay = ReplayReader.Read(replayPath);
+                njs = NoteFlight.NoteJumpSpeedOf(replay, name => DrillLibrary.FindInInstall(name, InstallPaths.Root));
                 byte[] png = SwingDiagram.RenderBoth(replay, new SwingDiagram.Options
                 {
                     Width = PaneWidth * 2 + 4,
                     Height = Height,
                     MeanOnly = meanOnly,
                     OnlyForehand = onlyForehand,
+                    Hitbox = hitbox,
+                    NoteJumpSpeed = njs,
                 });
 
                 return SpriteFactory.FromPng(png);

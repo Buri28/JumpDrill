@@ -95,6 +95,9 @@ namespace JumpDrill.Gui
 
         /// <summary>フォアとバックの両方か、片方だけか。正面・横・3D のどれにも効く。</summary>
         private readonly ComboBox _strokeSide = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
+
+        /// <summary>ノーツを見た目の大きさで描くか、良い切りの当たり判定の大きさで描くか。正面・横・3D のどれにも効く。</summary>
+        private readonly ComboBox _noteSize = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         // 既定で平均だけ。束を全部出すと向きの印が埋もれて読めない。
         private readonly CheckBox _meanOnly = new CheckBox { Text = Lang.T("平均だけ", "Mean only"), AutoSize = true, Checked = true };
         private readonly CheckBox _perspective = new CheckBox { Text = Lang.T("遠近をつける", "Perspective"), AutoSize = true };
@@ -261,6 +264,17 @@ namespace JumpDrill.Gui
             _meanOnly.CheckedChanged += (s, e) => ApplyViewOptions();
             _figureMode.SelectedIndexChanged += (s, e) => ApplyFigureMode();
             _strokeSide.SelectedIndexChanged += (s, e) => ApplyViewOptions();
+            // 範囲はどちらでも同じに取ってあるので、読み直さずに描き直すだけ（視点も拡大率もそのまま）
+            _noteSize.SelectedIndexChanged += (s, e) =>
+            {
+                bool hitbox = _noteSize.SelectedIndex == 1;
+                _view.Hitbox = hitbox;
+                _sideView.Hitbox = hitbox;
+                _view3D.Hitbox = hitbox;
+                _view.Invalidate();
+                _sideView.Invalidate();
+                _view3D.Invalidate();
+            };
             _perspective.CheckedChanged += (s, e) => _view.Perspective = _perspective.Checked;
             _faceLeft.CheckedChanged += (s, e) => ApplyViewOptions();
 
@@ -298,7 +312,7 @@ namespace JumpDrill.Gui
                 _install.FitWidth(DeviceDpi);
                 _metric.FitWidth(DeviceDpi);
                 // 図の下のプルダウンも、いちばん長い項目が収まる幅に（決め打ちだと文字の大きい画面で切れた）
-                foreach (var box in new[] { _figureMode, _strokeSide, _hand }) FitComboWidth(box);
+                foreach (var box in new[] { _figureMode, _strokeSide, _noteSize, _hand }) FitComboWidth(box);
             };
 
             // 基準を変えたら、読んである記録でベストと順位を付け直す（メダル画面で変えたときも）。
@@ -315,9 +329,54 @@ namespace JumpDrill.Gui
                 InstallPicker.Changed -= reload;
                 MetricPicker.Changed -= remetric;
                 if (_server != null) _server.Dispose();
+                SaveViewChoices();
             };
 
+            // 前に選んでいた図の出し方に戻す（変えたときの処理も通るよう、つないだ後で）
+            RestoreViewChoices();
+
             Shown += async (s, e) => await ScanAsync();
+        }
+
+        // 図の出し方の選び。開き直しても同じ見え方にする
+        private const string FigureModeKey = "board.figureMode";
+        private const string StrokeSideKey = "board.strokeSide";
+        private const string NoteSizeKey = "board.noteSize";
+        private const string HandKey = "board.hand";
+        private const string MeanOnlyKey = "board.meanOnly";
+        private const string PerspectiveKey = "board.perspective";
+        private const string NotesAtCutsKey = "board.notesAtCuts";
+        private const string FaceLeftKey = "board.faceLeft";
+
+        private void RestoreViewChoices()
+        {
+            Restore(_figureMode, FigureModeKey);
+            Restore(_strokeSide, StrokeSideKey);
+            Restore(_noteSize, NoteSizeKey);
+            Restore(_hand, HandKey);
+            _meanOnly.Checked = _settings.GetBool(MeanOnlyKey, _meanOnly.Checked);
+            _perspective.Checked = _settings.GetBool(PerspectiveKey, _perspective.Checked);
+            _notesAtCuts.Checked = _settings.GetBool(NotesAtCutsKey, _notesAtCuts.Checked);
+            _faceLeft.Checked = _settings.GetBool(FaceLeftKey, _faceLeft.Checked);
+        }
+
+        private void Restore(ComboBox box, string key)
+        {
+            if (box.Items.Count == 0) return;
+            box.SelectedIndex = _settings.GetInt(key, Math.Max(0, box.SelectedIndex), 0, box.Items.Count - 1);
+        }
+
+        private void SaveViewChoices()
+        {
+            _settings.Set(FigureModeKey, _figureMode.SelectedIndex);
+            _settings.Set(StrokeSideKey, _strokeSide.SelectedIndex);
+            _settings.Set(NoteSizeKey, _noteSize.SelectedIndex);
+            _settings.Set(HandKey, _hand.SelectedIndex);
+            _settings.Set(MeanOnlyKey, _meanOnly.Checked);
+            _settings.Set(PerspectiveKey, _perspective.Checked);
+            _settings.Set(NotesAtCutsKey, _notesAtCuts.Checked);
+            _settings.Set(FaceLeftKey, _faceLeft.Checked);
+            _settings.Save();
         }
 
         /// <summary>親の中央に置く。はみ出すなら画面の内側へ。</summary>
@@ -509,10 +568,16 @@ namespace JumpDrill.Gui
                 Lang.T("フォアとバック", "Both"), Lang.T("フォア", "Forehand"), Lang.T("バック", "Backhand"),
             });
             _strokeSide.SelectedIndex = 0;
+            _noteSize.Items.AddRange(new object[] { Lang.T("ノーツ", "Notes"), Lang.T("ヒットボックス", "Hitbox") });
+            _noteSize.SelectedIndex = 0;
+            _tips.SetToolTip(_noteSize, Lang.T(
+                "ヒットボックスはノーツより横に広く、手前に長い箱です。刃がこの箱を通れば切れます。",
+                "The hitbox is wider than the note and reaches further toward you. A cut counts when the blade passes through it."));
 
             var viewTools = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
             viewTools.Controls.Add(_figureMode);
             viewTools.Controls.Add(_strokeSide);
+            viewTools.Controls.Add(_noteSize);
             viewTools.Controls.Add(_hand);
             viewTools.Controls.Add(_meanOnly);
             viewTools.Controls.Add(_perspective);
@@ -1351,14 +1416,19 @@ namespace JumpDrill.Gui
             _view.RightSummary = SummaryOf(score.Hand(1));
             _sideView.LeftSummary = _view.LeftSummary;
             _sideView.RightSummary = _view.RightSummary;
-            _view.Load(score.Replay, score.Original);
-            _sideView.Load(score.Replay, score.Original);
-            _view3D.Load(score.Replay, score.Original);
+            float? njs = NoteJumpSpeedOf(score.Original ?? score.Replay);
+            bool hitbox = _noteSize.SelectedIndex == 1;
+            _view.Hitbox = hitbox;
+            _sideView.Hitbox = hitbox;
+            _view3D.Hitbox = hitbox;
+            _view.Load(score.Replay, score.Original, njs);
+            _sideView.Load(score.Replay, score.Original, njs);
+            _view3D.Load(score.Replay, score.Original, njs);
             ApplyViewOptions();
 
             // 幅に収まる範囲に留める。細かい数字は右の表にある。
             _viewInfo.Text = string.Format(CultureInfo.CurrentCulture,
-                Lang.T("{0}{1}   振り {2} 本{3}", "{0}{1}   {2} swings{3}"),
+                Lang.T("{0}{1}   振り {2} 本{3}{4}", "{0}{1}   {2} swings{3}{4}"),
                 DrillNaming.DisplayName(score.Replay.Info.SongName),
                 NotCountedMark(score.Replay.Info),
                 _view.SwingCount,
@@ -1366,7 +1436,9 @@ namespace JumpDrill.Gui
                     ? string.Format(CultureInfo.InvariantCulture, Lang.T("   {0:0} BPM (片手 {1:0} ms)", "   {0:0} BPM (per hand {1:0} ms)"),
                         DrillNaming.ParseBpm(score.Replay.Info.SongName) ?? Tempo.EbpmFromHandIntervalMs(score.HandIntervalMs),
                         score.HandIntervalMs)
-                    : "");
+                    : "",
+                // NJS は譜面から読む（リプレイには入っていない）。譜面が見つからなければ出さない
+                njs.HasValue ? string.Format(CultureInfo.InvariantCulture, "   NJS {0:0.##}", njs.Value) : "");
         }
 
         /// <summary>絵の中に出す手ごとの数字。振っていない手は出さない。</summary>
@@ -1761,6 +1833,13 @@ namespace JumpDrill.Gui
         private string FindLevelFolder(string songName)
         {
             return DrillLibrary.FindByName(songName, _workspaceRoot);
+        }
+
+        // 譜面の NJS。記録を選ぶたびに読む（譜面を作り直すと変わるので覚えておかない）。名前で直接引くだけなので軽い。
+        // 譜面が見つからなければ null（図は近似の向き）
+        private float? NoteJumpSpeedOf(Replay replay)
+        {
+            return NoteFlight.NoteJumpSpeedOf(replay, name => DrillLibrary.FindByName(name, false, _workspaceRoot));
         }
     }
 }
