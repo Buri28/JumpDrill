@@ -270,6 +270,9 @@ namespace JumpDrillMod.UI.Leaderboard
         private const string OrderNewest = "Newest";
 
         [UIComponent("order-dropdown")] private DropDownListSetting? orderDropdown = null;
+        [UIComponent("stroke-dropdown")] private DropDownListSetting? strokeDropdown = null;
+        [UIComponent("room-dropdown")] private DropDownListSetting? roomDropdown = null;
+        [UIComponent("size-dropdown")] private DropDownListSetting? sizeDropdown = null;
 
         [UIValue("order-options")]
         public List<object> OrderOptions => new List<object> { OrderRepro, OrderAcc, OrderNewest };
@@ -765,11 +768,27 @@ namespace JumpDrillMod.UI.Leaderboard
             }
         }
 
+        /// <summary>
+        /// プルダウンの本体を枠（pref-width）いっぱいに合わせる。BSML のプルダウンはゲームの設定画面の部品をそのまま使っていて、
+        /// 本体が右端に寄せた決まった幅になっている。枠を詰めても本体の幅は変わらず、左へはみ出して隣と重なった。
+        /// </summary>
+        private static void FitToFrame(DropDownListSetting? setting)
+        {
+            if (setting == null) return;
+            var rect = setting.transform as RectTransform;
+            if (rect == null) return;
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+
         [UIAction("#post-parse")]
         public void PostParse()
         {
             CreateUnderlines();
             CreateFigureLabels();
+            foreach (var setting in new[] { strokeDropdown, roomDropdown, sizeDropdown }) FitToFrame(setting);
 
             // 枠に出ているのがこのビューかどうかは画面からは分かりにくい。
             // 出るはずのときに出ていない、を切り分けられるようにしておく
@@ -996,9 +1015,9 @@ namespace JumpDrillMod.UI.Leaderboard
             {
                 diagramNote.text = sprite == null
                     ? string.Empty
-                    : (score!.CountsAsRecord
-                        ? string.Format(CultureInfo.InvariantCulture, "#{0}  swing paths", RankOf(score!))
-                        : "swing paths") + NoteJumpSpeedText(score!);
+                    : ((score!.CountsAsRecord
+                        ? string.Format(CultureInfo.InvariantCulture, "#{0}", RankOf(score!))
+                        : string.Empty) + NoteJumpSpeedText(score!)).Trim();
             }
 
         }

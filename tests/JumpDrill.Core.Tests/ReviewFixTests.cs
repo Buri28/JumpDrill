@@ -96,14 +96,17 @@ namespace JumpDrill.Tests
         }
 
         [Theory]
-        [InlineData(0, true, false)]    // Up はバック
-        [InlineData(1, true, true)]     // Down はフォア
-        [InlineData(2, true, true)]     // Left は切る向きで決まらないので、どちらでも出す
-        [InlineData(2, false, true)]
-        [InlineData(8, false, true)]    // 向き指定なしも同じ
-        public void Notes_without_an_up_or_down_side_are_shown_for_both_forehand_and_backhand(int cutDirection, bool onlyForehand, bool shown)
+        [InlineData(0, 1, true, false)]    // Up はバック
+        [InlineData(1, 1, true, true)]     // Down はフォア
+        [InlineData(2, 1, true, true)]     // 右手の Left（右から左）はフォア
+        [InlineData(2, 1, false, false)]
+        [InlineData(2, 0, true, false)]    // 左手の Left はバック
+        [InlineData(3, 0, true, true)]     // 左手の Right（左から右）はフォア
+        [InlineData(8, 1, false, true)]    // 向き指定なしは決まらないので、どちらでも出す
+        [InlineData(8, 1, true, true)]
+        public void Notes_are_shown_by_the_side_their_arrow_decides(int cutDirection, int hand, bool onlyForehand, bool shown)
         {
-            Assert.Equal(shown, SwingSides.NoteShown(cutDirection, onlyForehand));
+            Assert.Equal(shown, SwingSides.NoteShown(cutDirection, hand, onlyForehand));
         }
 
         [Fact]

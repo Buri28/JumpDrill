@@ -139,9 +139,9 @@ namespace JumpDrill.Gui
 
         /// <summary>
         /// ノーツを出すか。フォアだけ・バックだけのときは、その向きのノーツだけ。
-        /// 左右だけ・向き指定なしのノーツは切る向きで決まらないので、どちらでも出す（<see cref="SwingSides.NoteShown"/>）。
+        /// 向き指定なしのノーツは切る向きで決まらないので、どちらでも出す（<see cref="SwingSides.NoteShown"/>）。
         /// </summary>
-        private bool NoteShown(Note note) { return SwingSides.NoteShown(note.CutDirection, OnlyForehand); }
+        private bool NoteShown(Note note) { return SwingSides.NoteShown(note.CutDirection, note.ColorType, OnlyForehand); }
 
         /// <summary>
         /// 正面図に遠近を付けるか。付けると、頭の少し後ろから見た絵になり、手前（手元）は大きく、奥（先端）は小さく描く。
@@ -185,10 +185,22 @@ namespace JumpDrill.Gui
         public bool Hitbox { get; set; }
 
         /// <summary>
-        /// 箱の輪郭（図の座標、m）。正面の図はノーツの中心を通る面の断面（<see cref="NoteBox.FrontSlice"/>）、
+        /// 箱の輪郭（図の座標、m）。正面の図はノーツの絵の位置に置いた箱を正面から見た輪郭、
         /// 横の図は切った瞬間の中心に置いた箱を横から見た輪郭。
         /// </summary>
         private PointF[] HitboxOutline(Note note) { return Outline(note, NoteBox.Hitbox); }
+
+        /// <summary>
+        /// 正面の図に置く箱の 8 隅（図の座標）。ノーツの絵の位置に、向きを付けて置く。向き指定なしのノーツは見た目の四角を
+        /// 回さずに描くので、箱も回さない。
+        /// </summary>
+        private static Vector3[] FrontCorners(Note note, NoteBox box)
+        {
+            var center = new Vector3 { X = (float)note.CenterX, Y = (float)note.CenterY, Z = note.Depth };
+            return note.Tilt.HasValue
+                ? box.Corners(center, note.FaceRight, note.FaceUp, note.FaceForward)
+                : box.Corners(center, new Vector3 { X = 1f }, new Vector3 { Y = 1f }, new Vector3 { Z = 1f });
+        }
 
         private PointF[] Outline(Note note, NoteBox box)
         {
@@ -201,11 +213,7 @@ namespace JumpDrill.Gui
             }
             else
             {
-                var center = new Vector3 { X = (float)note.CenterX, Y = (float)note.CenterY, Z = note.Depth };
-                // 向き指定なしのノーツは見た目の四角を回さずに描くので、輪郭もそろえる
-                points = (note.Tilt.HasValue ? box.FrontSlice(center, note.FaceRight, note.FaceUp)
-                                             : box.FrontSlice(center, new Vector3 { X = 1f }, new Vector3 { Y = 1f }))
-                                .Select(p => new double[] { p.X, p.Y });
+                points = FrontCorners(note, box).Select(p => new double[] { p.X, p.Y });
             }
             return NoteBox.Hull(points).Select(p => new PointF((float)p[0], (float)p[1])).ToArray();
         }
@@ -487,17 +495,15 @@ namespace JumpDrill.Gui
 
                 // 平均から外れた振りほど目立たせる。
                 int alpha = (int)Math.Min(200, 40 + swing.Deviation * 1600);
-                DrawSwing(g, swing, c => Color.FromArgb(alpha, c), 1.4f, round: false);
+                DrawSwing(g, swing, c => Color.FromArgb(alpha, c), 1.6f, round: false);
             }
 
-            // 枠と矢印と軸は最後に。束の下に隠れると位置も角度も読めない。
+            // 枠と矢印は最後に。束の下に隠れると位置も角度も読めない。
             if (_axis == ViewAxis.Front)
             {
                 DrawScores(g);
-                DrawAxis(g);
                 DrawNotes(g, filled: false);
                 DrawCutLines(g);
-                DrawSwungDirections(g);
             }
             else
             {
@@ -513,63 +519,107 @@ namespace JumpDrill.Gui
                 DrawDirectionMarks(g, mean.Tips, i => ShownSide(SegmentForehand(mean, i)) ? MarkColor(mean.SaberType, SegmentForehand(mean, i)) : Color.Empty);
             }
 
-            // 刃がノーツに当たった所から、切った瞬間の先端（白丸）への矢印。軌道と切った線のつながり
+            // 先端がノーツの向こう（奥）を通ったノーツは、軌道の上に重ねて描き直す（ノーツの方が手前にある）
+            if (_axis == ViewAxis.Front)
+            {
+                Func<Note, bool> behind = n => n.TipBehind;
+                // 濃く塗って、軌道がノーツの後ろに隠れて見えるようにする
+                DrawNotes(g, filled: true, only: behind, fillAlpha: 215);
+                DrawNotes(g, filled: false, only: behind);
+                DrawCutLines(g, behind);
+            }
+
+            // ヒットボックスに当たった所（黄色）と、そこからの平面の線（白い線）の上の点
             DrawBladeLinks(g);
 
-            // 切った瞬間の先端。正面図では白い線（ノーツのどこを切ったか）と先端の軌跡がここでつながる
-            DrawCutMarks(g);
 
             DrawHint(g);
         }
 
+        /// <summary>当たった所と打点（平面の上で中心に一番近い点）の色。ノーツの中心（白）と見分ける。</summary>
+        private static readonly Color ContactColor = Color.FromArgb(0xFF, 0xD0, 0x60);
+
         /// <summary>
-        /// 刃がノーツに当たった所（切った線の真ん中）に点を打ち、そこから切った瞬間の先端（軌道の白丸）へ矢印を引く。
-        /// 矢印は切った瞬間の刃のうち、当たった所より先の部分。白い線（ノーツの上の刃の通り道）と軌道（先端の通り道）が
-        /// 同じ刃の別の場所だと分かるようにする。
+        /// ヒットボックスに当たったフレームの刃（白い線）、当たった所（黄色）から打点（黄色、平面の上で中心に一番近い点）への矢印、
+        /// 打点からノーツの中心（白）への破線。破線の長さが中心の点に効くずれ（3D と同じ）。
         /// </summary>
         /// <remarks>
-        /// 正面の図は、点をノーツの絵の上（ノーツの置き場所＋面の座標）に置く。ノーツを格子に置いているときは、
-        /// 実際の位置と数 cm ずれるぶん、矢印の長さもずれる（打点に合わせると実際の位置になる）。
+        /// 正面の図は、ノーツの絵の位置（ノーツの置き場所）に、切った瞬間の中心からのずれを足して置く。
         /// 横の図は切った瞬間のノーツの中心から置くので、実際の位置。
         /// </remarks>
         private void DrawBladeLinks(Graphics g)
         {
-            using (var arrow = new AdjustableArrowCap(3.2f, 3.6f, true))
-            using (var pen = new Pen(Color.FromArgb(200, 0xF2, 0xF5, 0xFA), 1.4f) { DashStyle = DashStyle.Dash })
-            using (var dot = new SolidBrush(Color.FromArgb(245, 0xF2, 0xF5, 0xFA)))
+            using (var dot = new SolidBrush(Color.FromArgb(245, ContactColor)))
+            using (var middleDot = new SolidBrush(Color.FromArgb(245, 0xF2, 0xF5, 0xFA)))
+            using (var hitBrush = new SolidBrush(Color.FromArgb(235, 0xFF, 0xD0, 0x60)))
             using (var rim = new Pen(Color.FromArgb(255, 0x10, 0x12, 0x16), 1.2f))
             {
-                pen.CustomEndCap = arrow;
                 foreach (var note in _notes)
                 {
                     if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
-                    if (!NoteShown(note) || !note.HasCutTip) continue;
+                    if (!NoteShown(note)) continue;
 
-                    PointF from;
+                    PointF contact;
+                    PointF? hit = null, bladeFrom = null, bladeTo = null;
                     if (_axis == ViewAxis.Front)
                     {
                         double u, v;
                         if (!note.TryContact(out u, out v)) continue;
-                        from = ToScreen(new PointF(
+                        contact = ToScreen(new PointF(
                             (float)(note.CenterX + note.RightX * u + note.UpX * v),
                             (float)(note.CenterY + note.RightY * u + note.UpY * v)));
+                        // 当たった所は、ノーツの絵の位置に、切った瞬間の中心からのずれを足して置く
+                        if (note.HasHitPoint && note.HasCutCenter)
+                        {
+                            Func<Vector3, PointF> place = p => ToScreen(new PointF(
+                                (float)(note.CenterX + p.X - note.CutCenter.X),
+                                (float)(note.CenterY + p.Y - note.CutCenter.Y)));
+                            hit = place(note.HitPoint);
+                            bladeFrom = place(note.HitHilt);
+                            bladeTo = place(note.HitTip);
+                        }
                     }
                     else
                     {
-                        Vector3 contact;
-                        if (!note.TryContactAtCut(out contact)) continue;
-                        from = ToScreen(Project(contact));
+                        Vector3 at;
+                        if (!note.TryContactAtCut(out at)) continue;
+                        contact = ToScreen(Project(at));
+                        if (note.HasHitPoint)
+                        {
+                            hit = ToScreen(Project(note.HitPoint));
+                            bladeFrom = ToScreen(Project(note.HitHilt));
+                            bladeTo = ToScreen(Project(note.HitTip));
+                        }
+
+                        // 横の図にはノーツの中心の点が無いので、ここで打つ（正面の図はノーツの絵に描いてある）
+                        var middle = ToScreen(Project(note.CutCenter));
+                        g.FillEllipse(middleDot, middle.X - 4.5f, middle.Y - 4.5f, 9f, 9f);
+                        g.DrawEllipse(rim, middle.X - 4.5f, middle.Y - 4.5f, 9f, 9f);
                     }
-                    var to = ToScreen(Project(note.CutTip));
 
-                    // 矢尻が白丸に隠れないよう、少し手前で止める
-                    float dx = to.X - from.X, dy = to.Y - from.Y;
-                    float length = (float)Math.Sqrt(dx * dx + dy * dy);
-                    if (length > 12f)
-                        g.DrawLine(pen, from, new PointF(to.X - dx / length * 6f, to.Y - dy / length * 6f));
+                    // ヒットボックスに当たったフレームの刃（3D と同じ白い線）。黄色い点（当たった所）はこの上にある
+                    if (bladeFrom.HasValue && bladeTo.HasValue)
+                        using (var blade = new Pen(Color.FromArgb(230, 0xF2, 0xF5, 0xFA), 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                            g.DrawLine(blade, bladeFrom.Value, bladeTo.Value);
 
-                    g.FillEllipse(dot, from.X - 3f, from.Y - 3f, 6f, 6f);
-                    g.DrawEllipse(rim, from.X - 3f, from.Y - 3f, 6f, 6f);
+                    // 打点から中心への破線（3D と同じ）。長さが中心からのずれ（中心の 15 点に効く）
+                    var center = _axis == ViewAxis.Front ? ToScreen(CenterOf(note)) : ToScreen(Project(note.CutCenter));
+                    using (var dash = new Pen(Color.FromArgb(220, 0xF2, 0xF5, 0xFA), 1.4f) { DashStyle = DashStyle.Dash })
+                        g.DrawLine(dash, contact, center);
+
+                    // ヒットボックスに当たった所（黄色）から、その平面の線（白い線）の上の点への点線
+                    if (hit.HasValue)
+                    {
+                        // 打点の側に矢印。矢尻が点に隠れないよう、点の縁で止める
+                        float dx = contact.X - hit.Value.X, dy = contact.Y - hit.Value.Y;
+                        float length = (float)Math.Sqrt(dx * dx + dy * dy);
+                        if (length > 10f)
+                            using (var head = new AdjustableArrowCap(3.2f, 3.6f, true))
+                            using (var arrowPen = new Pen(Color.FromArgb(230, ContactColor), 1.7f) { DashStyle = DashStyle.Dot, CustomEndCap = head })
+                                g.DrawLine(arrowPen, hit.Value, new PointF(contact.X - dx / length * 4.5f, contact.Y - dy / length * 4.5f));
+                        g.FillEllipse(hitBrush, hit.Value.X - 3.5f, hit.Value.Y - 3.5f, 7f, 7f);
+                    }
+                    g.FillEllipse(dot, contact.X - 3.5f, contact.Y - 3.5f, 7f, 7f);
                 }
             }
         }
@@ -577,58 +627,9 @@ namespace JumpDrill.Gui
         /// <summary>ノーツの一辺 (m)。本体の見た目に合わせた大きさ。</summary>
         private const float NoteSize = 0.5f;
 
-        /// <summary>
-        /// ノーツを置く。振りの束がどこからどこへ渡っているかが、これで初めて読める。
-        ///
-        /// 縦位置は身長ぶんの下駄を切った位置から当てはめたものなので、
-        /// 数 cm はずれる。位置関係を見るためのもので、寸法を測るものではない。
-        /// </summary>
-        /// <summary>
-        /// ノーツどうしを直線で結んで、その角度を出す。
-        ///
-        /// ノーツ四角の回転は <c>_cutDirection</c>（8方向しか無い）で決まるので、
-        /// 配置がその8方向に乗っていないと、軸とノーツの向きが食い違う。
-        /// それを目で確かめられるようにする線。
-        /// </summary>
-        private void DrawAxis(Graphics g)
-        {
-            foreach (var hand in new[] { 0, 1 })
-            {
-                if (OnlyHand.HasValue && hand != OnlyHand.Value) continue;
-
-                var notes = _notes.Where(n => n.ColorType == hand && !n.Shared)
-                    .OrderBy(n => n.CenterY)
-                    .ToList();
-                if (notes.Count < 2) continue;
-
-                Color color = hand == 0 ? LeftColor : RightColor;
-
-                for (int i = 1; i < notes.Count; i++)
-                {
-                    var from = CenterOf(notes[i - 1]);
-                    var to = CenterOf(notes[i]);
-
-                    var a = ToScreen(from);
-                    var b = ToScreen(to);
-
-                    using (var pen = new Pen(Color.FromArgb(190, ControlPaint.Light(color, 0.6f)), 1.4f))
-                    {
-                        pen.DashStyle = DashStyle.Dash;
-                        g.DrawLine(pen, a, b);
-                    }
-
-                    // 水平からの角度。ノーツの回転（45°刻み）と合っているかを見る。
-                    double degrees = Math.Abs(Math.Atan2(to.Y - from.Y, to.X - from.X) * 180.0 / Math.PI);
-                    if (degrees > 90) degrees = 180 - degrees;
-
-                    using (var brush = new SolidBrush(Color.FromArgb(220, ControlPaint.Light(color, 0.6f))))
-                        g.DrawString(degrees.ToString("0.0") + "°", Font, brush,
-                            (a.X + b.X) / 2f + 6, (a.Y + b.Y) / 2f - 8);
-                }
-            }
-        }
-
-        private void DrawNotes(Graphics g, bool filled)
+        /// <param name="only">描くノーツを絞る。null なら全部。</param>
+        /// <param name="fillAlpha">塗りの濃さ (0-255)。</param>
+        private void DrawNotes(Graphics g, bool filled, Func<Note, bool> only = null, int fillAlpha = 120)
         {
             // 同じマスにまとめたノーツは、出すもののうち最初の1つが四角と中心の点を描き、ほかは三角だけ。
             // フォアだけ・バックだけで先頭のノーツが外れても、残ったノーツの四角が抜けないように、絞った後で決める
@@ -639,17 +640,53 @@ namespace JumpDrill.Gui
                 if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
                 if (!NoteShown(note)) continue;
 
+                // 1つ目かどうかは、描き直すノーツだけに絞る前に決める（MOD の図と同じ）
+                bool headOnly = !drawn.Add(note.ColorType + "," + note.LineIndex + "," + note.LineLayer);
+                if (only != null && !only(note)) continue;
+                if (headOnly && filled) continue;
+
                 Color color = note.ColorType == 0 ? LeftColor : RightColor;
 
                 var center = CenterOf(note);
                 var topLeft = ToScreen(new PointF(center.X - NoteSize / 2, center.Y + NoteSize / 2));
                 var bottomRight = ToScreen(new PointF(center.X + NoteSize / 2, center.Y - NoteSize / 2));
                 var box = RectangleF.FromLTRB(topLeft.X, topLeft.Y, bottomRight.X, bottomRight.Y);
+                if (Hitbox)
+                {
+                    // ヒットボックスは箱を正面から見た形（横の図と同じ）。見える面を明暗で塗り、見える辺を引く。
+                    // 手前に伸びた部分も入るので、当たった所（黄色）が箱の上に来る
+                    var corners = FrontCorners(note, NoteBox.Hitbox).Select(p => ToScreen(new PointF(p.X, p.Y))).ToArray();
+                    var right = note.Tilt.HasValue ? note.FaceRight : new Vector3 { X = 1f };
+                    var up = note.Tilt.HasValue ? note.FaceUp : new Vector3 { Y = 1f };
+                    var forward = note.Tilt.HasValue ? note.FaceForward : new Vector3 { Z = 1f };
+                    var toViewer = new Vector3 { Z = -1f };   // 正面の図はプレイヤーの側（−Z）から見ている
+                    if (filled)
+                    {
+                        foreach (var face in NoteBox.VisibleFaces(right, up, forward, toViewer))
+                        {
+                            float shade = NoteBox.FaceShade(face.Value, toViewer);
+                            using (var fill = new SolidBrush(Color.FromArgb((int)(fillAlpha * (0.4f + 0.6f * shade)), ControlPaint.Light(color, shade * 0.5f))))
+                                g.FillPolygon(fill, face.Key.Select(i => corners[i]).ToArray());
+                        }
+                        continue;
+                    }
+                    if (!headOnly)
+                        using (var edge = new Pen(Color.FromArgb(235, ControlPaint.Light(color, 0.35f)), 1.6f))
+                            foreach (var e in NoteBox.VisibleEdges(right, up, forward, toViewer))
+                                g.DrawLine(edge, corners[e[0]], corners[e[1]]);
 
-                bool headOnly = !drawn.Add(note.ColorType + "," + note.LineIndex + "," + note.LineLayer);
-                if (headOnly && filled) continue;
-                var outline = Hitbox ? HitboxOutline(note).Select(ToScreen).ToArray() : null;
-                DrawNote(g, box, color, note.CutDirection, note, filled, headOnly: headOnly, outline: outline);
+                    // 切る向きの印は箱の面に貼る（横の図と同じ。手前の面に ▽、見えていれば横の面に ⇩）
+                    if (ArrowDirection(note.CutDirection).HasValue)
+                    {
+                        var center3 = new Vector3 { X = (float)note.CenterX, Y = (float)note.CenterY, Z = note.Depth };
+                        using (var head = new SolidBrush(Color.FromArgb(170, 0xF2, 0xF5, 0xFA)))
+                            foreach (var decal in NoteBox.Hitbox.ArrowDecals(center3, right, up, forward, toViewer))
+                                g.FillPolygon(head, decal.Select(p => ToScreen(new PointF(p.X, p.Y))).ToArray());
+                    }
+                    DrawNote(g, box, color, note.CutDirection, note, filled, headOnly: headOnly, noBody: true);
+                    continue;
+                }
+                DrawNote(g, box, color, note.CutDirection, note, filled, headOnly: headOnly, fillAlpha: fillAlpha);
             }
         }
 
@@ -878,46 +915,11 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 横から見たときの打点。<b>平均軌道の終わりの点</b>に置く。
-        ///
-        /// 1本の振りは「前のノーツを切った瞬間から次を切る瞬間まで」で切り出してあるので、
-        /// 平均軌道の終点が<b>切った瞬間のブレード先端</b>そのものになる。
-        /// 印は定義からして束の上に乗る。
-        ///
-        /// リプレイの <c>cutPoint</c>（ノーツ面を横切った点）は使わない。
-        /// 絵に描いているのは<b>先端</b>の道のりで、ノーツを切るのは<b>刃のどこか</b>なので、
-        /// その2つは刃の長さぶん（十数 cm）離れる。実際、面の位置に線を引くと
-        /// 束から浮いて、何を指している線なのか読めなかった。
-        ///
-        /// 読み方は、印より<b>手前が振りかぶり (PRE)、先が振り抜き (POST)</b>。
-        /// 印から印までの弧が1本の振りで、前の印を出た直後がそのノーツの振り抜き、
-        /// 次の印に入る手前が次のノーツの振りかぶりになる。
-        /// </summary>
-        private void DrawCutMarks(Graphics g)
-        {
-            foreach (var mean in _means)
-            {
-                if (OnlyHand.HasValue && mean.SaberType != OnlyHand.Value) continue;
-                if (mean.Tips.Length == 0) continue;
-                if (!ShownSide(mean.ToForehand)) continue;
-
-                var dot = ToScreen(Project(mean.Tips[mean.Tips.Length - 1]));
-
-                // 束と同じ色だと埋もれる。打点だけ白で抜く。
-                using (var brush = new SolidBrush(Color.FromArgb(245, 0xF2, 0xF5, 0xFA)))
-                using (var pen = new Pen(Color.FromArgb(255, 0x10, 0x12, 0x16), 1.4f))
-                {
-                    g.FillEllipse(brush, dot.X - 4f, dot.Y - 4f, 8f, 8f);
-                    g.DrawEllipse(pen, dot.X - 4f, dot.Y - 4f, 8f, 8f);
-                }
-            }
-        }
-
-        /// <summary>
         /// ノーツのどこを切ったか。1回ごとに切り口の線を、ノーツの幅ぶんの長さで薄く重ねる。
         /// 中心の点から線までの距離が、点数の中心の 15 点に効くずれ（cutDistanceToCenter）。
         /// </summary>
-        private void DrawCutLines(Graphics g)
+        /// <param name="only">描くノーツを絞る。null なら全部。</param>
+        private void DrawCutLines(Graphics g, Func<Note, bool> only = null)
         {
             using (var pen = new Pen(Color.FromArgb(80, 0xF2, 0xF5, 0xFA), 1.2f))
             using (var arrow = new AdjustableArrowCap(3.2f, 3.6f, true))
@@ -931,6 +933,7 @@ namespace JumpDrill.Gui
                     if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
                     if (!NoteShown(note)) continue;
                     if (note.Cuts.Count == 0) continue;
+                    if (only != null && !only(note)) continue;
 
                     // 面の座標 (u, v) → 正面の平面。面の右・上を X-Y へ落としたもので、四角と同じだけ縮む
                     Func<float, float, PointF> onFace = (u, v) => ToScreen(new PointF(
@@ -988,40 +991,6 @@ namespace JumpDrill.Gui
             }
         }
 
-        /// <summary>実際に振った向きを示す線の長さ (m)。</summary>
-        private const float SwungMarkLength = 0.34f;
-
-        /// <summary>
-        /// ノーツごとに、実際に振った向きを線で出す。
-        /// ノーツの矢印（要求された向き）との開きが、そのまま角度ずれになる。
-        /// </summary>
-        private void DrawSwungDirections(Graphics g)
-        {
-            using (var text = new Font(Font.FontFamily, 8.5f))
-            foreach (var note in _notes)
-            {
-                if (OnlyHand.HasValue && note.ColorType != OnlyHand.Value) continue;
-                if (!NoteShown(note)) continue;
-                if (note.SwungX == 0 && note.SwungY == 0) continue;
-
-                var from = ToScreen(CenterOf(note));
-                var to = ToScreen(new PointF(
-                    (float)(note.CenterX + note.SwungX * SwungMarkLength),
-                    (float)(note.CenterY + note.SwungY * SwungMarkLength)));
-
-                using (var pen = new Pen(Color.FromArgb(230, 0xF2, 0xF5, 0xFA), 2f))
-                {
-                    pen.EndCap = LineCap.ArrowAnchor;
-                    pen.DashStyle = DashStyle.Dot;
-                    g.DrawLine(pen, from, to);
-                }
-
-                using (var brush = new SolidBrush(Color.FromArgb(220, 0xF2, 0xF5, 0xFA)))
-                    g.DrawString(note.AngleError.ToString("0.0", CultureInfo.InvariantCulture) + "°",
-                        text, brush, to.X + 3f, to.Y - 6f);
-            }
-        }
-
         /// <summary>
         /// 平均軌道に「く」の字を並べて向きを示す。
         /// 往路と復路は別の平均として重なって出るので、印が無いとどちらがどちらか読めない。
@@ -1063,26 +1032,15 @@ namespace JumpDrill.Gui
             }
         }
 
-        /// <param name="outline">当たり判定の輪郭（画面の座標）。あれば角丸の四角の代わりにこれを描く。三角と点は見た目の大きさのまま。</param>
+        /// <param name="noBody">角丸の四角と三角を描かない（ヒットボックスの箱を別に描くとき）。中心の点は描く。</param>
         private static void DrawNote(Graphics g, RectangleF box, Color color, int cutDirection, Note note, bool filled,
-                                     bool headOnly = false, PointF[] outline = null)
+                                     bool headOnly = false, int fillAlpha = 120, bool noBody = false)
         {
             float size = Math.Min(box.Width, box.Height);
             var arrow = ArrowDirection(cutDirection);
 
-            bool body = outline == null || outline.Length < 3;
-            if (!body)
-            {
-                if (filled)
-                {
-                    using (var fill = new SolidBrush(Color.FromArgb(120, color)))
-                        g.FillPolygon(fill, outline);
-                    return;
-                }
-                if (!headOnly)
-                    using (var edge = new Pen(Color.FromArgb(235, ControlPaint.Light(color, 0.35f)), Math.Max(1.6f, size * 0.05f)))
-                        g.DrawPolygon(edge, outline);
-            }
+            if (noBody && filled) return;
+            bool body = !noBody;
 
             var saved = g.Save();
             g.TranslateTransform(box.X + box.Width / 2, box.Y + box.Height / 2);
@@ -1107,7 +1065,7 @@ namespace JumpDrill.Gui
             {
                 if (filled)
                 {
-                    using (var fill = new SolidBrush(Color.FromArgb(120, color)))
+                    using (var fill = new SolidBrush(Color.FromArgb(fillAlpha, color)))
                         g.FillPath(fill, path);
                 }
                 else
@@ -1120,7 +1078,7 @@ namespace JumpDrill.Gui
 
                     // 三角は切る向きと反対側に置き、先が切る向きを指す（BeatLeader と同じ）。
                     // 正三角形ではなく、幅の広い浅い形。
-                    if (arrow.HasValue)
+                    if (arrow.HasValue && !noBody)
                         using (var head = new SolidBrush(Color.FromArgb(150, 0xF2, 0xF5, 0xFA)))
                             g.FillPolygon(head, new[]
                             {

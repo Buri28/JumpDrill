@@ -75,6 +75,10 @@ namespace JumpDrill.Replays
             public Vector3 HitPoint { get; internal set; }
             public bool HasHitPoint { get; internal set; }
 
+            /// <summary>ヒットボックスに当たったフレームの刃（元と先、<see cref="NoteFigure.HitHilt"/>）。<see cref="HasHitPoint"/> と同じとき使える。</summary>
+            public Vector3 HitHilt { get; internal set; }
+            public Vector3 HitTip { get; internal set; }
+
             /// <summary>1ノーツの点数（115 点満点）の平均（<see cref="NoteFigure.MeanScore"/>）。切っていなければ NaN。</summary>
             public double MeanScore { get; internal set; } = double.NaN;
 
@@ -287,6 +291,8 @@ namespace JumpDrill.Replays
                     PlaneNormal = planeNormal,
                     HasPlane = hasPlane,
                     HitPoint = figure.HitPoint,
+                    HitHilt = figure.HitHilt,
+                    HitTip = figure.HitTip,
                     HasHitPoint = figure.HasHitPoint,
                 });
             }

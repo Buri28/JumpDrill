@@ -1121,18 +1121,15 @@ namespace JumpDrill.Replays
         /// <summary>
         /// その振りがフォア（切り下げ）か。<b>振りが終わるノーツの矢印</b>で決める。
         ///
-        /// 矢印に上下の成分が無いとき（水平・ドット）は決めようがないので、
-        /// 循環の偶奇を代わりに使う。生成側でクリックを鳴らす向きを決めるときと
-        /// 同じ扱い（<c>ClickPlanner.IsDownStep</c>）。
+        /// 下向きの成分があればフォア、上向きならバック。左右だけの矢印は上下を 90° 回したものとして、
+        /// 右手は右から左（←）、左手は左から右（→）をフォアにする（<see cref="SwingSides.TryForehand"/>、図と同じ）。
+        /// 向き指定なし（ドット）は決めようがないので、循環の偶奇を代わりに使う。
         /// </summary>
         /// <param name="index">その手が何回目に叩くノーツか。ミスも数に入れる。</param>
         public static bool IsForehand(ReplayNote note, int index)
         {
-            var d = (CutDirection)note.CutDirection;
-
-            if (d.IsDownward()) return true;
-            if (d.IsUpward()) return false;
-
+            bool forehand;
+            if (SwingSides.TryForehand(note.CutDirection, note.ColorType, out forehand)) return forehand;
             return index % 2 == 0;
         }
 

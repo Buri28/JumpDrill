@@ -63,33 +63,6 @@ namespace JumpDrill.Replays
             return corners;
         }
 
-        /// <summary>
-        /// 正面の図に描く四隅。ノーツの中心を通る、面に平行な断面（幅 × 高さ）。
-        /// 見た目のノーツも面だけを描くのに揃える。箱をそのまま正面へ潰すと、頭の方へ向いた奥行きが横に伸びて、
-        /// どこまで届くかが読めなくなる（奥行きは横の図で見る）。
-        /// </summary>
-        public Vector3[] FrontSlice(Vector3 center, Vector3 right, Vector3 up)
-        {
-            return Rectangle(center, right, HalfWidth, up, HalfHeight);
-        }
-
-        private static Vector3[] Rectangle(Vector3 center, Vector3 a, float halfA, Vector3 b, float halfB)
-        {
-            var corners = new Vector3[4];
-            for (int i = 0; i < 4; i++)
-            {
-                float sa = (i == 0 || i == 3) ? -halfA : halfA;
-                float sb = i < 2 ? -halfB : halfB;
-                corners[i] = new Vector3
-                {
-                    X = center.X + sa * a.X + sb * b.X,
-                    Y = center.Y + sa * a.Y + sb * b.Y,
-                    Z = center.Z + sa * a.Z + sb * b.Z,
-                };
-            }
-            return corners;
-        }
-
         /// <summary>箱の 12 本の辺（<see cref="Corners"/> の番号の組）。1つの桁だけ違う隅どうし。</summary>
         public static IEnumerable<int[]> Edges()
         {

@@ -223,12 +223,13 @@ namespace JumpDrillMod.Services
         {
             Func<bool, bool> shown = fore => !onlyForehand.HasValue || onlyForehand.Value == fore;
 
-            // 左右・向き指定なしのノーツは切る向きで決まらないので、どちらでも出す
-            Func<Note, bool> noteShown = note => SwingSides.NoteShown(note.CutDirection, onlyForehand);
+            // 向き指定なしのノーツは切る向きで決まらないので、どちらでも出す
+            Func<Note, bool> noteShown = note => SwingSides.NoteShown(note.CutDirection, note.ColorType, onlyForehand);
 
             foreach (var note in scene.Notes)
                 if (noteShown(note)) AddNote(parent, note, box);
             AddPlaneSections(parent, scene.Notes.Where(noteShown), box);
+            AddHitBlades(parent, scene.Notes.Where(noteShown));
             AddScoreLabels(parent, scene, scene.Notes.Where(noteShown).ToList());
 
             foreach (var mean in scene.Means)
@@ -243,8 +244,6 @@ namespace JumpDrillMod.Services
                 AddPath(parent, mean.Hilts, i => Fade(Lighten(colorAt(i), 0.2f), 200f / 255f), HiltWidth, marks: false);
                 AddPath(parent, mean.Tips, i => Lighten(colorAt(i), 0.4f), TipWidth, marks: true);
 
-                // 切った瞬間の刃と先端の白丸（振りの終わり＝次に切るノーツ）
-                if (shown(mean.ToForehand)) AddCut(parent, mean);
             }
         }
 
@@ -321,18 +320,16 @@ namespace JumpDrillMod.Services
         }
 
         private static Material? noGlowFontMaterial;
-        private static bool noGlowSearched;
 
         /// <summary>
         /// 光らない文字の素材（本体の UI が使う "Teko-Medium SDF No Glow"）。BSML の版によって取り出す口が無いので、名前で探す。
-        /// 見つからなければ null（フォントの既定の素材のまま）。
+        /// 見つからなければ null（フォントの既定の素材のまま）。見つかるまでは置くたびに探し直す（素材がまだ読み込まれていないことがある）。
         /// </summary>
         private static Material? NoGlowFontMaterial
         {
             get
             {
-                if (noGlowSearched) return noGlowFontMaterial;
-                noGlowSearched = true;
+                if (noGlowFontMaterial != null) return noGlowFontMaterial;
                 noGlowFontMaterial = Resources.FindObjectsOfTypeAll<Material>().FirstOrDefault(m => m != null && m.name == "Teko-Medium SDF No Glow");
                 return noGlowFontMaterial;
             }
@@ -456,13 +453,12 @@ namespace JumpDrillMod.Services
             AddMesh(parent, "PlaneSections", vertices, colors, triangles);
         }
 
-        /// <summary>切った瞬間の刃（振りの終わり）の白い線と、先端の白丸。</summary>
-        private void AddCut(Transform parent, Swing mean)
+        /// <summary>ヒットボックスに当たったフレームの刃（ノーツごと）の白い線（GUI の 3D と同じ）。黄色い点はこの刃の上にある。</summary>
+        private void AddHitBlades(Transform parent, IEnumerable<Note> notes)
         {
-            var hilt = ToUnity(mean.Hilts[mean.Hilts.Length - 1]);
-            var tip = ToUnity(mean.Tips[mean.Tips.Length - 1]);
-            AddLine(parent, new List<UVector3> { hilt, tip }, new Color(White.r, White.g, White.b, 230f / 255f), 0.006f);
-            AddDot(parent, tip, 0.015f, White);
+            foreach (var note in notes)
+                if (note.HasHitPoint)
+                    AddLine(parent, new List<UVector3> { ToUnity(note.HitHilt), ToUnity(note.HitTip) }, new Color(White.r, White.g, White.b, 230f / 255f), 0.006f);
         }
 
         /// <summary>
@@ -520,13 +516,26 @@ namespace JumpDrillMod.Services
                 // ヒットボックスに当たった所の点と、そこから打点への線（GUI の 3D と同じ）
                 if (note.HasHitPoint)
                 {
-                    AddLine(parent, new List<UVector3> { ToUnity(note.HitPoint), ToUnity(note.Contact) }, new Color(White.r, White.g, White.b, 140f / 255f), 0.002f);
-                    AddDot(parent, ToUnity(note.HitPoint), 0.012f, new Color(1f, 0.82f, 0.38f, 1f));
+                    var from = ToUnity(note.HitPoint);
+                    var to = ToUnity(note.Contact);
+                    var lineColor = new Color(1f, 0.82f, 0.38f, 200f / 255f);   // 黄色い点どうしの線も黄色
+                    AddLine(parent, new List<UVector3> { from, to }, lineColor, 0.003f);
+
+                    // 打点の側に矢印（「く」の字）。中心の点を測る平面の上で開く
+                    var along = to - from;
+                    if (along.magnitude > 0.03f && note.HasPlane)
+                    {
+                        along.Normalize();
+                        var across = UVector3.Cross(ToUnity(note.PlaneNormal), along).normalized;
+                        var tip = to - along * 0.012f;
+                        AddLine(parent, new List<UVector3> { tip - along * 0.025f + across * 0.012f, tip, tip - along * 0.025f - across * 0.012f }, lineColor, 0.003f);
+                    }
+                    AddDot(parent, ToUnity(note.HitPoint), 0.011f, new Color(1f, 0.82f, 0.38f, 1f));
                 }
 
                 // 当たった所から中心への線。長さが中心からのずれ（中心の 15 点に効く）
                 AddLine(parent, new List<UVector3> { ToUnity(note.Contact), center }, new Color(White.r, White.g, White.b, 180f / 255f), 0.003f);
-                AddDot(parent, ToUnity(note.Contact), 0.012f, White);
+                AddDot(parent, ToUnity(note.Contact), 0.011f, new Color(1f, 0.82f, 0.38f, 1f));   // 打点も当たった所と同じ黄色（GUI と同じ）
             }
         }
 

@@ -431,14 +431,23 @@ namespace JumpDrill.Tests
         [InlineData(0, true)]
         [InlineData(1, false)]
         [InlineData(2, true)]
-        public void A_flat_arrow_falls_back_to_the_turn_of_the_cycle(int index, bool forehand)
+        public void A_dot_falls_back_to_the_turn_of_the_cycle(int index, bool forehand)
         {
-            // 水平（Right）もドット（Any）も上下が無いので、矢印だけでは決まらない。
-            var right = new ReplayNote { NoteId = 1000 + 100 + 10 + 3 };
+            // ドット（Any）は矢印が無いので、何回目の振りかで決める
             var dot = new ReplayNote { NoteId = 1000 + 100 + 10 + 8 };
-
-            Assert.Equal(forehand, SwingAnalyzer.IsForehand(right, index));
             Assert.Equal(forehand, SwingAnalyzer.IsForehand(dot, index));
+        }
+
+        [Theory]
+        [InlineData(1, 2, true)]    // 右手（色 1）の Left（右から左）はフォア
+        [InlineData(1, 3, false)]   // 右手の Right はバック
+        [InlineData(0, 3, true)]    // 左手（色 0）の Right（左から右）はフォア
+        [InlineData(0, 2, false)]   // 左手の Left はバック
+        public void A_flat_arrow_is_a_quarter_turn_of_up_and_down(int hand, int cutDirection, bool forehand)
+        {
+            var note = new ReplayNote { NoteId = 1000 + 100 + hand * 10 + cutDirection };
+            Assert.Equal(forehand, SwingAnalyzer.IsForehand(note, 0));
+            Assert.Equal(forehand, SwingAnalyzer.IsForehand(note, 1));   // 何回目でも同じ
         }
 
         [Fact]

@@ -36,13 +36,6 @@ namespace JumpDrill.Replays
         /// <summary>切った瞬間の奥行き。プレイヤーの方を向く量がこれで決まる。</summary>
         public float Depth { get; internal set; }
 
-        /// <summary>実際に振った向きの平均（X-Y、長さ 1）。振っていなければゼロ。</summary>
-        public double SwungX { get; internal set; }
-        public double SwungY { get; internal set; }
-
-        /// <summary>要求された向きからの角度ずれの平均 (度)。</summary>
-        public double AngleError { get; internal set; }
-
         /// <summary>プレイヤーを向いた後の面の右・上・前（世界座標、長さ 1）。3D の立方体の軸にも使う。</summary>
         public Vector3 FaceRight { get; internal set; } = new Vector3 { X = 1f };
         public Vector3 FaceUp { get; internal set; } = new Vector3 { Y = 1f };
@@ -98,33 +91,48 @@ namespace JumpDrill.Replays
 
         /// <summary>
         /// 切った瞬間の刃の先端（平均、世界座標）。軌道の白丸と同じ点。切っていなければ <see cref="HasCutTip"/> が false。
-        /// ノーツに当たった所（<see cref="TryContact"/>）からここまでが、刃の当たった所より先の部分。
+        /// 先端がノーツより奥を通ったか（<see cref="TipBehind"/>）を見るのに使う。
         /// </summary>
         public Vector3 CutTip { get; internal set; }
         public bool HasCutTip { get; internal set; }
 
         /// <summary>
-        /// 刃がノーツに当たった所（面の座標、m）。切った線の平均の真ん中の点（切った瞬間に刃が面を通った所）。
-        /// 切った線が無ければ false。
+        /// 切った瞬間の刃の先端が、ノーツの中心より奥（プレイヤーから遠い側）を通ったか。
+        /// 正面の図では、このノーツを軌道の上に重ねて描く（先端はノーツの向こうを通っているので）。
+        /// </summary>
+        public bool TipBehind { get { return HasCutTip && HasCutCenter && CutTip.Z > CutCenter.Z; } }
+
+        /// <summary>
+        /// 打点（面の座標、m）。切った線（中心の点を測る平面とノーツの面が交わる線）の平均の上で、ノーツの中心に一番近い点。
+        /// 中心からここまでの長さが、中心の点に効くずれを面に落としたもの。切った線が無ければ false。
         /// </summary>
         public bool TryContact(out double u, out double v)
         {
             u = v = 0;
             if (Cuts.Count == 0) return false;
             var mean = NoteFigures.MeanCut(Cuts);
-            var middle = mean[mean.Length / 2];
-            u = middle[0];
-            v = middle[1];
+            var a = mean[0];
+            var b = mean[mean.Length - 1];
+            double du = b[0] - a[0], dv = b[1] - a[1];
+            double length2 = du * du + dv * dv;
+            double t = length2 < 1e-12 ? 0.0 : -(a[0] * du + a[1] * dv) / length2;   // 直線の上で原点（中心）に一番近い所
+            u = a[0] + du * t;
+            v = a[1] + dv * t;
             return true;
         }
 
         /// <summary>
         /// 刃がヒットボックスに当たった所（平均、世界座標）。切った判定のフレームで刃が掃いた三角形
-        /// （今の刃の元・先と1つ前の刃の真ん中）と、ヒットボックスが重なった所の真ん中。
+        /// （今の刃の元・先と1つ前の刃の真ん中）がヒットボックスと重なった回について、そのフレームの刃のうち
+        /// ヒットボックスの中に入っている部分の真ん中（入っていなければ箱の中心に一番近い所）。刃（<see cref="HitHilt"/>〜<see cref="HitTip"/>）の上にある。
         /// 中心の点は、この三角形を広げた平面で測る。求められなければ <see cref="HasHitPoint"/> が false。
         /// </summary>
         public Vector3 HitPoint { get; internal set; }
         public bool HasHitPoint { get; internal set; }
+
+        /// <summary>ヒットボックスに当たったフレームの刃（元と先、平均、世界座標）。<see cref="HitPoint"/> と同じ回から。</summary>
+        public Vector3 HitHilt { get; internal set; }
+        public Vector3 HitTip { get; internal set; }
 
         /// <summary>
         /// 本体の打点（記録の cutPoint の平均、世界座標）。刃が通った面（扇を広げた平面）の上で、ノーツの中心にいちばん近い点。
@@ -184,13 +192,12 @@ namespace JumpDrill.Replays
         }
 
         /// <summary>フォアか（<see cref="SwingSides.NoteForehand"/>）。</summary>
-        public bool Forehand { get { return SwingSides.NoteForehand(CutDirection); } }
+        public bool Forehand { get { return SwingSides.NoteForehand(CutDirection, ColorType); } }
 
         // 作る途中だけ使う
         internal readonly List<float> Times = new List<float>();
         internal readonly List<NoteCutInfo> RawCuts = new List<NoteCutInfo>();
         internal readonly List<ReplayNote> RawNotes = new List<ReplayNote>();
-        internal readonly List<Vector3[]> RawShapes = new List<Vector3[]>();
         internal readonly List<Vector3> RawTips = new List<Vector3>();
     }
 
@@ -243,7 +250,6 @@ namespace JumpDrill.Replays
                     TiltY = NoteGrid.MidJumpY(placement.LineLayer),
                     Depth = hasCut ? measured.Z : 0f,
                 };
-                MeasureSwing(replay, placement, note);
 
                 foreach (var played in replay.Notes)
                 {
@@ -255,8 +261,9 @@ namespace JumpDrill.Replays
                     {
                         note.RawCuts.Add(played.Cut);
                         note.RawNotes.Add(played);
-                        Vector3 tip;
-                        note.RawShapes.Add(TipShape(replay, played, out tip));
+                        // 切った瞬間の刃の先端
+                        Vector3 hilt, tip;
+                        CutMoments.BladeAt(replay, played.Cut.SaberType, CutMoments.Find(replay, played), out hilt, out tip);
                         note.RawTips.Add(tip);
                     }
                 }
@@ -328,46 +335,6 @@ namespace JumpDrill.Replays
                     members[i].Shared = i > 0;
                 }
             }
-        }
-
-        /// <summary>
-        /// その配置を実際にどの向きに振ったか（平均）と、要求された向きからのずれ。
-        /// </summary>
-        /// <remarks>
-        /// 向きは <c>saberDir</c> を長さ 1 に直してから平均する。速さで重みが付くと、強く振った回だけの向きになってしまう。
-        /// ずれの角度は本体が出している <c>cutDirDeviation</c> をそのまま使う（こちらで測り直すと角度オフセットを含められない）。
-        /// タワー・スタックでは同じマスに向きの違うノーツが来るので、向きも見る（混ぜると上下の振りが打ち消し合う）。
-        /// </remarks>
-        private static void MeasureSwing(Replay replay, NotePlacement placement, NoteFigure figure)
-        {
-            double x = 0, y = 0, error = 0;
-            int count = 0;
-
-            foreach (var note in replay.Notes)
-            {
-                if (note.EventType != NoteEventType.Good || note.Cut == null) continue;
-                if (note.ColorType != placement.ColorType) continue;
-                if (note.LineIndex != placement.LineIndex || note.LineLayer != placement.LineLayer) continue;
-                if (note.CutDirection != placement.CutDirection) continue;
-
-                var d = note.Cut.SaberDirection;
-                double length = Math.Sqrt(d.X * d.X + d.Y * d.Y);
-                if (length < 1e-6) continue;
-
-                x += d.X / length;
-                y += d.Y / length;
-                error += Math.Abs(note.Cut.CutDirDeviation);
-                count++;
-            }
-
-            if (count == 0) return;
-
-            double norm = Math.Sqrt(x * x + y * y);
-            if (norm < 1e-6) return;
-
-            figure.SwungX = x / norm;
-            figure.SwungY = y / norm;
-            figure.AngleError = error / count;
         }
 
         /// <summary>
@@ -576,65 +543,6 @@ namespace JumpDrill.Replays
 
         // ───────── 切った線・切った瞬間の中心 ─────────
 
-        /// <summary>
-        /// 切った瞬間の前後の、先端の通り道。弧長でノーツの幅ぶん（前後 <see cref="NoteSize"/> / 2 ずつ）を等間隔に取り、
-        /// 切った瞬間の先端からのずれ（世界座標）で返す。真ん中の点は原点。
-        /// 前後 100 ms で幅に届かなければ、届いた所で止める（端は同じ点が続く）。
-        /// </summary>
-        /// <param name="origin">切った瞬間の先端（世界座標）。</param>
-        private static Vector3[] TipShape(Replay replay, ReplayNote note, out Vector3 origin)
-        {
-            float moment = CutMoments.Find(replay, note);
-            int saber = note.Cut.SaberType;
-            Vector3 hilt, start;
-            CutMoments.BladeAt(replay, saber, moment, out hilt, out start);
-            origin = start;
-
-            const float Half = NoteSize / 2;
-            var ahead = Walk(replay, saber, moment, origin, +1, Half);
-            var behind = Walk(replay, saber, moment, origin, -1, Half);
-
-            var shape = new Vector3[CutLineSamples];
-            int middle = CutLineSamples / 2;
-            for (int k = 0; k < CutLineSamples; k++)
-            {
-                float target = Half * (k - middle) / middle;
-                var p = target >= 0 ? At(ahead, target) : At(behind, -target);
-                shape[k] = new Vector3 { X = p.X - origin.X, Y = p.Y - origin.Y, Z = p.Z - origin.Z };
-            }
-            return shape;
-        }
-
-        /// <summary>切った瞬間から 1 ms ずつ進めて（戻して）、先端の道のりを弧長と組で集める。</summary>
-        private static List<KeyValuePair<float, Vector3>> Walk(Replay replay, int saber, float moment, Vector3 origin, int direction, float length)
-        {
-            var points = new List<KeyValuePair<float, Vector3>> { new KeyValuePair<float, Vector3>(0f, origin) };
-            float arc = 0f;
-            var last = origin;
-            for (int ms = 1; ms <= 100 && arc < length; ms++)
-            {
-                Vector3 hilt, tip;
-                CutMoments.BladeAt(replay, saber, moment + direction * ms / 1000f, out hilt, out tip);
-                arc += (float)Vector3.Distance(last, tip);
-                points.Add(new KeyValuePair<float, Vector3>(arc, tip));
-                last = tip;
-            }
-            return points;
-        }
-
-        /// <summary>弧長 <paramref name="arc"/> の位置。道のりより先なら終わりの点。</summary>
-        private static Vector3 At(List<KeyValuePair<float, Vector3>> points, float arc)
-        {
-            for (int i = 1; i < points.Count; i++)
-            {
-                if (points[i].Key < arc) continue;
-                float span = points[i].Key - points[i - 1].Key;
-                float t = span > 1e-6f ? (arc - points[i - 1].Key) / span : 0f;
-                return CutMoments.Lerp(points[i - 1].Value, points[i].Value, t);
-            }
-            return points[points.Count - 1].Value;
-        }
-
         private static double Square(double x) { return x * x; }
 
         internal static bool HasPoint(NoteCutInfo cut)
@@ -662,54 +570,75 @@ namespace JumpDrill.Replays
         /// <summary>
         /// 切った線を、ノーツの面の座標で作る。
         ///
-        /// 線は切った瞬間の前後の先端の通り道（ノーツの幅ぶん）を面に落とした曲線で、
-        /// 振った向き（<c>saberDir</c>）に直交する向きへ、中心から <c>cutDistanceToCenter</c> だけずらして置く。
-        /// ずらす側は、中心から見た打点の側（<see cref="PointSide"/>）。
-        ///
-        /// 面の座標で測るのは、外側の列のノーツがプレイヤーの方へ大きく回っているため。
-        /// 振った向きを正面の平面へそのまま落とすと 30〜40° 傾いて見え、本体の角度ずれ（面の上で数度）と合わなかった。
-        /// 切り口の面とノーツの面が交わる線も、面どうしが斜めなので傾き、ずれも距離より大きく見えた。
-        /// 点数（中心の 15 点）に効くのは距離なので、それをそのまま幅にする。
-        /// 打点が入っていない回（作ったリプレイなど）は、どちらへずらすか分からないので描かない。
+        /// 線は、中心の点を測る平面（ヒットボックスに当たったフレームで刃が掃いた三角形を広げた平面。記録の cutNormal に直角で
+        /// 打点 cutPoint を通る）が、ノーツの中心を通る面（ノーツの正面と平行な面）と交わる直線。ノーツの四角の中だけを描く。
+        /// 中心からこの線までの距離が、点数（中心の 15 点）に効く距離を面に落としたもの。
+        /// 線の向きは振った向き（<c>saberDir</c> を面に落とした向き）にそろえ、先が振り抜いた側。
+        /// 打点が入っていない回（作ったリプレイなど）は描かない。
         /// </summary>
         private static void BuildCutLines(NoteFigure note, Vector3 right, Vector3 up)
         {
+            const double Half = NoteSize / 2;
             note.Cuts.Clear();
             for (int index = 0; index < note.RawCuts.Count; index++)
             {
                 var cut = note.RawCuts[index];
                 if (!HasPoint(cut)) continue;
 
+                // 平面の向きを面の座標へ。面と平行（面の上に線が無い）なら描かない
+                var n = cut.CutNormal;
+                double nu = n.X * right.X + n.Y * right.Y + n.Z * right.Z;
+                double nv = n.X * up.X + n.Y * up.Y + n.Z * up.Z;
+                double nf2 = nu * nu + nv * nv;
+                if (nf2 < 1e-8) continue;
+
+                // その回のノーツの中心は、打点から平面の向きに距離ぶん戻した点。面の上の線は nu*u + nv*v = −sign*dist
+                double sign = -PointSide(note, cut);
+                double c = -sign * cut.CutDistanceToCenter;
+                double qu = nu * c / nf2, qv = nv * c / nf2;      // 線の上で中心にいちばん近い点
+                double nf = Math.Sqrt(nf2);
+                double tu = -nv / nf, tv = nu / nf;               // 線の向き
+
+                // 振った向きにそろえる
                 var swung = cut.SaberDirection;
-                double u = swung.X * right.X + swung.Y * right.Y + swung.Z * right.Z;
-                double v = swung.X * up.X + swung.Y * up.Y + swung.Z * up.Z;
-                double length = Math.Sqrt(u * u + v * v);
-                if (length < 1e-6) continue;
+                double su = swung.X * right.X + swung.Y * right.Y + swung.Z * right.Z;
+                double sv = swung.X * up.X + swung.Y * up.Y + swung.Z * up.Z;
+                if (tu * su + tv * sv < 0) { tu = -tu; tv = -tv; }
 
-                double alongU = u / length, alongV = v / length;
-                double acrossU = -alongV, acrossV = alongU;
+                // ノーツの四角（±Half）の中だけ。外れていれば中心に近い点の前後 Half
+                double from = -Half, to = Half;
+                if (!ClipLine(qu, qv, tu, tv, Half, ref from, ref to)) { from = -Half; to = Half; }
 
-                // 面の上の横向きを世界座標に戻して、中心から打点への向きと比べる
-                double ax = right.X * acrossU + up.X * acrossV;
-                double ay = right.Y * acrossU + up.Y * acrossV;
-                double az = right.Z * acrossU + up.Z * acrossV;
-                var normal = cut.CutNormal;
-                double side = PointSide(note, cut) * (normal.X * ax + normal.Y * ay + normal.Z * az) >= 0 ? 1.0 : -1.0;
-                double d = cut.CutDistanceToCenter * side;
-
-                var shape = note.RawShapes[index];
-                var points = new double[shape.Length][];
-                for (int k = 0; k < shape.Length; k++)
+                var points = new double[CutLineSamples][];
+                for (int k = 0; k < CutLineSamples; k++)
                 {
-                    var q = shape[k];
-                    points[k] = new[]
-                    {
-                        acrossU * d + (q.X * right.X + q.Y * right.Y + q.Z * right.Z),
-                        acrossV * d + (q.X * up.X + q.Y * up.Y + q.Z * up.Z),
-                    };
+                    double t = from + (to - from) * k / (CutLineSamples - 1);
+                    points[k] = new[] { qu + tu * t, qv + tv * t };
                 }
                 note.Cuts.Add(points);
             }
+        }
+
+        /// <summary>直線 q + t·d のうち、|u|,|v| ≤ half の四角に入る t の範囲。入らなければ false。</summary>
+        private static bool ClipLine(double qu, double qv, double du, double dv, double half, ref double from, ref double to)
+        {
+            double lo = double.NegativeInfinity, hi = double.PositiveInfinity;
+            foreach (var pair in new[] { new[] { qu, du }, new[] { qv, dv } })
+            {
+                double q = pair[0], d = pair[1];
+                if (Math.Abs(d) < 1e-9)
+                {
+                    if (Math.Abs(q) > half) return false;
+                    continue;
+                }
+                double t1 = (-half - q) / d, t2 = (half - q) / d;
+                lo = Math.Max(lo, Math.Min(t1, t2));
+                hi = Math.Min(hi, Math.Max(t1, t2));
+            }
+            if (lo >= hi) return false;
+            from = lo;
+            to = hi;
+            return true;
         }
 
         /// <summary>
@@ -721,7 +650,7 @@ namespace JumpDrill.Replays
         {
             var frames = replay.Frames;
             var box = NoteBox.Hitbox;
-            double x = 0, y = 0, z = 0;
+            double hx = 0, hy = 0, hz = 0, tx = 0, ty = 0, tz = 0, along = 0;
             int count = 0;
             for (int index = 0; index < note.RawCuts.Count; index++)
             {
@@ -770,14 +699,57 @@ namespace JumpDrill.Replays
                     }
                 if (polygon.Count < 3) continue;   // 重ならない（記録の時刻と判定のフレームがずれた、など）
 
-                x += polygon.Average(p => p.X);
-                y += polygon.Average(p => p.Y);
-                z += polygon.Average(p => p.Z);
+                // 刃（元→先）の上のどこか（0〜1）。ヒットボックスの中に入っている部分の真ん中、入っていなければ箱の中心に一番近い所
+                along += BladeFraction(now.Position, now.Tip, boxCenter, axes, halves);
+                hx += now.Position.X; hy += now.Position.Y; hz += now.Position.Z;
+                tx += now.Tip.X; ty += now.Tip.Y; tz += now.Tip.Z;
                 count++;
             }
             if (count == 0) return;
-            note.HitPoint = new Vector3 { X = (float)(x / count), Y = (float)(y / count), Z = (float)(z / count) };
+            // 刃の何割の所かを平均して、平均の刃の上に置く（描く白い線の上に必ず乗る）
+            double f = along / count;
+            note.HitPoint = new Vector3
+            {
+                X = (float)((hx + (tx - hx) * f) / count),
+                Y = (float)((hy + (ty - hy) * f) / count),
+                Z = (float)((hz + (tz - hz) * f) / count),
+            };
+            note.HitHilt = new Vector3 { X = (float)(hx / count), Y = (float)(hy / count), Z = (float)(hz / count) };
+            note.HitTip = new Vector3 { X = (float)(tx / count), Y = (float)(ty / count), Z = (float)(tz / count) };
             note.HasHitPoint = true;
+        }
+
+        /// <summary>
+        /// 刃（<paramref name="hilt"/> → <paramref name="tip"/>）のうち箱の中に入っている部分の真ん中が、刃の何割の所か（0〜1）。
+        /// 入っていなければ、刃の上で箱の中心に一番近い所。
+        /// </summary>
+        private static double BladeFraction(Vector3 hilt, Vector3 tip, Vector3 boxCenter, Vector3[] axes, float[] halves)
+        {
+            var d = NotePose.Subtract(tip, hilt);
+            var o = NotePose.Subtract(hilt, boxCenter);
+            double lo = 0, hi = 1;
+            bool inside = true;
+            for (int k = 0; k < 3 && inside; k++)
+            {
+                var a = axes[k];
+                double p0 = o.X * a.X + o.Y * a.Y + o.Z * a.Z;
+                double dp = d.X * a.X + d.Y * a.Y + d.Z * a.Z;
+                if (Math.Abs(dp) < 1e-9)
+                {
+                    if (Math.Abs(p0) > halves[k]) inside = false;
+                    continue;
+                }
+                double t1 = (-halves[k] - p0) / dp, t2 = (halves[k] - p0) / dp;
+                lo = Math.Max(lo, Math.Min(t1, t2));
+                hi = Math.Min(hi, Math.Max(t1, t2));
+                if (lo > hi) inside = false;
+            }
+            if (inside) return (lo + hi) / 2;
+
+            double length2 = d.X * d.X + d.Y * d.Y + d.Z * d.Z;
+            if (length2 < 1e-12) return 0;
+            double t = -(o.X * d.X + o.Y * d.Y + o.Z * d.Z) / length2;
+            return Math.Max(0, Math.Min(1, t));
         }
 
         /// <summary>多角形のうち <paramref name="inside"/> が 0 以上の側だけを残す（Sutherland–Hodgman の1枚ぶん）。</summary>

@@ -193,11 +193,8 @@ namespace JumpDrill.Replays
                 notes = notes.Where(n => n.ColorType == hand).ToList();
             }
 
-            // 軸の破線はマスどうしを結ぶものなので、フォア・バックで絞らない
-            var cells = notes.Where(n => !n.Shared).ToList();
-
-            // フォアだけ・バックだけのときは、その向きのノーツだけ（左右・向き指定なしのノーツはどちらでも出す）
-            notes = notes.Where(n => SwingSides.NoteShown(n.CutDirection, options.OnlyForehand)).ToList();
+            // フォアだけ・バックだけのときは、その向きのノーツだけ（向き指定なしのノーツはどちらでも出す）
+            notes = notes.Where(n => SwingSides.NoteShown(n.CutDirection, n.ColorType, options.OnlyForehand)).ToList();
 
             // 同じマスにまとめたノーツは、残ったうちの最初の1つが四角と中心の点を描く
             var bodies = new HashSet<NoteFigure>(notes.GroupBy(n => new { n.ColorType, n.LineIndex, n.LineLayer }).Select(g => g.First()));
@@ -218,17 +215,15 @@ namespace JumpDrill.Replays
                 {
                     // 平均から外れた振りほど目立たせる。GUI と同じ出し方
                     double alpha = Math.Min(200.0, 40.0 + swing.Deviation * 1600.0) / 255.0;
-                    DrawSwing(canvas, bounds, options, swing, false, 1.4, alpha);
+                    DrawSwing(canvas, bounds, options, swing, false, 1.6, alpha);
                 }
             }
 
             if (options.Axis == ViewAxis.Front)
             {
-                // 枠と矢印と軸は最後に。束の下に隠れると位置も角度も読めない
-                DrawAxis(canvas, bounds, options, cells);
+                // 枠と矢印は最後に。束の下に隠れると位置も角度も読めない
                 foreach (var note in notes) DrawNoteEdge(canvas, bounds, options, note, !bodies.Contains(note));
                 foreach (var note in notes) DrawCutLines(canvas, bounds, options, note);
-                foreach (var note in notes) DrawSwungDirection(canvas, bounds, options, note);
             }
             else
             {
@@ -242,17 +237,18 @@ namespace JumpDrill.Replays
                 DrawDirectionMarks(canvas, bounds, options, mean);
             }
 
-            // 刃がノーツに当たった所から、切った瞬間の先端（白丸）への矢印。軌道と切った線のつながり
+            // 先端がノーツの向こう（奥）を通ったノーツは、軌道の上に重ねて描き直す（ノーツの方が手前にある。GUI と同じ）
+            if (options.Axis == ViewAxis.Front)
+                foreach (var note in notes.Where(n => n.TipBehind))
+                {
+                    // 濃く塗って、軌道がノーツの後ろに隠れて見えるようにする
+                    if (bodies.Contains(note)) DrawNoteBody(canvas, bounds, options, note, 215.0 / 255.0);
+                    DrawNoteEdge(canvas, bounds, options, note, !bodies.Contains(note));
+                    DrawCutLines(canvas, bounds, options, note);
+                }
+
+            // ヒットボックスに当たった所（黄色）と、そこからの平面の線（白い線）の上の点
             foreach (var note in notes) DrawBladeLink(canvas, bounds, options, note);
-
-            // 切った瞬間の先端。正面図では切った線（ノーツのどこを切ったか）と先端の軌道がここでつながる
-            foreach (var mean in means)
-            {
-                if (mean.Tips.Length == 0 || !Shown(options, mean.ToForehand)) continue;
-
-                var dot = ToScreen(Project(mean.Tips[mean.Tips.Length - 1], options), bounds, options);
-                canvas.Disc(dot[0], dot[1], 4.0, White[0], White[1], White[2]);
-            }
 
             return canvas;
         }
@@ -547,7 +543,7 @@ namespace JumpDrill.Replays
         }
 
         /// <summary>
-        /// 当たり判定の箱の輪郭（図の座標、m）。正面の図は面の断面（<see cref="NoteBox.FrontSlice"/>）、横の図は箱を横から見た輪郭。
+        /// 当たり判定の箱の輪郭（図の座標、m）。正面の図はノーツの絵の位置に置いた箱を正面から見た輪郭、横の図は箱を横から見た輪郭。
         /// 正面の図はノーツの中心（<see cref="NoteFigure.CenterX"/>）、横の図は切った瞬間の中心に置く。
         /// </summary>
         private static List<double[]> HitboxOutline(NoteFigure note, Options options)
@@ -564,12 +560,23 @@ namespace JumpDrill.Replays
                                        .Select(p => Project(p, options)));
             }
 
+            return NoteBox.Hull(FrontCorners(note, box).Select(p => new double[] { p.X, p.Y }));
+        }
+
+        /// <summary>正面の図に置く箱の 8 隅（ノーツの絵の位置。向き指定なしは回さない。GUI と同じ）。</summary>
+        private static Vector3[] FrontCorners(NoteFigure note, NoteBox box)
+        {
             var center = new Vector3 { X = (float)note.CenterX, Y = (float)note.CenterY, Z = note.Depth };
-            // 向き指定なしのノーツは見た目の四角を回さずに描くので、輪郭もそろえる
-            var slice = note.Tilt.HasValue ? box.FrontSlice(center, note.FaceRight, note.FaceUp)
-                                           : box.FrontSlice(center, new Vector3 { X = 1f }, new Vector3 { Y = 1f });
-            return NoteBox.Hull(slice
-                                              .Select(p => new double[] { p.X, p.Y }));
+            return note.Tilt.HasValue
+                ? box.Corners(center, note.FaceRight, note.FaceUp, note.FaceForward)
+                : box.Corners(center, new Vector3 { X = 1f }, new Vector3 { Y = 1f }, new Vector3 { Z = 1f });
+        }
+
+        private static void FrontAxes(NoteFigure note, out Vector3 right, out Vector3 up, out Vector3 forward)
+        {
+            right = note.Tilt.HasValue ? note.FaceRight : new Vector3 { X = 1f };
+            up = note.Tilt.HasValue ? note.FaceUp : new Vector3 { Y = 1f };
+            forward = note.Tilt.HasValue ? note.FaceForward : new Vector3 { Z = 1f };
         }
 
         private static void NoteQuad(double[] bounds, Options options, NoteFigure note,
@@ -606,13 +613,31 @@ namespace JumpDrill.Replays
         }
 
         /// <summary>下地。薄く塗って、どこにノーツがあるかだけ見せる。</summary>
-        private static void DrawNoteBody(PixelCanvas canvas, double[] bounds, Options options, NoteFigure note)
+        /// <param name="alpha">塗りの濃さ (0-1)。</param>
+        private static void DrawNoteBody(PixelCanvas canvas, double[] bounds, Options options, NoteFigure note, double alpha = 120.0 / 255.0)
         {
             var color = note.ColorType == 0 ? SwingPalette.Left : SwingPalette.Right;
 
+            if (options.Hitbox)
+            {
+                // ヒットボックスは箱を正面から見た形（横の図と同じ）。見える面を明暗で塗る
+                var corners = FrontCorners(note, NoteBox.Hitbox).Select(p => ToScreen(new double[] { p.X, p.Y }, bounds, options)).ToArray();
+                Vector3 right, up, forward;
+                FrontAxes(note, out right, out up, out forward);
+                var toViewer = new Vector3 { Z = -1f };
+                foreach (var face in NoteBox.VisibleFaces(right, up, forward, toViewer))
+                {
+                    double shade = NoteBox.FaceShade(face.Value, toViewer);
+                    var lit = Lighten(color, shade * 0.5);
+                    canvas.FillPolygon(face.Key.Select(i => corners[i][0]).ToArray(), face.Key.Select(i => corners[i][1]).ToArray(),
+                                       lit[0], lit[1], lit[2], alpha * (0.4 + 0.6 * shade));
+                }
+                return;
+            }
+
             double[] xs, ys;
             NoteQuad(bounds, options, note, out xs, out ys);
-            canvas.FillPolygon(xs, ys, color[0], color[1], color[2], 120.0 / 255.0);
+            canvas.FillPolygon(xs, ys, color[0], color[1], color[2], alpha);
         }
 
         /// <summary>
@@ -630,7 +655,17 @@ namespace JumpDrill.Replays
             double size = NoteSizeInPixels(bounds, options);
             double thickness = Math.Max(1.6, size * 0.05);
 
-            if (!headOnly)
+            if (!headOnly && options.Hitbox)
+            {
+                // ヒットボックスは見える辺を引く
+                var corners = FrontCorners(note, NoteBox.Hitbox).Select(p => ToScreen(new double[] { p.X, p.Y }, bounds, options)).ToArray();
+                Vector3 right, up, forward;
+                FrontAxes(note, out right, out up, out forward);
+                foreach (var e in NoteBox.VisibleEdges(right, up, forward, new Vector3 { Z = -1f }))
+                    canvas.LineAA(corners[e[0]][0], corners[e[0]][1], corners[e[1]][0], corners[e[1]][1],
+                                  color[0], color[1], color[2], 1.6, 235.0 / 255.0);
+            }
+            else if (!headOnly)
                 for (int i = 0; i < xs.Length; i++)
                 {
                     int next = (i + 1) % xs.Length;
@@ -640,7 +675,24 @@ namespace JumpDrill.Replays
 
             var center = ToScreen(new[] { note.CenterX, note.CenterY }, bounds, options);
 
-            if (note.Tilt.HasValue)
+            if (options.Hitbox)
+            {
+                // ヒットボックスは切る向きの印を箱の面に貼る（横の図と同じ。手前の面に ▽、見えていれば横の面に ⇩）
+                double ax, ay;
+                if (SwingSides.ArrowOf(note.CutDirection, out ax, out ay))
+                {
+                    Vector3 right, up, forward;
+                    FrontAxes(note, out right, out up, out forward);
+                    var center3 = new Vector3 { X = (float)note.CenterX, Y = (float)note.CenterY, Z = note.Depth };
+                    foreach (var decal in NoteBox.Hitbox.ArrowDecals(center3, right, up, forward, new Vector3 { Z = -1f }))
+                    {
+                        var pts = decal.Select(p => ToScreen(new double[] { p.X, p.Y }, bounds, options)).ToArray();
+                        canvas.FillPolygon(pts.Select(p => p[0]).ToArray(), pts.Select(p => p[1]).ToArray(),
+                                           White[0], White[1], White[2], 170.0 / 255.0);
+                    }
+                }
+            }
+            else if (note.Tilt.HasValue)
             {
                 double rx, ry, ux, uy;
                 NoteAxes(note, out rx, out ry, out ux, out uy);
@@ -671,103 +723,82 @@ namespace JumpDrill.Replays
         }
 
         /// <summary>
-        /// 刃がノーツに当たった所（切った線の真ん中）に点を打ち、そこから切った瞬間の先端（軌道の白丸）へ矢印を引く。
-        /// 矢印は切った瞬間の刃のうち、当たった所より先の部分（GUI の DrawBladeLinks と同じ）。
+        /// ヒットボックスに当たったフレームの刃（白い線）、当たった所（黄色）から打点（黄色、白い切断線の上で中心に一番近い点）への矢印、
+        /// 打点から中心への破線（GUI の DrawBladeLinks と同じ）。
         /// 正面の図はノーツの絵の上に、横の図は切った瞬間のノーツの中心から置く。
         /// </summary>
         private static void DrawBladeLink(PixelCanvas canvas, double[] bounds, Options options, NoteFigure note)
         {
-            if (!note.HasCutTip) return;
-
-            double[] from;
+            double[] contact, hit = null, bladeFrom = null, bladeTo = null;
             if (options.Axis == ViewAxis.Front)
             {
                 double u, v;
                 if (!note.TryContact(out u, out v)) return;
-                from = ToScreen(new[]
+                contact = ToScreen(new[]
                 {
                     note.CenterX + note.RightX * u + note.UpX * v,
                     note.CenterY + note.RightY * u + note.UpY * v,
                 }, bounds, options);
+                if (note.HasHitPoint && note.HasCutCenter)
+                {
+                    Func<Vector3, double[]> place = p => ToScreen(new[]
+                    {
+                        note.CenterX + p.X - note.CutCenter.X,
+                        note.CenterY + p.Y - note.CutCenter.Y,
+                    }, bounds, options);
+                    hit = place(note.HitPoint);
+                    bladeFrom = place(note.HitHilt);
+                    bladeTo = place(note.HitTip);
+                }
             }
             else
             {
-                Vector3 contact;
-                if (!note.TryContactAtCut(out contact)) return;
-                from = ToScreen(Project(contact, options), bounds, options);
-            }
-            var to = ToScreen(Project(note.CutTip, options), bounds, options);
-
-            double dx = to[0] - from[0], dy = to[1] - from[1];
-            double length = Math.Sqrt(dx * dx + dy * dy);
-            if (length > 12.0)
-            {
-                dx /= length;
-                dy /= length;
-                // 矢尻が白丸に隠れないよう、少し手前で止める
-                double endX = to[0] - dx * 6.0, endY = to[1] - dy * 6.0;
-                canvas.DashedLine(from[0], from[1], endX, endY, White[0], White[1], White[2], 1.4, 200.0 / 255.0, 3.0);
-                const double Head = 6.0;
-                canvas.FillPolygon(
-                    new[] { endX, endX - dx * Head + dy * Head * 0.55, endX - dx * Head - dy * Head * 0.55 },
-                    new[] { endY, endY - dy * Head - dx * Head * 0.55, endY - dy * Head + dx * Head * 0.55 },
-                    White[0], White[1], White[2], 220.0 / 255.0);
-            }
-
-            canvas.Disc(from[0], from[1], 3.0, White[0], White[1], White[2], 245.0 / 255.0);
-        }
-
-        /// <summary>実際に振った向きを示す線の長さ (m)。</summary>
-        private const double SwungMarkLength = 0.34;
-
-        /// <summary>
-        /// ノーツごとに、実際に振った向きを線で出す。
-        /// ノーツの矢印（要求された向き）との開きが、そのまま角度ずれになる。
-        /// </summary>
-        private static void DrawSwungDirection(PixelCanvas canvas, double[] bounds, Options options, NoteFigure note)
-        {
-            if (note.SwungX == 0 && note.SwungY == 0) return;
-
-            var from = ToScreen(new[] { note.CenterX, note.CenterY }, bounds, options);
-            var to = ToScreen(new[]
-            {
-                note.CenterX + note.SwungX * SwungMarkLength,
-                note.CenterY + note.SwungY * SwungMarkLength,
-            }, bounds, options);
-
-            canvas.DashedLine(from[0], from[1], to[0], to[1],
-                              White[0], White[1], White[2], 2.0, 230.0 / 255.0, 3.0);
-
-            // 先端に印。GUI は矢尻を付けているが、ここでは点で代える
-            canvas.Disc(to[0], to[1], 2.5, White[0], White[1], White[2], 230.0 / 255.0);
-        }
-
-        /// <summary>
-        /// ノーツどうしを破線で結ぶ。
-        /// </summary>
-        /// <remarks>
-        /// ノーツ四角の回転は 8 方向しか無いので、配置がその 8 方向に乗っていないと
-        /// 軸とノーツの向きが食い違う。それを目で確かめられるようにする線。
-        /// 角度の数値は出せない（文字を描く手段が無い）。
-        /// </remarks>
-        private static void DrawAxis(PixelCanvas canvas, double[] bounds, Options options, List<NoteFigure> notes)
-        {
-            foreach (int hand in new[] { 0, 1 })
-            {
-                var ordered = notes.Where(n => n.ColorType == hand).OrderBy(n => n.CenterY).ToList();
-                if (ordered.Count < 2) continue;
-
-                var color = Lighten(hand == 0 ? SwingPalette.Left : SwingPalette.Right, 0.6);
-
-                for (int i = 1; i < ordered.Count; i++)
+                Vector3 at;
+                if (!note.TryContactAtCut(out at)) return;
+                contact = ToScreen(Project(at, options), bounds, options);
+                if (note.HasHitPoint)
                 {
-                    var a = ToScreen(new[] { ordered[i - 1].CenterX, ordered[i - 1].CenterY }, bounds, options);
-                    var b = ToScreen(new[] { ordered[i].CenterX, ordered[i].CenterY }, bounds, options);
-
-                    canvas.DashedLine(a[0], a[1], b[0], b[1],
-                                      color[0], color[1], color[2], 1.4, 190.0 / 255.0);
+                    hit = ToScreen(Project(note.HitPoint, options), bounds, options);
+                    bladeFrom = ToScreen(Project(note.HitHilt, options), bounds, options);
+                    bladeTo = ToScreen(Project(note.HitTip, options), bounds, options);
                 }
+
+                // 横の図にはノーツの中心の点が無いので、ここで打つ（正面の図はノーツの絵に描いてある）
+                var middle = ToScreen(Project(note.CutCenter, options), bounds, options);
+                canvas.Disc(middle[0], middle[1], 4.5, White[0], White[1], White[2], 245.0 / 255.0);
             }
+
+            // ヒットボックスに当たったフレームの刃（3D と同じ白い線）。黄色い点（当たった所）はこの上にある
+            if (bladeFrom != null && bladeTo != null)
+                canvas.LineAA(bladeFrom[0], bladeFrom[1], bladeTo[0], bladeTo[1], White[0], White[1], White[2], 2.0, 230.0 / 255.0);
+
+            // 打点から中心への破線（3D と同じ）。長さが中心からのずれ（中心の 15 点に効く）
+            var center = options.Axis == ViewAxis.Front
+                ? ToScreen(new[] { note.CenterX, note.CenterY }, bounds, options)
+                : ToScreen(Project(note.CutCenter, options), bounds, options);
+            canvas.DashedLine(contact[0], contact[1], center[0], center[1], White[0], White[1], White[2], 1.4, 220.0 / 255.0, 4.0);
+
+            if (hit != null)
+            {
+                // 打点の側に矢印。矢尻が点に隠れないよう、点の縁で止める
+                double dx = contact[0] - hit[0], dy = contact[1] - hit[1];
+                double length = Math.Sqrt(dx * dx + dy * dy);
+                if (length > 10.0)
+                {
+                    dx /= length;
+                    dy /= length;
+                    double endX = contact[0] - dx * 4.5, endY = contact[1] - dy * 4.5;
+                    canvas.DashedLine(hit[0], hit[1], endX, endY, 0xFF, 0xD0, 0x60, 1.7, 230.0 / 255.0, 2.0);
+                    const double Head = 5.0;
+                    canvas.FillPolygon(
+                        new[] { endX, endX - dx * Head + dy * Head * 0.55, endX - dx * Head - dy * Head * 0.55 },
+                        new[] { endY, endY - dy * Head - dx * Head * 0.55, endY - dy * Head + dx * Head * 0.55 },
+                        0xFF, 0xD0, 0x60, 230.0 / 255.0);
+                }
+                canvas.Disc(hit[0], hit[1], 3.5, 0xFF, 0xD0, 0x60, 235.0 / 255.0);
+            }
+            // 打点（平面の上で中心に一番近い点）は当たった所と同じ黄色。ノーツの中心（白）と見分ける
+            canvas.Disc(contact[0], contact[1], 3.5, 0xFF, 0xD0, 0x60, 245.0 / 255.0);
         }
 
         /// <summary>明るくする。GUI の <c>ControlPaint.Light</c> と同じ計算（<see cref="SwingPalette.Light"/>）。</summary>

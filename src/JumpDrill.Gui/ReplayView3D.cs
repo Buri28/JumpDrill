@@ -292,11 +292,11 @@ namespace JumpDrill.Gui
             var onTop = new List<Item>();
             if (_hasHead) AddHead(items);
             foreach (var note in _notes)
-                if (Shown(note.ColorType) && SwingSides.NoteShown(note.CutDirection, OnlyForehand)) AddNote(items, onTop, note);
+                if (Shown(note.ColorType) && SwingSides.NoteShown(note.CutDirection, note.ColorType, OnlyForehand)) AddNote(items, onTop, note);
 
             if (!ShowMeanOnly)
                 foreach (var swing in _swings)
-                    if (Shown(swing.SaberType)) AddPath(items, swing.Tips, i => Faded(VisibleColor(swing, i), 70), 1.2f);
+                    if (Shown(swing.SaberType)) AddPath(items, swing.Tips, i => Faded(VisibleColor(swing, i), 70), 1.6f);
 
             foreach (var mean in _means)
             {
@@ -305,11 +305,10 @@ namespace JumpDrill.Gui
                 AddBand(items, mean, i => VisibleColor(swing, i));
                 AddPath(items, mean.Hilts, i => Faded(Lighter(VisibleColor(swing, i), 0.2f), 200), 2f);
                 AddPath(items, mean.Tips, i => Faded(Lighter(VisibleColor(swing, i), 0.4f), 255), 3f);
-                if (!VisibleColor(swing, mean.Tips.Length - 1).IsEmpty)
-                    AddCut(items, mean, SegmentColor(swing, mean.Tips.Length - 1));
             }
 
             AddPlaneSections(onTop);
+            AddHitBlades(items);
             foreach (var item in items.OrderByDescending(i => i.Depth)) item.Draw(g);
 
             // 刃がノーツの中を通った所とノーツの中心の点は、立方体に隠れるので上に重ねる
@@ -358,17 +357,6 @@ namespace JumpDrill.Gui
         private static Color Faded(Color color, int alpha) { return color.IsEmpty ? color : Color.FromArgb(alpha, color); }
 
         private static Color Lighter(Color color, float amount) { return color.IsEmpty ? color : ControlPaint.Light(color, amount); }
-
-        /// <summary>
-        /// 振りの i 番目の区間（i-1 → i）の色。折り返し点の前後でフォア・バックを決める（<see cref="SwingScene.Swing.SegmentForehand"/>）。
-        /// 手元の道のりも、同じ瞬間の先端の動きで決める。
-        /// </summary>
-        private static Color SegmentColor(Swing swing, int i)
-        {
-            i = Math.Max(1, Math.Min(swing.Tips.Length - 1, i));
-            return HandColor(swing.SaberType,
-                swing.SegmentForehand(i));
-        }
 
         /// <summary>床（高さ 0）の格子。50 cm 刻み。前後左右の向きが分かるように、プレイヤーの前を少し明るく。</summary>
         private void DrawFloor(Graphics g)
@@ -504,28 +492,25 @@ namespace JumpDrill.Gui
             }
         }
 
-        /// <summary>切った瞬間の刃（振りの終わり）。白い線と、先端の白丸。</summary>
-        private void AddCut(List<Item> items, Swing mean, Color color)
+        /// <summary>ヒットボックスに当たったフレームの刃（ノーツごと）の白い線。黄色い点（当たった所）はこの刃の上にある。</summary>
+        private void AddHitBlades(List<Item> items)
         {
-            var hilt = mean.Hilts[mean.Hilts.Length - 1];
-            var tip = mean.Tips[mean.Tips.Length - 1];
-            items.Add(new Item
+            foreach (var note in _notes)
             {
-                Depth = (DepthOf(hilt) + DepthOf(tip)) / 2f - 0.01f,
-                Draw = g =>
+                if (!note.HasHitPoint) continue;
+                if (!Shown(note.ColorType) || !SwingSides.NoteShown(note.CutDirection, note.ColorType, OnlyForehand)) continue;
+                var hilt = note.HitHilt;
+                var tip = note.HitTip;
+                items.Add(new Item
                 {
-                    using (var pen = new Pen(Color.FromArgb(230, White), 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
-                        DrawLine3(g, pen, hilt, tip);
-                    PointF s;
-                    if (!ToScreen(tip, out s)) return;
-                    using (var brush = new SolidBrush(White))
-                    using (var edge = new Pen(Color.FromArgb(0x10, 0x12, 0x16), 1.4f))
+                    Depth = (DepthOf(hilt) + DepthOf(tip)) / 2f - 0.01f,
+                    Draw = g =>
                     {
-                        g.FillEllipse(brush, s.X - 4f, s.Y - 4f, 8f, 8f);
-                        g.DrawEllipse(edge, s.X - 4f, s.Y - 4f, 8f, 8f);
-                    }
-                },
-            });
+                        using (var pen = new Pen(Color.FromArgb(230, White), 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                            DrawLine3(g, pen, hilt, tip);
+                    },
+                });
+            }
         }
 
         /// <summary>
@@ -608,8 +593,13 @@ namespace JumpDrill.Gui
                         PointF hit;
                         if (note.HasHitPoint && ToScreen(note.HitPoint, out hit))
                         {
-                            using (var reach = new Pen(Color.FromArgb(200, White), 1.2f) { DashStyle = DashStyle.Dot })
-                                g.DrawLine(reach, hit, c);
+                            // 打点の側に矢印。矢尻が点に隠れないよう、点の縁で止める
+                            float dx = c.X - hit.X, dy = c.Y - hit.Y;
+                            float length = (float)Math.Sqrt(dx * dx + dy * dy);
+                            if (length > 10f)
+                                using (var head = new AdjustableArrowCap(3.2f, 3.6f, true))
+                                using (var reach = new Pen(Color.FromArgb(230, 0xFF, 0xD0, 0x60), 1.7f) { DashStyle = DashStyle.Dot, CustomEndCap = head })
+                                    g.DrawLine(reach, hit, new PointF(c.X - dx / length * 4f, c.Y - dy / length * 4f));
                             using (var hitBrush = new SolidBrush(Color.FromArgb(230, 0xFF, 0xD0, 0x60)))
                                 g.FillEllipse(hitBrush, hit.X - 3f, hit.Y - 3f, 6f, 6f);
                         }
@@ -619,12 +609,9 @@ namespace JumpDrill.Gui
                             using (var dash = new Pen(Color.FromArgb(220, White), 1.4f) { DashStyle = DashStyle.Dash })
                                 g.DrawLine(dash, c, mid);
 
-                        using (var brush = new SolidBrush(Color.FromArgb(245, White)))
-                        using (var rim = new Pen(Color.FromArgb(255, 0x10, 0x12, 0x16), 1.2f))
-                        {
+                        // 打点（平面の上で中心に一番近い点）は当たった所と同じ黄色。ノーツの中心（白）と見分ける
+                        using (var brush = new SolidBrush(Color.FromArgb(245, 0xFF, 0xD0, 0x60)))
                             g.FillEllipse(brush, c.X - 3f, c.Y - 3f, 6f, 6f);
-                            g.DrawEllipse(rim, c.X - 3f, c.Y - 3f, 6f, 6f);
-                        }
                     },
                 });
             }
@@ -653,7 +640,7 @@ namespace JumpDrill.Gui
         {
             foreach (var note in _notes)
             {
-                if (!Shown(note.ColorType) || !SwingSides.NoteShown(note.CutDirection, OnlyForehand)) continue;
+                if (!Shown(note.ColorType) || !SwingSides.NoteShown(note.CutDirection, note.ColorType, OnlyForehand)) continue;
                 var section = note.PlaneSection(Box);
                 if (section.Count < 3) continue;
                 items.Add(new Item
@@ -685,7 +672,7 @@ namespace JumpDrill.Gui
             foreach (var note in _notes)
             {
                 if (double.IsNaN(note.MeanScore)) continue;
-                if (!Shown(note.ColorType) || !SwingSides.NoteShown(note.CutDirection, OnlyForehand)) continue;
+                if (!Shown(note.ColorType) || !SwingSides.NoteShown(note.CutDirection, note.ColorType, OnlyForehand)) continue;
                 // 線は打点へつなぐ（分からなければ中心）
                 PointF p;
                 if (ToScreen(note.HasContact ? note.Contact : note.Center, out p)) labels.Add(new KeyValuePair<PointF, Note>(p, note));

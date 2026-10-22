@@ -54,27 +54,43 @@ namespace JumpDrill.Replays
             return i > turn ? toForehand : fromForehand;
         }
 
-        /// <summary>ノーツがフォアか。上向きの成分があればバック（採点と同じ）。左右だけ・向き指定なしはフォア。</summary>
-        public static bool NoteForehand(int cutDirection)
+        /// <summary>
+        /// 矢印でフォアかバックかを決める（採点と同じ、<see cref="SwingAnalyzer.IsForehand"/>）。決まらなければ false。
+        /// 下向きの成分があればフォア、上向きの成分があればバック。左右だけの矢印は、上下を 90° 回したものとして
+        /// 右手（1）は右から左（←）、左手（0）は左から右（→）をフォアにする。向き指定なしは決まらない。
+        /// </summary>
+        public static bool TryForehand(int cutDirection, int hand, out bool forehand)
         {
-            return !((CutDirection)cutDirection).IsUpward();
+            var d = (CutDirection)cutDirection;
+            forehand = false;
+            if (d.IsDownward()) { forehand = true; return true; }
+            if (d.IsUpward()) return true;
+            if (cutDirection == 2) { forehand = hand == 1; return true; }   // Left（右から左）
+            if (cutDirection == 3) { forehand = hand == 0; return true; }   // Right（左から右）
+            return false;
+        }
+
+        /// <summary>ノーツがフォアか（<see cref="TryForehand"/>）。向き指定なしはフォア扱い。</summary>
+        public static bool NoteForehand(int cutDirection, int hand)
+        {
+            bool forehand;
+            return !TryForehand(cutDirection, hand, out forehand) || forehand;
         }
 
         /// <summary>
-        /// 切る向きでフォアかバックかが決まるノーツか（上下の成分がある）。
-        /// 左右だけ・向き指定なしのノーツは、採点では何回目の振りかで交互に決まるので、ノーツだけでは決まらない。
+        /// 切る向きでフォアかバックかが決まるノーツか。向き指定なしだけは決まらない（採点では何回目の振りかで交互に決める）。
         /// フォアだけ・バックだけを出すときは、どちらでも出す（片方で振りが出てノーツが消える、という食い違いを避ける）。
         /// </summary>
-        public static bool NoteHasSide(int cutDirection)
+        public static bool NoteHasSide(int cutDirection, int hand)
         {
-            var d = (CutDirection)cutDirection;
-            return d.IsUpward() || d.IsDownward();
+            bool forehand;
+            return TryForehand(cutDirection, hand, out forehand);
         }
 
         /// <summary>フォアだけ（true）・バックだけ（false）・両方（null）のとき、このノーツを出すか。</summary>
-        public static bool NoteShown(int cutDirection, bool? onlyForehand)
+        public static bool NoteShown(int cutDirection, int hand, bool? onlyForehand)
         {
-            return !onlyForehand.HasValue || !NoteHasSide(cutDirection) || NoteForehand(cutDirection) == onlyForehand.Value;
+            return !onlyForehand.HasValue || !NoteHasSide(cutDirection, hand) || NoteForehand(cutDirection, hand) == onlyForehand.Value;
         }
 
         /// <summary>

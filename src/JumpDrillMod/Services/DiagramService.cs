@@ -23,10 +23,10 @@ namespace JumpDrillMod.Services
         /// <summary>
         /// 図の大きさ (px)。枠に出す寸法より大きめに描いて縮小させる。
         /// 等倍だと VR で見たときに線がざらつく。
-        /// 縦横比は Leaderboard.bsml の図の枠（86 × 23）に合わせる（全体の幅 904 × 23 / 86 ≒ 242）。
+        /// 縦横比は Leaderboard.bsml の図の枠（86 × 28）に合わせる（全体の幅 904 × 28 / 86 ≒ 294）。
         /// 合っていないと図が横に伸びて見える。
         /// </summary>
-        private const int Height = 242;
+        private const int Height = 294;
 
         /// <summary>1枚ぶんの幅。正面と横を並べるので、全体はこの倍に仕切りを足したもの。</summary>
         private const int PaneWidth = 450;
