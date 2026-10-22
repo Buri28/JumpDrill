@@ -482,8 +482,9 @@ namespace JumpDrillMod.Services
                         AddLine(parent, new List<UVector3> { prevBox[e[0]], prevBox[e[1]] }, frameColor, 0.002f);
 
                     // 1つ前のフレームの刃（まだ当たっていない）を薄く。この1フレームでどこまで入ったかが分かる
-                    AddLine(parent, new List<UVector3> { ToUnity(note.PrevHilt), ToUnity(note.PrevTip) }, new Color(White.r, White.g, White.b, 110f / 255f), 0.004f);
-                    AddLine(parent, new List<UVector3> { ToUnity(note.HitHilt), ToUnity(note.HitTip) }, new Color(White.r, White.g, White.b, 230f / 255f), 0.006f);
+                    var bladeColor = Lighten(SideColor(note.ColorType, note.Forehand), 0.3f) ?? White;
+                    AddLine(parent, new List<UVector3> { ToUnity(note.PrevHilt), ToUnity(note.PrevTip) }, new Color(bladeColor.r, bladeColor.g, bladeColor.b, 110f / 255f), 0.004f);
+                    AddLine(parent, new List<UVector3> { ToUnity(note.HitHilt), ToUnity(note.HitTip) }, new Color(bladeColor.r, bladeColor.g, bladeColor.b, 240f / 255f), 0.006f);
                 }
         }
 

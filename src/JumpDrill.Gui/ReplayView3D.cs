@@ -492,7 +492,7 @@ namespace JumpDrill.Gui
             }
         }
 
-        /// <summary>ヒットボックスに当たったフレームの刃（ノーツごと）の白い線。黄色い点（当たった所）はこの刃の上にある。</summary>
+        /// <summary>ヒットボックスに当たったフレームの刃（ノーツごと、ノーツの色）。黄色い点（当たった所）はこの刃の上にある。</summary>
         private void AddHitBlades(List<Item> items)
         {
             foreach (var note in _notes)
@@ -501,12 +501,13 @@ namespace JumpDrill.Gui
                 if (!Shown(note.ColorType) || !SwingSides.NoteShown(note.CutDirection, note.ColorType, OnlyForehand)) continue;
                 var hilt = note.HitHilt;
                 var tip = note.HitTip;
+                Color bladeColor = Lighter(HandColor(note.ColorType, note.Forehand), 0.3f);
                 items.Add(new Item
                 {
                     Depth = (DepthOf(hilt) + DepthOf(tip)) / 2f - 0.01f,
                     Draw = g =>
                     {
-                        using (var pen = new Pen(Color.FromArgb(230, White), 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                        using (var pen = new Pen(Color.FromArgb(240, bladeColor), 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
                             DrawLine3(g, pen, hilt, tip);
                     },
                 });
