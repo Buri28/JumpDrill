@@ -134,6 +134,16 @@ namespace JumpDrill.Replays
         public Vector3 HitHilt { get; internal set; }
         public Vector3 HitTip { get; internal set; }
 
+        /// <summary>当たったフレームの1つ前の刃（元と先、平均、実際の場所）。まだヒットボックスに触れていない刃。</summary>
+        public Vector3 PrevHilt { get; internal set; }
+        public Vector3 PrevTip { get; internal set; }
+
+        /// <summary>
+        /// 1つ前のフレームでノーツがいた所の、当たったフレームの中心からのずれ（平均）。ノーツはその1フレームで手前へ
+        /// NJS × 間隔だけ近づいたので、奥（+Z）へその長さ。NJS が分からなければ 0。
+        /// </summary>
+        public Vector3 PrevNoteOffset { get; internal set; }
+
         /// <summary>
         /// 本体の打点（記録の cutPoint の平均、世界座標）。刃が通った面（扇を広げた平面）の上で、ノーツの中心にいちばん近い点。
         /// 中心からここまでの長さが中心の 15 点に効く距離。打点が入っていなければ false。
@@ -463,7 +473,7 @@ namespace JumpDrill.Replays
 
                 BuildCutLines(note, right, up);
                 FindCutCenter(note);
-                FindHitPoint(replay, note, right, up, forward);
+                FindHitPoint(replay, note, right, up, forward, noteJumpSpeed);
                 if (note.RawTips.Count > 0)
                 {
                     note.CutTip = new Vector3
@@ -646,11 +656,12 @@ namespace JumpDrill.Replays
         /// （記録の時刻 <see cref="ReplayNote.EventTime"/>）の三角形を、その回のノーツの中心に置いたヒットボックスで切り取り、
         /// 残った形の真ん中を平均する。
         /// </summary>
-        private static void FindHitPoint(Replay replay, NoteFigure note, Vector3 right, Vector3 up, Vector3 forward)
+        private static void FindHitPoint(Replay replay, NoteFigure note, Vector3 right, Vector3 up, Vector3 forward, float? noteJumpSpeed)
         {
             var frames = replay.Frames;
             var box = NoteBox.Hitbox;
             double hx = 0, hy = 0, hz = 0, tx = 0, ty = 0, tz = 0, along = 0;
+            double phx = 0, phy = 0, phz = 0, ptx = 0, pty = 0, ptz = 0, shift = 0;
             int count = 0;
             for (int index = 0; index < note.RawCuts.Count; index++)
             {
@@ -702,6 +713,10 @@ namespace JumpDrill.Replays
                 // 刃（元→先）の上のどこか（0〜1）。ヒットボックスの中に入っている部分の真ん中、入っていなければ箱の中心に一番近い所
                 along += BladeFraction(now.Position, now.Tip, boxCenter, axes, halves);
                 hx += now.Position.X; hy += now.Position.Y; hz += now.Position.Z;
+                // 1つ前の刃（実際の場所）と、その1フレームでノーツが近づいた長さ
+                shift += (noteJumpSpeed ?? 0f) * (frames[i].Time - frames[i - 1].Time);
+                phx += before.Position.X; phy += before.Position.Y; phz += before.Position.Z;
+                ptx += before.Tip.X; pty += before.Tip.Y; ptz += before.Tip.Z;
                 tx += now.Tip.X; ty += now.Tip.Y; tz += now.Tip.Z;
                 count++;
             }
@@ -716,6 +731,9 @@ namespace JumpDrill.Replays
             };
             note.HitHilt = new Vector3 { X = (float)(hx / count), Y = (float)(hy / count), Z = (float)(hz / count) };
             note.HitTip = new Vector3 { X = (float)(tx / count), Y = (float)(ty / count), Z = (float)(tz / count) };
+            note.PrevHilt = new Vector3 { X = (float)(phx / count), Y = (float)(phy / count), Z = (float)(phz / count) };
+            note.PrevTip = new Vector3 { X = (float)(ptx / count), Y = (float)(pty / count), Z = (float)(ptz / count) };
+            note.PrevNoteOffset = new Vector3 { Z = (float)(shift / count) };
             note.HasHitPoint = true;
         }
 

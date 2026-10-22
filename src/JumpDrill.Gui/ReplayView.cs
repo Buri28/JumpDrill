@@ -560,7 +560,7 @@ namespace JumpDrill.Gui
                     if (!NoteShown(note)) continue;
 
                     PointF contact;
-                    PointF? hit = null, bladeFrom = null, bladeTo = null;
+                    PointF? hit = null;
                     if (_axis == ViewAxis.Front)
                     {
                         double u, v;
@@ -575,8 +575,6 @@ namespace JumpDrill.Gui
                                 (float)(note.CenterX + p.X - note.CutCenter.X),
                                 (float)(note.CenterY + p.Y - note.CutCenter.Y)));
                             hit = place(note.HitPoint);
-                            bladeFrom = place(note.HitHilt);
-                            bladeTo = place(note.HitTip);
                         }
                     }
                     else
@@ -584,23 +582,13 @@ namespace JumpDrill.Gui
                         Vector3 at;
                         if (!note.TryContactAtCut(out at)) continue;
                         contact = ToScreen(Project(at));
-                        if (note.HasHitPoint)
-                        {
-                            hit = ToScreen(Project(note.HitPoint));
-                            bladeFrom = ToScreen(Project(note.HitHilt));
-                            bladeTo = ToScreen(Project(note.HitTip));
-                        }
+                        if (note.HasHitPoint) hit = ToScreen(Project(note.HitPoint));
 
                         // 横の図にはノーツの中心の点が無いので、ここで打つ（正面の図はノーツの絵に描いてある）
                         var middle = ToScreen(Project(note.CutCenter));
                         g.FillEllipse(middleDot, middle.X - 4.5f, middle.Y - 4.5f, 9f, 9f);
                         g.DrawEllipse(rim, middle.X - 4.5f, middle.Y - 4.5f, 9f, 9f);
                     }
-
-                    // ヒットボックスに当たったフレームの刃（3D と同じ白い線）。黄色い点（当たった所）はこの上にある
-                    if (bladeFrom.HasValue && bladeTo.HasValue)
-                        using (var blade = new Pen(Color.FromArgb(230, 0xF2, 0xF5, 0xFA), 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
-                            g.DrawLine(blade, bladeFrom.Value, bladeTo.Value);
 
                     // 打点から中心への破線（3D と同じ）。長さが中心からのずれ（中心の 15 点に効く）
                     var center = _axis == ViewAxis.Front ? ToScreen(CenterOf(note)) : ToScreen(Project(note.CutCenter));

@@ -79,6 +79,21 @@ namespace JumpDrill.Replays
             public Vector3 HitHilt { get; internal set; }
             public Vector3 HitTip { get; internal set; }
 
+            /// <summary>当たったフレームの1つ前の刃（<see cref="NoteFigure.PrevHilt"/>、実際の場所）。</summary>
+            public Vector3 PrevHilt { get; internal set; }
+            public Vector3 PrevTip { get; internal set; }
+
+            /// <summary>1つ前のフレームでノーツがいた所のずれ（<see cref="NoteFigure.PrevNoteOffset"/>）。</summary>
+            public Vector3 PrevNoteOffset { get; internal set; }
+
+            /// <summary>1つ前のフレームでノーツがいた所に置いた箱の 8 隅。</summary>
+            public Vector3[] PrevCorners(NoteBox box)
+            {
+                var o = PrevNoteOffset;
+                var c = Center;
+                return box.Corners(new Vector3 { X = c.X + o.X, Y = c.Y + o.Y, Z = c.Z + o.Z }, AxisU, AxisV, AxisW);
+            }
+
             /// <summary>1ノーツの点数（115 点満点）の平均（<see cref="NoteFigure.MeanScore"/>）。切っていなければ NaN。</summary>
             public double MeanScore { get; internal set; } = double.NaN;
 
@@ -293,6 +308,9 @@ namespace JumpDrill.Replays
                     HitPoint = figure.HitPoint,
                     HitHilt = figure.HitHilt,
                     HitTip = figure.HitTip,
+                    PrevHilt = figure.PrevHilt,
+                    PrevTip = figure.PrevTip,
+                    PrevNoteOffset = figure.PrevNoteOffset,
                     HasHitPoint = figure.HasHitPoint,
                 });
             }

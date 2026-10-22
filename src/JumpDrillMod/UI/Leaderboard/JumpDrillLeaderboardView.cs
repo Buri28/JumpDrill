@@ -379,7 +379,7 @@ namespace JumpDrillMod.UI.Leaderboard
                 room.Hide(this);
                 return;
             }
-            room.Show(this, score.ReplayPath, OnlyForehand, RoomForward, Hitbox);
+            room.Show(this, score.ReplayPath, OnlyForehand, RoomForward, Hitbox, MeanOnly);
         }
 
         private const string StrokeBoth = "Fore + back";

@@ -729,7 +729,7 @@ namespace JumpDrill.Replays
         /// </summary>
         private static void DrawBladeLink(PixelCanvas canvas, double[] bounds, Options options, NoteFigure note)
         {
-            double[] contact, hit = null, bladeFrom = null, bladeTo = null;
+            double[] contact, hit = null;
             if (options.Axis == ViewAxis.Front)
             {
                 double u, v;
@@ -747,8 +747,6 @@ namespace JumpDrill.Replays
                         note.CenterY + p.Y - note.CutCenter.Y,
                     }, bounds, options);
                     hit = place(note.HitPoint);
-                    bladeFrom = place(note.HitHilt);
-                    bladeTo = place(note.HitTip);
                 }
             }
             else
@@ -756,21 +754,12 @@ namespace JumpDrill.Replays
                 Vector3 at;
                 if (!note.TryContactAtCut(out at)) return;
                 contact = ToScreen(Project(at, options), bounds, options);
-                if (note.HasHitPoint)
-                {
-                    hit = ToScreen(Project(note.HitPoint, options), bounds, options);
-                    bladeFrom = ToScreen(Project(note.HitHilt, options), bounds, options);
-                    bladeTo = ToScreen(Project(note.HitTip, options), bounds, options);
-                }
+                if (note.HasHitPoint) hit = ToScreen(Project(note.HitPoint, options), bounds, options);
 
                 // 横の図にはノーツの中心の点が無いので、ここで打つ（正面の図はノーツの絵に描いてある）
                 var middle = ToScreen(Project(note.CutCenter, options), bounds, options);
                 canvas.Disc(middle[0], middle[1], 4.5, White[0], White[1], White[2], 245.0 / 255.0);
             }
-
-            // ヒットボックスに当たったフレームの刃（3D と同じ白い線）。黄色い点（当たった所）はこの上にある
-            if (bladeFrom != null && bladeTo != null)
-                canvas.LineAA(bladeFrom[0], bladeFrom[1], bladeTo[0], bladeTo[1], White[0], White[1], White[2], 2.0, 230.0 / 255.0);
 
             // 打点から中心への破線（3D と同じ）。長さが中心からのずれ（中心の 15 点に効く）
             var center = options.Axis == ViewAxis.Front

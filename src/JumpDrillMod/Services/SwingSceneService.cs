@@ -44,6 +44,9 @@ namespace JumpDrillMod.Services
         /// <summary>手元の線の太さ (m)。</summary>
         private const float HiltWidth = 0.008f;
 
+        /// <summary>1本1本の振り（ALL SWINGS）の線の太さ (m)。</summary>
+        private const float SwingWidth = 0.010f;
+
         /// <summary>扇の白さ（手の色をどれだけ白に寄せるか）と濃さ。GUI と同じ。</summary>
         private const float BandWhiteness = 0.9f;
         private const float BandAlpha = 70f / 255f;
@@ -51,8 +54,8 @@ namespace JumpDrillMod.Services
         /// <summary>ノーツの面の濃さ。GUI と同じ。</summary>
         private const float NoteAlpha = 210f / 255f;
 
-        /// <summary>中心の点を測る平面とノーツが交わる所（白）の濃さ。GUI と同じ。</summary>
-        private const float InsideAlpha = 70f / 255f;
+        /// <summary>中心の点を測る平面とノーツが交わる所（白）の濃さ。VR では GUI と同じ濃さだと見えなかったので濃くする。</summary>
+        private const float InsideAlpha = 160f / 255f;
 
         /// <summary>刃の細い線を何本に1本描くか。</summary>
         private const int RibEvery = 3;
@@ -86,7 +89,8 @@ namespace JumpDrillMod.Services
         /// <param name="forward">プレイしたときの位置から前へずらす量 (m)。</param>
         /// <param name="owner">出す側（リーダーボード）。消すときは出した側だけが消せる（<see cref="Hide(object)"/>）。</param>
         /// <param name="hitbox">ノーツを当たり判定の大きさで置くか。</param>
-        internal void Show(object owner, string? replayPath, bool? onlyForehand, float forward = 0f, bool hitbox = false)
+        /// <param name="meanOnly">平均の振りだけを出すか。false なら1本1本の振りも薄く出す（図の ALL SWINGS と同じ）。</param>
+        internal void Show(object owner, string? replayPath, bool? onlyForehand, float forward = 0f, bool hitbox = false, bool meanOnly = true)
         {
             this.owner = owner;
             if (string.IsNullOrEmpty(replayPath))
@@ -97,7 +101,7 @@ namespace JumpDrillMod.Services
 
             // 同じ名前で書き直されたリプレイは別物として置き直す
             string key = SceneKey(replayPath!) + (onlyForehand == true ? "|fore" : onlyForehand == false ? "|back" : "|both")
-                + (hitbox ? "|hitbox" : "|visual");
+                + (hitbox ? "|hitbox" : "|visual") + (meanOnly ? "|mean" : "|all");
             var box = hitbox ? NoteBox.Hitbox : NoteBox.Visual;
             if (root != null && key == shownKey)
             {
@@ -114,7 +118,7 @@ namespace JumpDrillMod.Services
             SwingScene? cached;
             if (TryCached(replayPath!, out cached))
             {
-                Place(key, cached, onlyForehand, forward, box);
+                Place(key, cached, onlyForehand, forward, box, meanOnly);
                 return;
             }
 
@@ -124,11 +128,11 @@ namespace JumpDrillMod.Services
                 var scene = task.IsFaulted ? null : task.Result;
                 Remember(path, scene);
                 // 読んでいる間に別の記録を選んだ・消したなら置かない
-                if (pendingKey == key) Place(key, scene, onlyForehand, forward, box);
+                if (pendingKey == key) Place(key, scene, onlyForehand, forward, box, meanOnly);
             }, UnityMainThreadTaskScheduler.Default);
         }
 
-        private void Place(string key, SwingScene? scene, bool? onlyForehand, float forward, NoteBox box)
+        private void Place(string key, SwingScene? scene, bool? onlyForehand, float forward, NoteBox box, bool meanOnly)
         {
             pendingKey = null;
             if (scene == null || scene.Means.Count == 0) return;
@@ -137,7 +141,7 @@ namespace JumpDrillMod.Services
             {
                 root = new GameObject("JumpDrillSwingScene");
                 root.transform.position = new UVector3(0f, 0f, forward);
-                Build(root.transform, scene, onlyForehand, box);
+                Build(root.transform, scene, onlyForehand, box, meanOnly);
                 shownKey = key;
             }
             catch (Exception e)
@@ -219,7 +223,7 @@ namespace JumpDrillMod.Services
 
         // ───────── 置く ─────────
 
-        private void Build(Transform parent, SwingScene scene, bool? onlyForehand, NoteBox box)
+        private void Build(Transform parent, SwingScene scene, bool? onlyForehand, NoteBox box, bool meanOnly)
         {
             Func<bool, bool> shown = fore => !onlyForehand.HasValue || onlyForehand.Value == fore;
 
@@ -229,8 +233,20 @@ namespace JumpDrillMod.Services
             foreach (var note in scene.Notes)
                 if (noteShown(note)) AddNote(parent, note, box);
             AddPlaneSections(parent, scene.Notes.Where(noteShown), box);
-            AddHitBlades(parent, scene.Notes.Where(noteShown));
+            AddHitBlades(parent, scene.Notes.Where(noteShown), box);
             AddScoreLabels(parent, scene, scene.Notes.Where(noteShown).ToList());
+
+            // 1本1本の振り（ALL SWINGS のとき）。先端の通り道だけを細く薄く。束の太さが再現性そのもの
+            if (!meanOnly)
+                foreach (var swing in scene.Swings)
+                {
+                    var one = swing;
+                    AddPath(parent, one.Tips, i =>
+                    {
+                        bool fore = one.SegmentForehand(i);
+                        return shown(fore) ? Fade(Lighten(SideColor(one.SaberType, fore), 0.2f), 200f / 255f) : (Color?)null;
+                    }, SwingWidth, marks: false);
+                }
 
             foreach (var mean in scene.Means)
             {
@@ -454,11 +470,21 @@ namespace JumpDrillMod.Services
         }
 
         /// <summary>ヒットボックスに当たったフレームの刃（ノーツごと）の白い線（GUI の 3D と同じ）。黄色い点はこの刃の上にある。</summary>
-        private void AddHitBlades(Transform parent, IEnumerable<Note> notes)
+        private void AddHitBlades(Transform parent, IEnumerable<Note> notes, NoteBox box)
         {
             foreach (var note in notes)
                 if (note.HasHitPoint)
+                {
+                    // 1つ前のフレームでノーツがいた所に、箱の枠を薄く（刃も箱も実際の場所。GUI の 3D と同じ）
+                    var prevBox = note.PrevCorners(box).Select(ToUnity).ToArray();
+                    var frameColor = Fade(Lighten(SideColor(note.ColorType, note.Forehand), 0.3f), 120f / 255f) ?? White;
+                    foreach (var e in NoteBox.Edges())
+                        AddLine(parent, new List<UVector3> { prevBox[e[0]], prevBox[e[1]] }, frameColor, 0.002f);
+
+                    // 1つ前のフレームの刃（まだ当たっていない）を薄く。この1フレームでどこまで入ったかが分かる
+                    AddLine(parent, new List<UVector3> { ToUnity(note.PrevHilt), ToUnity(note.PrevTip) }, new Color(White.r, White.g, White.b, 110f / 255f), 0.004f);
                     AddLine(parent, new List<UVector3> { ToUnity(note.HitHilt), ToUnity(note.HitTip) }, new Color(White.r, White.g, White.b, 230f / 255f), 0.006f);
+                }
         }
 
         /// <summary>
@@ -518,8 +544,8 @@ namespace JumpDrillMod.Services
                 {
                     var from = ToUnity(note.HitPoint);
                     var to = ToUnity(note.Contact);
-                    var lineColor = new Color(1f, 0.82f, 0.38f, 200f / 255f);   // 黄色い点どうしの線も黄色
-                    AddLine(parent, new List<UVector3> { from, to }, lineColor, 0.003f);
+                    var lineColor = new Color(1f, 0.82f, 0.38f, 1f);   // 黄色い点どうしの線も黄色。VR では細い線は薄く見えるので濃く太く
+                    AddLine(parent, new List<UVector3> { from, to }, lineColor, 0.005f);
 
                     // 打点の側に矢印（「く」の字）。中心の点を測る平面の上で開く
                     var along = to - from;
@@ -528,7 +554,7 @@ namespace JumpDrillMod.Services
                         along.Normalize();
                         var across = UVector3.Cross(ToUnity(note.PlaneNormal), along).normalized;
                         var tip = to - along * 0.012f;
-                        AddLine(parent, new List<UVector3> { tip - along * 0.025f + across * 0.012f, tip, tip - along * 0.025f - across * 0.012f }, lineColor, 0.003f);
+                        AddLine(parent, new List<UVector3> { tip - along * 0.03f + across * 0.015f, tip, tip - along * 0.03f - across * 0.015f }, lineColor, 0.005f);
                     }
                     AddDot(parent, ToUnity(note.HitPoint), 0.011f, new Color(1f, 0.82f, 0.38f, 1f));
                 }
