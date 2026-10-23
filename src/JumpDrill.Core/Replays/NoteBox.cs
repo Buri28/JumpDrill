@@ -15,7 +15,7 @@ namespace JumpDrill.Replays
     /// <item>当たり判定: 良い切りを取る箱（BigCuttable の BoxCollider）は 幅 0.8 × 高さ 0.5 × 奥行き 1.0 m で、
     /// 中心がプレイヤー側へ 0.25 m 寄っている（手前は見た目より 0.5 m 先まで届く）。
     /// 刃が1フレームで通った三角形がこの箱に触れれば切った判定になる（<c>NoteCutter.Cut</c>）。
-    /// 向きを問わず当たる小さい箱（SmallCuttable、一辺 0.35 m）は悪い切り用なので描かない。</item>
+    /// 向きを問わず当たる小さい箱（SmallCuttable、一辺 0.35 m）はバッドカット用なので描かない。</item>
     /// </list>
     /// </remarks>
     public struct NoteBox

@@ -580,7 +580,8 @@ namespace JumpDrill.Replays
 
             var result = new ReplayScore { Replay = replay, Original = original };
             result.GoodCount = original.Notes.Count(n => n.EventType == NoteEventType.Good);
-            result.MissCount = original.Notes.Count(n => n.EventType == NoteEventType.Miss);
+            // ミスは Miss とバッドカット（向き違い・遅すぎ・色違い）を合わせた数。ゲームのミスの数と同じ
+            result.MissCount = original.Notes.Count(IsMiss);
             result.DurationSeconds = replay.Frames.Count > 0 ? replay.Frames[replay.Frames.Count - 1].Time : 0.0;
             ResolveTempo(replay, result);
 
@@ -928,7 +929,7 @@ namespace JumpDrill.Replays
             foreach (int colorType in new[] { 0, 1 })
             {
                 var times = replay.Notes
-                    .Where(n => (n.EventType == NoteEventType.Good || n.EventType == NoteEventType.Miss)
+                    .Where(n => (n.EventType == NoteEventType.Good || IsMiss(n))
                                 && n.ColorType == colorType)
                     .Select(n => (double)n.EventTime)
                     .OrderBy(t => t)
@@ -999,7 +1000,7 @@ namespace JumpDrill.Replays
             // 並べるのはノーツの時刻で（HandSequence と同じ理由。ミスは記録の時刻が遅れる）。
             var handNotes = replay.Notes
                 .Where(n => n.ColorType == saberType &&
-                       (n.EventType == NoteEventType.Good || n.EventType == NoteEventType.Miss))
+                       (n.EventType == NoteEventType.Good || IsMiss(n)))
                 .OrderBy(n => n.SpawnTime)
                 .ThenBy(n => n.EventTime)
                 .ToList();
@@ -1081,7 +1082,7 @@ namespace JumpDrill.Replays
                 .Select(owner)
                 .ToList();
             var misses = original.Notes
-                .Where(n => n.EventType == NoteEventType.Miss && n.ColorType == saberType)
+                .Where(n => IsMiss(n) && n.ColorType == saberType)
                 .Select(owner)
                 .ToList();
 
@@ -1243,12 +1244,18 @@ namespace JumpDrill.Replays
                 * (shares != null && shares.TryGetValue(to, out share) ? share : 1.0);
         }
 
+        /// <summary>ミスか。Miss とバッドカット（Bad）。爆弾は含めない。ゲームのミスの数と同じ数え方。</summary>
+        public static bool IsMiss(ReplayNote note)
+        {
+            return note.EventType == NoteEventType.Miss || note.EventType == NoteEventType.Bad;
+        }
+
         /// <summary>
-        /// その手が叩くはずだったノーツを、譜面の順に。切れたもの・切り損ねたもの・取り逃したものを全部。
+        /// その手が叩くはずだったノーツを、譜面の順に。Good・バッドカット・Miss を全部。
         /// </summary>
         /// <remarks>
         /// 並べるのは<b>ノーツの時刻</b>（<c>SpawnTime</c>）。記録の時刻（<c>EventTime</c>）ではない。
-        /// 取り逃しはノーツが通り過ぎてから判定されるので、記録の時刻では次のノーツを切った後に来る。
+        /// Miss はノーツが通り過ぎてから判定されるので、記録の時刻では次のノーツを切った後に来る。
         /// その順で並べると「10 → 02（ミス）→ 10」が「10 → 10 → 02（ミス）」になり、
         /// ミスをはさんだ2つが隣どうしに見えてしまう。
         /// </remarks>

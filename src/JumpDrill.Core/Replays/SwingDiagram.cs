@@ -215,7 +215,7 @@ namespace JumpDrill.Replays
                 {
                     // 平均から外れた振りほど目立たせる。GUI と同じ出し方
                     double alpha = Math.Min(200.0, 40.0 + swing.Deviation * 1600.0) / 255.0;
-                    DrawSwing(canvas, bounds, options, swing, false, 1.6, alpha);
+                    DrawSwing(canvas, bounds, options, swing, false, 0.8, alpha);
                 }
             }
 

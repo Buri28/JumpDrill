@@ -296,7 +296,7 @@ namespace JumpDrill.Gui
 
             if (!ShowMeanOnly)
                 foreach (var swing in _swings)
-                    if (Shown(swing.SaberType)) AddPath(items, swing.Tips, i => Faded(VisibleColor(swing, i), 70), 1.6f);
+                    if (Shown(swing.SaberType)) AddPath(items, swing.Tips, i => Faded(VisibleColor(swing, i), 70), 1.4f);
 
             foreach (var mean in _means)
             {

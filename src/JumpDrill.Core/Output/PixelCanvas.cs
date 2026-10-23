@@ -98,12 +98,17 @@ namespace JumpDrill.Output
         /// 線分までの距離で濃さを決める。ギザギザのまま VR に出すと目立つので、
         /// 縁を1px ぶん薄くしてなまらせる。Bresenham では太さも濃さも作れない。
         /// </remarks>
-        /// <param name="thickness">線の太さ (px)。1 未満は 1 として扱う。</param>
+        /// <param name="thickness">線の太さ (px)。1 未満は 1px の線を太さに比例して薄くする（GDI+ の細いペンと同じ見え方）。</param>
         /// <param name="alpha">濃さ 0-1。</param>
         public void LineAA(double x0, double y0, double x1, double y1,
                            byte r, byte g, byte b, double thickness = 1.0, double alpha = 1.0)
         {
-            if (thickness < 1.0) thickness = 1.0;
+            if (thickness <= 0.0) return;
+            if (thickness < 1.0)
+            {
+                alpha *= thickness;
+                thickness = 1.0;
+            }
 
             double half = thickness / 2.0;
             double pad = half + 1.0;

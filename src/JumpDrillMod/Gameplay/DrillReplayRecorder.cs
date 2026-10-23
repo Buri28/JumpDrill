@@ -321,7 +321,7 @@ namespace JumpDrillMod.Gameplay
         /// <remarks>
         /// どこまで取り上げるかの判定は本体の <c>ScoreController.LateUpdate</c> と同じ
         /// （BeatLeader の <c>OnBeforeScoreControllerLateUpdate</c> を写したもの）。
-        /// 点の無いノーツの取り逃しは並べない。
+        /// 点の無いノーツの Miss は並べない。
         /// </remarks>
         internal void OnBeforeScoring(AudioTimeSyncController sync, List<float> noteTimesWithoutElements,
             List<ScoringElement> elements)
@@ -398,7 +398,7 @@ namespace JumpDrillMod.Gameplay
                     break;
 
                 case MissScoringElement _:
-                    // 爆弾を避けたのは取り逃しではない
+                    // 爆弾を避けたのは Miss ではない
                     if (!bomb)
                     {
                         note.EventType = NoteEventType.Miss;

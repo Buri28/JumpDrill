@@ -495,7 +495,7 @@ namespace JumpDrill.Gui
 
                 // 平均から外れた振りほど目立たせる。
                 int alpha = (int)Math.Min(200, 40 + swing.Deviation * 1600);
-                DrawSwing(g, swing, c => Color.FromArgb(alpha, c), 1.6f, round: false);
+                DrawSwing(g, swing, c => Color.FromArgb(alpha, c), 0.8f, round: false);
             }
 
             // 枠と矢印は最後に。束の下に隠れると位置も角度も読めない。

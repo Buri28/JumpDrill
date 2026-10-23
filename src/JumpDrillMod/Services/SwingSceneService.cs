@@ -45,7 +45,7 @@ namespace JumpDrillMod.Services
         private const float HiltWidth = 0.008f;
 
         /// <summary>1本1本の振り（ALL SWINGS）の線の太さ (m)。</summary>
-        private const float SwingWidth = 0.007f;
+        private const float SwingWidth = 0.006f;
 
         /// <summary>扇の白さ（手の色をどれだけ白に寄せるか）と濃さ。GUI と同じ。</summary>
         private const float BandWhiteness = 0.9f;

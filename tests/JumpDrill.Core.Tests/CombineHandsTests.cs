@@ -70,7 +70,7 @@ namespace JumpDrill.Core.Tests
             return replay;
         }
 
-        /// <summary>取り逃しが判定されるまでの遅れ（秒）。ノーツの間隔 0.3 秒より長い。</summary>
+        /// <summary>Miss が判定されるまでの遅れ（秒）。ノーツの間隔 0.3 秒より長い。</summary>
         private const float MissJudgedLate = 0.45f;
 
         private static void AddNote(Replay replay, int lineIndex, int lineLayer, int colorType, float time,
@@ -81,7 +81,7 @@ namespace JumpDrill.Core.Tests
                 NoteId = lineIndex * 1000 + lineLayer * 100 + colorType * 10 + (lineLayer == 0 ? 6 : 5),
                 SpawnTime = time,
 
-                // 取り逃しはノーツが通り過ぎてから判定されるので、記録の時刻は次のノーツより後になる
+                // Miss はノーツが通り過ぎてから判定されるので、記録の時刻は次のノーツより後になる
                 // （本物のリプレイと同じ）。並びをこの時刻で作ると、ミスの前後がつながってしまう
                 EventTime = missed ? time + MissJudgedLate : time,
                 EventType = missed ? NoteEventType.Miss : NoteEventType.Good,

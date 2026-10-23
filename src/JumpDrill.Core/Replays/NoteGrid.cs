@@ -149,7 +149,8 @@ namespace JumpDrill.Replays
 
             foreach (var note in replay.Notes)
             {
-                if (note.EventType != NoteEventType.Good && note.EventType != NoteEventType.Miss) continue;
+                // 譜面のノーツは Good・バッドカット・Miss のどれか。爆弾は除く
+                if (note.EventType != NoteEventType.Good && !SwingAnalyzer.IsMiss(note)) continue;
 
                 var placement = new NotePlacement
                 {
