@@ -134,7 +134,7 @@ namespace JumpDrill.Replays
         public Vector3 HitHilt { get; internal set; }
         public Vector3 HitTip { get; internal set; }
 
-        /// <summary>当たったフレームの1つ前の刃（元と先、平均、実際の場所）。まだヒットボックスに触れていない刃。</summary>
+        /// <summary>当たったフレームの1つ前の刃（元と先、平均、実際の場所）。</summary>
         public Vector3 PrevHilt { get; internal set; }
         public Vector3 PrevTip { get; internal set; }
 
@@ -721,7 +721,7 @@ namespace JumpDrill.Replays
                 count++;
             }
             if (count == 0) return;
-            // 刃の何割の所かを平均して、平均の刃の上に置く（描く白い線の上に必ず乗る）
+            // 刃の何割の所かを平均して、平均の刃（3D で描く刃）の上に置く
             double f = along / count;
             note.HitPoint = new Vector3
             {

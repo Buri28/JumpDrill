@@ -540,7 +540,7 @@ namespace JumpDrill.Gui
         private static readonly Color ContactColor = Color.FromArgb(0xFF, 0xD0, 0x60);
 
         /// <summary>
-        /// ヒットボックスに当たったフレームの刃（白い線）、当たった所（黄色）から打点（黄色、平面の上で中心に一番近い点）への矢印、
+        /// 当たった所（黄色）から打点（黄色、平面の上で中心に一番近い点）への矢印と、
         /// 打点からノーツの中心（白）への破線。破線の長さが中心の点に効くずれ（3D と同じ）。
         /// </summary>
         /// <remarks>

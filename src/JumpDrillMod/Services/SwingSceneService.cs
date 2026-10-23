@@ -45,7 +45,7 @@ namespace JumpDrillMod.Services
         private const float HiltWidth = 0.008f;
 
         /// <summary>1本1本の振り（ALL SWINGS）の線の太さ (m)。</summary>
-        private const float SwingWidth = 0.010f;
+        private const float SwingWidth = 0.007f;
 
         /// <summary>扇の白さ（手の色をどれだけ白に寄せるか）と濃さ。GUI と同じ。</summary>
         private const float BandWhiteness = 0.9f;
@@ -236,17 +236,8 @@ namespace JumpDrillMod.Services
             AddHitBlades(parent, scene.Notes.Where(noteShown), box);
             AddScoreLabels(parent, scene, scene.Notes.Where(noteShown).ToList());
 
-            // 1本1本の振り（ALL SWINGS のとき）。先端の通り道だけを細く薄く。束の太さが再現性そのもの
-            if (!meanOnly)
-                foreach (var swing in scene.Swings)
-                {
-                    var one = swing;
-                    AddPath(parent, one.Tips, i =>
-                    {
-                        bool fore = one.SegmentForehand(i);
-                        return shown(fore) ? Fade(Lighten(SideColor(one.SaberType, fore), 0.2f), 200f / 255f) : (Color?)null;
-                    }, SwingWidth, marks: false);
-                }
+            // 1本1本の振り（ALL SWINGS のとき）。先端の通り道だけを細く。束の太さが再現性そのもの
+            if (!meanOnly) AddSwingRibbons(parent, scene.Swings, shown);
 
             foreach (var mean in scene.Means)
             {
@@ -349,6 +340,53 @@ namespace JumpDrillMod.Services
                 noGlowFontMaterial = Resources.FindObjectsOfTypeAll<Material>().FirstOrDefault(m => m != null && m.name == "Teko-Medium SDF No Glow");
                 return noGlowFontMaterial;
             }
+        }
+
+        /// <summary>
+        /// 1本1本の振り（先端の通り道）を、まとめて数個の Mesh にする。振りは数百〜千本以上あり、1本ずつ LineRenderer にすると
+        /// 部品の数がそのまま描く回数になって重い。線は向きの違う2枚の細い帯を十字に重ねたもので、どちらから見ても幅がある。
+        /// </summary>
+        private void AddSwingRibbons(Transform parent, List<Swing> swings, Func<bool, bool> shown)
+        {
+            const int MaxVertices = 60000;   // 1つの Mesh の頂点の上限（16 ビットの番号）に余裕をもって
+            float half = SwingWidth / 2f;
+            var vertices = new List<UVector3>();
+            var colors = new List<Color>();
+            var triangles = new List<int>();
+
+            foreach (var swing in swings)
+            {
+                var tips = swing.Tips;
+                if (tips.Length < 2) continue;
+                int turn = SwingSides.TurnIndex(tips, swing.DirX, swing.DirY);   // 1本につき1回
+                for (int i = 1; i < tips.Length; i++)
+                {
+                    bool fore = SwingSides.SegmentForehand(i, turn, swing.ToForehand, swing.FromForehand);
+                    if (!shown(fore)) continue;
+                    var color = Fade(Lighten(SideColor(swing.SaberType, fore), 0.2f), 200f / 255f) ?? White;
+
+                    var a = ToUnity(tips[i - 1]);
+                    var b = ToUnity(tips[i]);
+                    var along = b - a;
+                    if (along.sqrMagnitude < 1e-10f) continue;
+                    along.Normalize();
+                    var side = UVector3.Cross(along, UVector3.up);
+                    if (side.sqrMagnitude < 1e-6f) side = UVector3.Cross(along, UVector3.right);
+                    side = side.normalized * half;
+                    var other = UVector3.Cross(along, side).normalized * half;
+
+                    if (vertices.Count + 8 > MaxVertices)
+                    {
+                        AddMesh(parent, "Swings", vertices, colors, triangles);
+                        vertices = new List<UVector3>();
+                        colors = new List<Color>();
+                        triangles = new List<int>();
+                    }
+                    AddQuad(vertices, colors, triangles, color, a - side, a + side, b + side, b - side);
+                    AddQuad(vertices, colors, triangles, color, a - other, a + other, b + other, b - other);
+                }
+            }
+            AddMesh(parent, "Swings", vertices, colors, triangles);
         }
 
         /// <summary>折れ線を、出す色が続く所ごとに1本の線にする。向きの印（「く」）を真ん中に1つ。</summary>
@@ -469,19 +507,26 @@ namespace JumpDrillMod.Services
             AddMesh(parent, "PlaneSections", vertices, colors, triangles);
         }
 
-        /// <summary>ヒットボックスに当たったフレームの刃（ノーツごと）の白い線（GUI の 3D と同じ）。黄色い点はこの刃の上にある。</summary>
+        /// <summary>
+        /// ヒットボックスに当たったフレームの刃（ノーツごと、ノーツの色。GUI の 3D と同じ）。黄色い点はこの刃の上にある。
+        /// VR だけ、1つ前のフレームの刃と、そのときのノーツの位置の箱の枠も薄く描く（1フレームで刃が進み、箱が近づいて重なった）。
+        /// </summary>
         private void AddHitBlades(Transform parent, IEnumerable<Note> notes, NoteBox box)
         {
             foreach (var note in notes)
                 if (note.HasHitPoint)
                 {
-                    // 1つ前のフレームでノーツがいた所に、箱の枠を薄く（刃も箱も実際の場所。GUI の 3D と同じ）
-                    var prevBox = note.PrevCorners(box).Select(ToUnity).ToArray();
-                    var frameColor = Fade(Lighten(SideColor(note.ColorType, note.Forehand), 0.3f), 120f / 255f) ?? White;
-                    foreach (var e in NoteBox.Edges())
-                        AddLine(parent, new List<UVector3> { prevBox[e[0]], prevBox[e[1]] }, frameColor, 0.002f);
+                    // 1つ前のフレームでノーツがいた所に、箱の枠を薄く（刃も箱も実際の場所。VR だけ）。
+                    // NJS が分からずずれが無いときは今の箱に重なるだけなので描かない
+                    if (note.PrevNoteOffset.Z > 1e-4f)
+                    {
+                        var prevBox = note.PrevCorners(box).Select(ToUnity).ToArray();
+                        var frameColor = Fade(Lighten(SideColor(note.ColorType, note.Forehand), 0.3f), 120f / 255f) ?? White;
+                        foreach (var e in NoteBox.Edges())
+                            AddLine(parent, new List<UVector3> { prevBox[e[0]], prevBox[e[1]] }, frameColor, 0.002f);
+                    }
 
-                    // 1つ前のフレームの刃（まだ当たっていない）を薄く。この1フレームでどこまで入ったかが分かる
+                    // 1つ前のフレームの刃を薄く。この1フレームでどこまで入ったかが分かる
                     var bladeColor = Lighten(SideColor(note.ColorType, note.Forehand), 0.3f) ?? White;
                     AddLine(parent, new List<UVector3> { ToUnity(note.PrevHilt), ToUnity(note.PrevTip) }, new Color(bladeColor.r, bladeColor.g, bladeColor.b, 110f / 255f), 0.004f);
                     AddLine(parent, new List<UVector3> { ToUnity(note.HitHilt), ToUnity(note.HitTip) }, new Color(bladeColor.r, bladeColor.g, bladeColor.b, 240f / 255f), 0.006f);
