@@ -139,6 +139,8 @@ namespace JumpDrillMod.Services
 
             try
             {
+                // 読み込みを2回頼んで2回とも置きに来たときに、前のものを残さない
+                ClearPlaced();
                 root = new GameObject("JumpDrillSwingScene");
                 root.transform.position = new UVector3(0f, 0f, forward);
                 Build(root.transform, scene, onlyForehand, box, meanOnly);
@@ -170,6 +172,11 @@ namespace JumpDrillMod.Services
         internal void Hide()
         {
             pendingKey = null;
+            ClearPlaced();
+        }
+
+        private void ClearPlaced()
+        {
             if (root != null) UnityEngine.Object.Destroy(root);
             foreach (var mesh in meshes) UnityEngine.Object.Destroy(mesh);
             meshes.Clear();

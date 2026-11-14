@@ -63,6 +63,20 @@ namespace JumpDrillMod.UI.Leaderboard
         /// </summary>
         internal Func<string?>? OpenDrillSet { get; set; }
 
+        /// <summary>
+        /// 曲選択の枠で、LeaderboardCore がまだこれを出しているつもりか。Jump Drill 画面の右に出す方は null。
+        /// </summary>
+        /// <remarks>
+        /// LeaderboardCore は別のものに切り替えるとき、「最後に見ていたもの」として覚えているものだけを隠す。
+        /// 枠が出ていない間に頼まれた表示は枠が出るまで待ってから出すので、その間に隠す側が先に済むと、
+        /// これが出たまま、LeaderboardCore は別のものを出しているつもりになる。そうなると誰も隠さないので、
+        /// 上の帯（panel）が外された・覚えているものが別になったのを見て、自分で隠れる。
+        /// </remarks>
+        internal Func<bool>? StillShown { get; set; }
+
+        /// <summary><see cref="StillShown"/> を見て自分で隠れた後に呼ぶ。上の帯を正しいものに戻すため。</summary>
+        internal Action? HidSelf { get; set; }
+
         [UIComponent("replay-1")] private ClickableImage? replay1 = null;
         [UIComponent("replay-2")] private ClickableImage? replay2 = null;
         [UIComponent("replay-3")] private ClickableImage? replay3 = null;
@@ -493,6 +507,7 @@ namespace JumpDrillMod.UI.Leaderboard
             base.DidDeactivate(removedFromHierarchy, screenSystemDisabling);
             // 曲を始めるときやほかのリーダーボードに切り替えたときに、空間に振りが残らないように
             room.Hide(this);
+            hiddenWithParent = false;
             RankSetting.Changed -= Rerank;
             RestoreCovered();
             gameObject.SetActive(false);
@@ -511,6 +526,28 @@ namespace JumpDrillMod.UI.Leaderboard
             if (rankedMetric != RankSetting.Current) Rerank();
 
             UpdateRoom();
+        }
+
+        /// <summary>出したまま、親ごと画面から外れたか。戻ってきたら空間の振りを出し直す。</summary>
+        private bool hiddenWithParent;
+
+        /// <remarks>
+        /// 曲選択の枠ごと画面から外れたとき（戻るでメインメニューへ出たなど）、このビューには
+        /// DidDeactivate が来ず OnDisable だけが来る。空間の振りはシーン直下に置いているので、ここで消す。
+        /// </remarks>
+        private void OnDisable()
+        {
+            if (!isActivated) return;   // DidDeactivate から来たときは、そちらで消している
+            hiddenWithParent = true;
+            room.Hide(this);
+        }
+
+        private void OnEnable()
+        {
+            // 出し直し（__Activate）のときは DidActivate が出すので、ここでは親ごと戻ってきたときだけ出す
+            if (!hiddenWithParent) return;
+            hiddenWithParent = false;
+            if (isActivated) UpdateRoom();
         }
 
         /// <summary>DidDeactivate を通らずに消えたときも、基準の知らせを受けないようにする。</summary>
@@ -537,7 +574,36 @@ namespace JumpDrillMod.UI.Leaderboard
         /// （WhyIsThereNoLeaderboard は曲を選び直すたびに案内を出し直す）。見るのは兄弟の数個だけ。
         /// また、最初に出たときは親がまだ本体の枠に付いておらず、DidActivate の時点では見つからない。
         /// </summary>
-        private void Update() => HideCovered();
+        private void Update()
+        {
+            if (isActivated && StillShown != null && !SafeStillShown())
+            {
+                // DidDeactivate で空間の振りと退けたものも戻る
+                __Deactivate(false, true, false);
+                try
+                {
+                    HidSelf?.Invoke();
+                }
+                catch (Exception e)
+                {
+                    Plugin.LogDebug("could not remove the leaderboard panel: " + e.Message);
+                }
+                return;
+            }
+            HideCovered();
+        }
+
+        private bool SafeStillShown()
+        {
+            try
+            {
+                return StillShown == null || StillShown();
+            }
+            catch (Exception)
+            {
+                return true;
+            }
+        }
 
         /// <summary>
         /// 曲選択の枠で、この表と重なって見えるものを隠す。

@@ -86,6 +86,7 @@ namespace JumpDrill.Gui
         /// </summary>
         public static async Task<string> PrepareAsync(string game)
         {
+            // 通知と LICENSE は MOD の zip の Docs に入れて配るだけで、ゲームには置かない。ここで扱うのは DLL だけ
             foreach (string folder in new[] { LocalFolder, CacheFolder })
             {
                 string path = Path.Combine(folder, game, DllName);
@@ -472,7 +473,7 @@ namespace JumpDrill.Gui
                         ModPackage.Install(target, dll);
                         done.Add(target.Name);
                     }
-                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException
                                                || ex is InvalidOperationException || ex is HttpRequestException
                                                || ex is TaskCanceledException || ex is JsonException)
                     {

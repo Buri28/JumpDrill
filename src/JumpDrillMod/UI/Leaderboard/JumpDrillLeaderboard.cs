@@ -44,6 +44,16 @@ namespace JumpDrillMod.UI.Leaderboard
             // Jump Drill 画面の右に出す方には渡さない（その画面から自分を開き直すことになる）
             view.OpenDrillSet = () => drillSetScreen.Open();
 
+            // LeaderboardCore が隠し損ねたときに、自分で隠れられるようにする（StillShown の説明）
+            view.StillShown = () => panel.isActivated && (lastLeaderboard == null || lastLeaderboard.IsLast(this));
+            view.HidSelf = () =>
+            {
+                // 遅れて出たこの帯が、LeaderboardCore が出しているものの帯を置き換えていることがある。出し直させる
+                if (lastLeaderboard != null && lastLeaderboard.ShowCurrentAgain()) return;
+                // 出し直せないときは、せめてこの帯を外す
+                if (panel.isActivated && panel.screen != null) panel.screen.SetRootViewController(null, ViewController.AnimationType.None);
+            };
+
             // 叩き終えて曲選択に戻った時点では、まだリプレイを書いている途中のことがある。
             // 書き終えたら、いま出している譜面の記録を読み直す（いま叩いた記録が選ばれる）
             Gameplay.DrillReplayRecorder.Saved += OnSaved;
@@ -236,6 +246,10 @@ namespace JumpDrillMod.UI.Leaderboard
             string? id = IdOf(leaderboard);
             if (id == null || navigation == null) return;
 
+            // 曲選択の枠が出ていないときは切り替えない（BoardOnScreen の説明）。
+            // 曲選択に戻ると曲を選んだ知らせがまた来るので、そのときに切り替わる
+            if (!BoardOnScreen) return;
+
             var ordered = Field<System.Collections.Generic.List<CustomLeaderboard>>("orderedCustomLeaderboards");
             var byId = Field<System.Collections.Generic.Dictionary<string, CustomLeaderboard>>("customLeaderboardsById");
             var indexField = NavigationField("currentIndex");
@@ -270,6 +284,70 @@ namespace JumpDrillMod.UI.Leaderboard
         }
 
         private T? Field<T>(string name) where T : class => NavigationField(name)?.GetValue(navigation) as T;
+
+        /// <summary>
+        /// LeaderboardCore がいま出しているつもりのもの（本体の枠を含む）を出し直させる。出し直しを頼めたら true。
+        /// </summary>
+        internal bool ShowCurrentAgain()
+        {
+            try
+            {
+                var indexField = NavigationField("currentIndex");
+                if (navigation == null || indexField == null || !BoardOnScreen) return false;
+
+                // 0 は本体の枠。それ以外は、覚えているものを隠してから同じものを出し直す
+                Invoke("SwitchToIndex", (int)indexField.GetValue(navigation), null);
+                Invoke("NotifyPropertyChanged", "LeftButtonActive");
+                Invoke("NotifyPropertyChanged", "RightButtonActive");
+                return true;
+            }
+            catch (Exception e)
+            {
+                Plugin.LogDebug("LeaderboardCore: could not show the current leaderboard again: " + e.Message);
+                return false;
+            }
+        }
+
+        /// <summary>いま LeaderboardCore が覚えている「最後に見ていたもの」がこのリーダーボードか。</summary>
+        internal bool IsLast(CustomLeaderboard leaderboard)
+        {
+            try
+            {
+                string? id = IdOf(leaderboard);
+                return id == null || Value == id;
+            }
+            catch (Exception)
+            {
+                return true;   // 読めなければ隠さない（前と同じ動き）
+            }
+        }
+
+        /// <summary>
+        /// 曲選択のリーダーボード枠がいま画面に出ているか。
+        /// </summary>
+        /// <remarks>
+        /// プレイ中や Jump Drill 画面にいる間でも、曲を選んだ知らせは来ることがある
+        /// （AccSaber はプレイ開始時に譜面が食い違うと、本体の枠に譜面を設定し直す）。
+        /// 枠が出ていないときに LeaderboardCore へ表示を頼むと、LeaderboardCore は枠が出るまで待ってから出す。
+        /// その間に曲選択へ戻って別の曲を選ぶと、先に「隠す」が済み、後から待っていた「出す」が来て、
+        /// 誰も隠さないまま残る。なので枠が出ていないときは頼まない。
+        /// 読めなければ出ているものとして扱う（前と同じ動き）。
+        /// </remarks>
+        private bool BoardOnScreen
+        {
+            get
+            {
+                try
+                {
+                    var board = NavigationField("platformLeaderboardViewController")?.GetValue(navigation) as UnityEngine.Behaviour;
+                    return board == null || board.isActiveAndEnabled;
+                }
+                catch (Exception)
+                {
+                    return true;
+                }
+            }
+        }
 
         private System.Reflection.FieldInfo? NavigationField(string name) =>
             navigation?.GetType().GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -330,6 +408,8 @@ namespace JumpDrillMod.UI.Leaderboard
                 RunNextFrame(() =>
                 {
                     leavePending = false;
+                    // 枠が出ていなければ戻さない。曲選択に戻って曲を選んだ知らせが来たときに、もう一度ここを通る
+                    if (!BoardOnScreen) return;
                     Value = restore;
                     notifySet?.Invoke(navigation, new object[] { key });
                 }, "could not switch back");

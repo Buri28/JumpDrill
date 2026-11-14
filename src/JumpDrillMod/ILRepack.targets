@@ -18,6 +18,7 @@
     <ItemGroup>
       <InputAssemblies Include="$(OutDir)$(AssemblyName).dll" />
       <InputAssemblies Include="$(OutDir)JumpDrill.Core.dll" />
+      <!-- 取り込むサードパーティを変えたら licenses\JumpDrillMod-THIRD-PARTY-NOTICES.txt も直す -->
       <InputAssemblies Include="$(OutDir)OggVorbisEncoder.dll" />
       <InputAssemblies Include="$(OutDir)System.Memory.dll" />
       <InputAssemblies Include="$(OutDir)System.Buffers.dll" />

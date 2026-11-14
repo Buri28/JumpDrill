@@ -230,7 +230,8 @@ BeatLeader / LocalLeaderboard / JumpDrillMod が保存したリプレイ（`.bso
 
 ## サードパーティ
 
-次のライブラリを同梱しています。
+次のものを同梱しています。著作権表示とライセンス文は、アプリは `JumpDrillGui.exe` と同じフォルダの `THIRD-PARTY-NOTICES.txt`、MOD は MOD の zip の `Docs\JumpDrillMod-THIRD-PARTY-NOTICES.txt` にあります。JumpDrill 自身のライセンス（MIT）は、アプリは同じフォルダの `LICENSE`、MOD は MOD の zip の `Docs\JumpDrillMod-LICENSE.txt` にあります。
 
-- [OggVorbisEncoder](https://github.com/SteveLillis/.NET-Ogg-Vorbis-Encoder)（MIT）
+- [OggVorbisEncoder](https://github.com/SteveLillis/.NET-Ogg-Vorbis-Encoder)（MIT）。[libvorbis](https://github.com/xiph/vorbis) のコードブックのデータを含みます（BSD、Xiph.Org Foundation）
+- .NET ランタイム（MIT、.NET Foundation。アプリのみ）
 - System.Memory / System.Buffers / System.Numerics.Vectors / System.Runtime.CompilerServices.Unsafe（MIT、.NET Foundation。MOD のみ）
