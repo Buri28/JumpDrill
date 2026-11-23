@@ -1,4 +1,4 @@
-﻿// 見えないデスクトップを作り、その上でプロセスを起動し、前面の窓を記録する。
+﻿// 見えないデスクトップを作り、その上でプロセスを起動し、前面のウィンドウを記録する。
 // Invoke-BgGui.ps1 / Invoke-Hidden.ps1 が Add-Type で読み込む。
 // 起動したプロセスは Job Object に入れる。子・孫も同じ Job に入るので、残りの確認と後片付けを PID に頼らずに行える。
 using System; using System.Text; using System.Threading; using System.Collections.Generic;
@@ -85,7 +85,7 @@ public static class BgDesk {
     bool r; bool ok = IsProcessInJob(h, l.Job, out r); CloseHandle(h); return ok && r;
   }
 
-  /// <summary>デスクトップ上の、Job の中のプロセスの見えている最上位の窓（持ち主の無いもの）に WM_CLOSE を送る。送った数を返す。</summary>
+  /// <summary>デスクトップ上の、Job の中のプロセスの見えている最上位のウィンドウ（持ち主の無いもの）に WM_CLOSE を送る。送った数を返す。</summary>
   public static int CloseWindows(IntPtr desk, Launched l) {
     int n = 0;
     EnumDesktopWindows(desk, (h, p) => { uint pid; GetWindowThreadProcessId(h, out pid);
@@ -93,7 +93,7 @@ public static class BgDesk {
     return n;
   }
 
-  // 前面の窓を ms ごとに記録する。Job を渡すと、その窓が起動したプロセス（子・孫も）のものかも記録する
+  // 前面のウィンドウを ms ごとに記録する。Job を渡すと、そのウィンドウが起動したプロセス（子・孫も）のものかも記録する
   public class Sample { public DateTime At; public long Hwnd; public uint Pid; public bool Launched; }
   static Thread _t; static volatile bool _run; public static List<Sample> Samples = new List<Sample>();
   static volatile Launched _watchJob;

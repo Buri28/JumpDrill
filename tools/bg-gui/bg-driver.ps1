@@ -1,26 +1,26 @@
 ﻿# 見えないデスクトップの中で動く操作役。Invoke-BgGui.ps1 から起動される（直接は使わない）。
-# マウス・キーの入力や SetForegroundWindow は使わない。窓へのメッセージと UI Automation の Pattern だけで操作する。
+# マウス・キーの入力や SetForegroundWindow は使わない。ウィンドウへのメッセージと UI Automation の Pattern だけで操作する。
 #
 # 手順（steps.txt に1行1つ）:
-#   launch              exe を起動して -MainTitle（既定 "JumpDrill*"）の窓を待つ
-#   win=<題名>           GUI の最上位の窓を題名（ワイルドカード）で選ぶ（最大 20 秒待つ）
-#   shot=<名前>          今の窓を PrintWindow で <名前>.png に撮る（2回続けて同じ絵になるまで待つ）
-#   shotflag=<数>        撮り方を変える。-1（既定）＝窓枠は 2・中身は WM_PRINT で重ねる。0 / 2 = PrintWindow の flag そのまま
-#   click=<名前>         今の窓のボタンを押す（PostMessage BM_CLICK。モーダルの窓が開いても止まらない）。
-#                       フォルダ・URL・ArcViewer を開く／MOD・更新のボタンは断る（見える画面に窓が出る・ユーザーのファイルに触れる）。
+#   launch              exe を起動して -MainTitle（既定 "JumpDrill*"）のウィンドウを待つ
+#   win=<題名>           GUI の最上位のウィンドウを題名（ワイルドカード）で選ぶ（最大 20 秒待つ）
+#   shot=<名前>          今のウィンドウを PrintWindow で <名前>.png に撮る（2回続けて同じ絵になるまで待つ）
+#   shotflag=<数>        撮り方を変える。-1（既定）＝ウィンドウの枠は 2・中身は WM_PRINT で重ねる。0 / 2 = PrintWindow の flag そのまま
+#   click=<名前>         今のウィンドウのボタンを押す（PostMessage BM_CLICK。モーダルのウィンドウが開いても止まらない）。
+#                       フォルダ・URL・ArcViewer を開く／MOD・更新のボタンは断る（見える画面にウィンドウが出る・ユーザーのファイルに触れる）。
 #                       どうしても押すときは clickany=<名前>
 #   invoke=<名前>        UI Automation の InvokePattern で押す
-#   combo=<番号>:<文字>  今の窓の <番号> 番目（0 から、combos の並び）のプルダウンで <文字> から始まる項目を選ぶ
-#   value=<番号>:<値>    今の窓の <番号> 番目の入力欄（Edit）に ValuePattern で値を入れる
-#   drop=<番号>:<名前>   <番号> 番目のプルダウンの項目をログに出し、開いた一覧を窓に重ねて <名前>.png に撮って閉じる
+#   combo=<番号>:<文字>  今のウィンドウの <番号> 番目（0 から、combos の並び）のプルダウンで <文字> から始まる項目を選ぶ
+#   value=<番号>:<値>    今のウィンドウの <番号> 番目の入力欄（Edit）に ValuePattern で値を入れる
+#   drop=<番号>:<名前>   <番号> 番目のプルダウンの項目をログに出し、開いた一覧をウィンドウに重ねて <名前>.png に撮って閉じる
 #   check=<名前>:on|off  チェックボックスをその状態にする
-#   cell=<行>:<列>       メダル画面の表のマスを選ぶ（0 から）。窓の既定の大きさ・スクロールしていない表のとき用
-#                       （表の中央寄せ・スクロール位置は見ない）。選んだマスは生成オプションの窓の「対象」などで確かめる
-#   nowin=<題名>         その窓が開いていないかをログに出す
+#   cell=<行>:<列>       メダル画面の表のマスを選ぶ（0 から）。ウィンドウの既定の大きさ・スクロールしていない表のとき用
+#                       （表の中央寄せ・スクロール位置は見ない）。選んだマスは生成オプションのウィンドウの「対象」などで確かめる
+#   nowin=<題名>         そのウィンドウが開いていないかをログに出す
 #   combos / buttons / edits / texts / windows   一覧をログに出す
 #   wait=<ミリ秒>
-#   waitnotext=<文字>    今の窓からその表示（ワイルドカード）が消えるまで待つ（読み込み中の表示など）
-#   close               今の窓に WM_CLOSE を送る（メインの窓ならプロセスの終了を待つ）
+#   waitnotext=<文字>    今のウィンドウからその表示（ワイルドカード）が消えるまで待つ（読み込み中の表示など）
+#   close               今のウィンドウに WM_CLOSE を送る（メインのウィンドウならプロセスの終了を待つ）
 param([string]$Exe, [string]$StepsFile, [string]$OutDir, [string]$PidFile, [string]$MainTitle = "JumpDrill*")
 $ErrorActionPreference = "Stop"
 $log = Join-Path $OutDir "driver-log.txt"
@@ -56,10 +56,10 @@ $CT = [System.Windows.Automation.ControlType]
 L "driver on desktop: $([U]::DesktopName())"
 
 $script:proc = $null
-# 撮り方。既定（-1）は、窓枠を 2（PW_RENDERFULLCONTENT）で撮り、中身を 1（PW_CLIENTONLY、WM_PRINT で描かせる）で撮って重ねる。
+# 撮り方。既定（-1）は、ウィンドウの枠を 2（PW_RENDERFULLCONTENT）で撮り、中身を 1（PW_CLIENTONLY、WM_PRINT で描かせる）で撮って重ねる。
 # 2 だけだと見えないデスクトップで和文と英数字が混ざる行の英数字が欠けることがあり、0 だけだとタイトルバーが旧来の形で描かれるため
 $script:flags = @(-1)
-# 押すと見える画面に窓を出す・ユーザーのファイルに触れるボタン
+# 押すと見える画面にウィンドウを出す・ユーザーのファイルに触れるボタン
 $script:deny = '開く|ArcViewer|プレビュー|MOD|更新|最新版|Open|Preview|Update|\.\.\.'
 $script:win = $null
 
@@ -70,7 +70,7 @@ function TopWindows() {
 function FindWin($pattern) {
   for ($i = 0; $i -lt 40; $i++) {
     foreach ($w in (TopWindows)) { if ($w.Current.Name -like $pattern) { return $w } }
-    # モーダルの窓は持ち主の子として見えることもある
+    # モーダルのウィンドウは持ち主の子として見えることもある
     foreach ($w in (TopWindows)) {
       $c = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Window)
       foreach ($cw in $w.FindAll($TS::Descendants, $c)) { if ($cw.Current.Name -like $pattern) { return $cw } }
@@ -153,7 +153,7 @@ function SelectCombo($index, $prefix) {
   L "combo[$index] -> item $i  value now: $(ComboValue $cb)"
 }
 function DropShot($index, $name) {
-  # 開いた一覧は別の窓なので、窓と一覧を別々に撮って一覧の位置に重ねる
+  # 開いた一覧は別のウィンドウなので、ウィンドウと一覧を別々に撮って一覧の位置に重ねる
   $cbs = All $script:win $CT::ComboBox
   if ($index -lt 0 -or $index -ge $cbs.Count) { throw "drop: no combo #$index (combos=$($cbs.Count))" }
   $cb = $cbs[$index]
@@ -174,7 +174,7 @@ function DropShot($index, $name) {
     $list = Raw $info.hwndList ($lr.R - $lr.L) ($lr.B - $lr.T) 2
     if (-not $list) { $list = Raw $info.hwndList ($lr.R - $lr.L) ($lr.B - $lr.T) 0 }
     if (-not $main -or -not $list) { throw "drop shot failed: $name" }
-    # 一覧が窓の上や左にはみ出しても切れないよう、両方を囲む範囲で描く
+    # 一覧がウィンドウの上や左にはみ出しても切れないよう、両方を囲む範囲で描く
     $L0 = [Math]::Min($wr.L, $lr.L); $T0 = [Math]::Min($wr.T, $lr.T)
     $W = [Math]::Max($wr.R, $lr.R) - $L0; $H = [Math]::Max($wr.B, $lr.B) - $T0
     $out = New-Object System.Drawing.Bitmap $W, $H
@@ -233,7 +233,7 @@ try {
         L ("  checkbox '{0}' now={1}" -f $n, $cb.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState)
       }
       "cell" {
-        # cell=<行>:<列>  メダル画面の表のマスを左クリック（WM_LBUTTONDOWN/UP を窓へ送る。座標は MedalBoard の 128/62/18/48 × DPI/96）
+        # cell=<行>:<列>  メダル画面の表のマスを左クリック（WM_LBUTTONDOWN/UP をウィンドウへ送る。座標は MedalBoard の 128/62/18/48 × DPI/96）
         $r, $c = $v.Split(':', 2)
         $best = $null
         foreach ($pane in (All $script:win $CT::Pane)) {
@@ -251,7 +251,7 @@ try {
       }
       "texts" { foreach ($t in (All $script:win $CT::Text)) { if ($t.Current.Name) { L ("  text '{0}'" -f ($t.Current.Name -replace "`r?`n", " / ")) } } }
       "nowin" {
-        # nowin=<題名>  その窓が開いていないこと（1.5 秒待ってから、最上位と子の窓を探す）をログに出す
+        # nowin=<題名>  そのウィンドウが開いていないこと（1.5 秒待ってから、最上位と子のウィンドウを探す）をログに出す
         Start-Sleep -Milliseconds 1500
         $found = $false
         foreach ($w in (TopWindows)) {
@@ -264,7 +264,7 @@ try {
       "shotflag" { $script:flags = @([int]$v) }
       "wait" { Start-Sleep -Milliseconds ([int]$v) }
       "waitnotext" {
-        # 今の窓にこの文字（ワイルドカード）の表示が無くなるまで待つ（最大 60 秒）
+        # 今のウィンドウにこの文字（ワイルドカード）の表示が無くなるまで待つ（最大 60 秒）
         for ($i = 0; $i -lt 120; $i++) {
           $hit = @(All $script:win $CT::Text | Where-Object { $_.Current.Name -like $v })
           if ($hit.Count -eq 0) { break }
@@ -289,7 +289,7 @@ try {
 }
 # 自分が起動した GUI がまだ残っていれば、まず普通に閉じる
 if ($script:proc -and -not $script:proc.HasExited) {
-  # 子の窓（メダル・ダイアログ）が開いたままだとメインの窓が閉じないので、全部の窓に WM_CLOSE を送る
+  # 子のウィンドウ（メダル・ダイアログ）が開いたままだとメインのウィンドウが閉じないので、全部のウィンドウに WM_CLOSE を送る
   L "closing GUI windows with WM_CLOSE"
   for ($try = 0; $try -lt 5 -and -not $script:proc.HasExited; $try++) {
     try { foreach ($w in (TopWindows)) { [U]::PostMessage([IntPtr]$w.Current.NativeWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null } } catch {}

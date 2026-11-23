@@ -228,7 +228,7 @@ namespace JumpDrill.Updater
             buttons.Controls.Add(_reload);
 
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(12) };
-            // 列は窓の幅に合わせる。既定（中身に合わせる）だと、長いパスに引っぱられて右端が窓の外に出る
+            // 列はウィンドウの幅に合わせる。既定（中身に合わせる）だと、長いパスに引っぱられて右端がウィンドウの外に出る
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));

@@ -164,7 +164,7 @@ namespace JumpDrillMod.Services
         /// 名前と ID は変わらないので記録はそのまま。<paramref name="onProgress"/> と <paramref name="onDone"/> はメインスレッドで呼ばれる。
         /// </summary>
         /// <param name="onDone">（成功したか, 画面に出す1行, 曲名を付け替えたもの 旧→新）。</param>
-        /// <param name="sound">生成オプションの窓で選んだ値。null なら譜面ごとの今の値のまま。</param>
+        /// <param name="sound">生成オプションのウィンドウで選んだ値。null なら譜面ごとの今の値のまま。</param>
         internal void Rebuild(IReadOnlyList<string> folders, SoundSettings? sound, Action<int, int> onProgress,
             Action<bool, string, IReadOnlyDictionary<string, string>> onDone)
         {
@@ -213,7 +213,7 @@ namespace JumpDrillMod.Services
             }, UnityMainThreadTaskScheduler.Default);
         }
 
-        /// <summary>譜面フォルダの今のクリック音などの値（生成オプションの窓の初期値）。読めなければ null。</summary>
+        /// <summary>譜面フォルダの今のクリック音などの値（生成オプションのウィンドウの初期値）。読めなければ null。</summary>
         internal static SoundSettings? ReadSound(string folder)
         {
             try { return SongCoreFileAccess.Run(() => SoundSettings.Of(DrillRebuild.Read(folder))); }

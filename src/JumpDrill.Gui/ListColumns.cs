@@ -21,7 +21,7 @@ namespace JumpDrill.Gui
             list.EndUpdate();
         }
 
-        /// <summary>伸ばす前の、中身に合わせた幅の合計。窓の大きさはこれで決める。</summary>
+        /// <summary>伸ばす前の、中身に合わせた幅の合計。ウィンドウの大きさはこれで決める。</summary>
         public static int NaturalWidth(ListView list)
         {
             int width = 0;
@@ -71,8 +71,8 @@ namespace JumpDrill.Gui
 
             column.Width = Math.Max(content, header) + Slack;
 
-            // 伸ばす前の幅を控えておく。窓の大きさはこちらで決める
-            // （伸ばしたあとの幅で測ると、測るたびに窓が広がっていく）。
+            // 伸ばす前の幅を控えておく。ウィンドウの大きさはこちらで決める
+            // （伸ばしたあとの幅で測ると、測るたびにウィンドウが広がっていく）。
             column.Tag = column.Width;
         }
     }

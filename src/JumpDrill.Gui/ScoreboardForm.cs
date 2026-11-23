@@ -408,7 +408,7 @@ namespace JumpDrill.Gui
         /// <summary>譜面の一覧の幅を一度合わせたか。</summary>
         private bool _mapSized;
 
-        /// <summary>窓の幅を一度合わせたか。以後は掴んで変えてもらう。</summary>
+        /// <summary>ウィンドウの幅を一度合わせたか。以後は掴んで変えてもらう。</summary>
         private bool _windowSized;
 
         /// <summary>軌道と内訳に残す最低限の高さ。内訳の行が全部入るだけ要る。</summary>
@@ -477,7 +477,7 @@ namespace JumpDrill.Gui
         /// <summary>絵の2枚に残す最低限の幅。</summary>
         private const int FiguresMinimum = FrontMinimum + SideMinimum + SplitterThickness;
 
-        /// <summary>絵の2枚の既定の幅。これより広い窓では、余った幅は内訳に回る。</summary>
+        /// <summary>絵の2枚の既定の幅。これより広いウィンドウでは、余った幅は内訳に回る。</summary>
         private const int FiguresDefault = FrontDefault + SideDefault + SplitterThickness;
 
         /// <summary>内訳に残す最低限の幅。</summary>
@@ -610,7 +610,7 @@ namespace JumpDrill.Gui
             {
                 if (figuresMoved || figures.Width < FrontMinimum + SideMinimum + figures.SplitterWidth) return;
 
-                // 正面図を少しだけ広く（全体の FrontShare）。決め打ちの幅にすると、窓を広げたぶんが
+                // 正面図を少しだけ広く（全体の FrontShare）。決め打ちの幅にすると、ウィンドウを広げたぶんが
                 // 全部横の図に回り、全画面では横の図ばかり大きくなった。
                 // 狭いときは、正面図の格子と数字が並ぶ幅（FrontDefault）を先に取る。
                 int room = figures.Width - figures.SplitterWidth;
@@ -645,7 +645,7 @@ namespace JumpDrill.Gui
                 SplitterWidth = SplitterThickness,
                 BackColor = SplitterColor,
                 Margin = new Padding(0, 0, 0, 8),
-                // 窓を広げた分は絵にあげる。内訳は列が収まっていればいい。
+                // ウィンドウを広げた分は絵にあげる。内訳は列が収まっていればいい。
                 FixedPanel = FixedPanel.Panel2,
             };
             UseSystemSplitterCursor(lower);
@@ -655,7 +655,7 @@ namespace JumpDrill.Gui
             _lower = lower;
 
             // 譜面は左、その譜面のプレイは右。上下に積むと、3列しかない譜面の一覧に
-            // 窓の幅を丸ごと渡すことになって、譜面名と 再現精度 % が両端に離れる。
+            // ウィンドウの幅を丸ごと渡すことになって、譜面名と 再現精度 % が両端に離れる。
             // 横に並べれば、譜面は必要なぶんだけ、残りは全部プレイの列に回る。
             var stages = new SplitContainer
             {
@@ -663,7 +663,7 @@ namespace JumpDrill.Gui
                 Orientation = Orientation.Vertical,
                 SplitterWidth = SplitterThickness,
                 BackColor = SplitterColor,
-                // 窓を広げた分はプレイの一覧にあげる。譜面は名前が収まっていればいい。
+                // ウィンドウを広げた分はプレイの一覧にあげる。譜面は名前が収まっていればいい。
                 FixedPanel = FixedPanel.Panel1,
             };
             UseSystemSplitterCursor(stages);
@@ -678,7 +678,7 @@ namespace JumpDrill.Gui
                 Orientation = Orientation.Horizontal,
                 SplitterWidth = SplitterThickness,
                 BackColor = SplitterColor,
-                // 窓を広げた分は軌道にあげる。一覧は必要なだけ見えていればいい。
+                // ウィンドウを広げた分は軌道にあげる。一覧は必要なだけ見えていればいい。
                 FixedPanel = FixedPanel.Panel2,
             };
             UseSystemSplitterCursor(split);
@@ -851,7 +851,7 @@ namespace JumpDrill.Gui
             RebuildRows(_shownMap == null ? null : _shownMap.Key);
 
             // 列の見出しが替わって広くなったら、譜面の一覧も広げる（横スクロールが出て数字が切れる）。
-            // プレイの一覧を削らないよう、広げた分だけ窓も広げる（画面に入る分まで）。
+            // プレイの一覧を削らないよう、広げた分だけウィンドウも広げる（画面に入る分まで）。
             // 狭くなったときは、掴んで動かした位置を残すためそのままにする
             if (_stages != null && _list.Items.Count > 0)
             {
@@ -859,7 +859,7 @@ namespace JumpDrill.Gui
                 int grow = need - _stages.SplitterDistance;
                 if (grow > 0)
                 {
-                    // 窓を広げる間はプレイの一覧の幅を止めて、広がった分を譜面の一覧に回す
+                    // ウィンドウを広げる間はプレイの一覧の幅を止めて、広がった分を譜面の一覧に回す
                     Rectangle area = Screen.FromControl(this).WorkingArea;
                     if (WindowState == FormWindowState.Normal)
                     {
@@ -923,7 +923,7 @@ namespace JumpDrill.Gui
             _list.EndUpdate();
 
             // 3列とも中身の幅まで。余った幅を譜面名に全部渡すと、
-            // 譜面名と 再現精度 % が窓の両端に離れて、目で結べなくなる。
+            // 譜面名と 再現精度 % がウィンドウの両端に離れて、目で結べなくなる。
             ListColumns.FitAll(_list, 0);
 
             // 選び直しも組み直しの一部。ここで選択の合図を通すと、
@@ -1216,7 +1216,7 @@ namespace JumpDrill.Gui
         /// その表が列ぶんちょうど収まる幅。縦スクロールバーの分も見ておく。
         ///
         /// 見るのは<b>伸ばす前の幅</b>。最後の列は余白を埋めるために伸ばしてあるので、
-        /// そちらで測ると、測るたびに窓が広がっていく。
+        /// そちらで測ると、測るたびにウィンドウが広がっていく。
         /// </summary>
         private static int ContentWidth(ListView list)
         {
@@ -1239,12 +1239,12 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 窓の幅を、中身が横スクロール無しで収まる幅に合わせる。<b>最初の1回だけ。</b>
+        /// ウィンドウの幅を、中身が横スクロール無しで収まる幅に合わせる。<b>最初の1回だけ。</b>
         ///
         /// 決め打ちの大きさにすると、列の数・フォント・DPI のどれかが変わるたびに
         /// 足りなかったり余ったりする。<b>余った幅を表に配って埋めるのは筋が悪い</b>
         /// （数字の列が伸びて桁が離れるか、見出しの列だけが間延びする）。
-        /// 中身の実寸を足し上げて、窓の方をそこへ合わせる。
+        /// 中身の実寸を足し上げて、ウィンドウの方をそこへ合わせる。
         ///
         /// 上の段（絵＋内訳）と下の段（譜面＋プレイ）の広い方に合わせる。
         /// 画面からはみ出す場合はそこで止める（そのときは掴んで詰めてもらう）。
@@ -1257,7 +1257,7 @@ namespace JumpDrill.Gui
             int upper = FiguresDefault + SplitterThickness + ContentWidth(_detail);
             int lower = ContentWidth(_list) + SplitterThickness + ContentWidth(_plays);
 
-            // root の Padding(10) と、窓枠のぶん。
+            // root の Padding(10) と、ウィンドウの枠のぶん。
             int need = Math.Max(upper, lower) + 20 + (Width - ClientSize.Width);
 
             Width = Math.Min(need, Screen.FromControl(this).WorkingArea.Width);
@@ -1283,7 +1283,7 @@ namespace JumpDrill.Gui
             _lower.Panel2MinSize = DetailMinimum;
 
             // 内訳は列ぶんちょうど。余りは絵に回す。
-            // 窓は中身に合わせてあるので、ふつうは余り＝絵の既定の幅になる。
+            // ウィンドウは中身に合わせてあるので、ふつうは余り＝絵の既定の幅になる。
             _lower.SplitterDistance = Math.Max(FiguresMinimum,
                 Math.Min(_lower.Width - _lower.SplitterWidth - width, room));
 

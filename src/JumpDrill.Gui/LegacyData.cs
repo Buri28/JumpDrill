@@ -35,7 +35,7 @@ namespace JumpDrill.Gui
 
             // 0.1.0 の MOD が UserData\JumpDrillMod\Replays に残したリプレイを、UserData\JumpDrill\Replays へ移す。
             // MOD も起動時に移すが、GUI だけ新しくしてゲームを起動していないこともある。
-            // Beat Saber を探すのに全ドライブを見る（ネットワークドライブなどで数秒かかる）ので、窓を出すのを待たせない
+            // Beat Saber を探すのに全ドライブを見る（ネットワークドライブなどで数秒かかる）ので、ウィンドウを出すのを待たせない
             Task.Run(() =>
             {
                 foreach (var install in LevelWriter.FindInstalls())

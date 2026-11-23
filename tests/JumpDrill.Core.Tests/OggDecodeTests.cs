@@ -54,7 +54,7 @@ namespace JumpDrill.Tests
 
                 // 正弦波は1周期ごとに0を横切るので、サンプル単位で見ると
                 // 1発のクリックが何十回も鳴ったように数えられてしまう。
-                // 窓ごとのピークを取ってから立ち上がりを探す。
+                // ウィンドウごとのピークを取ってから立ち上がりを探す。
                 const int Window = 512;
                 var envelope = new List<double>();
                 double windowPeak = 0;

@@ -144,7 +144,7 @@ namespace JumpDrill.Gui
         /// <summary>いま出している表の行。すべて再作成で使う。</summary>
         private List<MedalRow> _shownRows = new List<MedalRow>();
 
-        /// <summary>この名前の譜面が出力先に既にあるか。上書きしない1本の生成で、生成オプションの窓を出す前に見る。無ければ見ない。</summary>
+        /// <summary>この名前の譜面が出力先に既にあるか。上書きしない1本の生成で、生成オプションのウィンドウを出す前に見る。無ければ見ない。</summary>
         internal Func<string, bool> LevelExists { get; set; }
 
         /// <summary>再作成で書くときの指定（メイン画面の「zip も出す」など）。無ければ既定。</summary>
@@ -184,7 +184,7 @@ namespace JumpDrill.Gui
             stageBox.Controls.Add(_stageMenuButton);
             top.Controls.Add(stageBox, 0, 0);
             top.Controls.Add(_total, 1, 0);
-            // 総合 Lv とボタンがくっつかないよう、左に間を取る（窓の幅はこの段にも合わせるので、詰まったときもこの間は残る）
+            // 総合 Lv とボタンがくっつかないよう、左に間を取る（ウィンドウの幅はこの段にも合わせるので、詰まったときもこの間は残る）
             _replay.Margin = new Padding(16, _replay.Margin.Top, _replay.Margin.Right, _replay.Margin.Bottom);
             top.Controls.Add(_replay, 3, 0);
             top.Controls.Add(_preview, 4, 0);
@@ -210,7 +210,7 @@ namespace JumpDrill.Gui
             _overwrite.Margin = new Padding(_rescan.Margin.Left, 3, 0, 3);
 
             var outer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
-            // 列は窓の幅に合わせる。中身の幅で広げると、上の段が広いときに表ごと窓の外へはみ出す
+            // 列はウィンドウの幅に合わせる。中身の幅で広げると、上の段が広いときに表ごとウィンドウの外へはみ出す
             outer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -978,7 +978,7 @@ namespace JumpDrill.Gui
             bool all = entry == null;
             string target = all ? Lang.T("標準の全112曲", "All 112 standard drills")
                 : $"{entry.Direction} / Stage {entry.Stage} / {entry.Bpm:0.#} BPM";
-            // 作れないと分かっているのに窓を出さない。クリック音などは名前に入らないので窓の前に分かる。
+            // 作れないと分かっているのにウィンドウを出さない。クリック音などは名前に入らないのでウィンドウの前に分かる。
             // 書く前（GenerateSetAsync）でも同じ判定をする。すべて生成は無いものだけ作るので見ない
             if (!all && !_overwrite.Checked && LevelExists != null && LevelExists(entry.Options.Name))
             {
@@ -1051,7 +1051,7 @@ namespace JumpDrill.Gui
         /// </summary>
         private void FitToContent()
         {
-            // 寸法は画面の拡大率で変わる。窓ができてから測り直す。
+            // 寸法は画面の拡大率で変わる。ウィンドウができてから測り直す。
             _board.Remeasure();
             PerformLayout();
 
@@ -1104,8 +1104,8 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 作り直す前の生成オプションの窓。キャンセルなら null（何も書かない）。
-        /// 窓に無い設定（形・BPM・NJS など）は、作り直すときにそれぞれの譜面から読む。
+        /// 作り直す前の生成オプションのウィンドウ。キャンセルなら null（何も書かない）。
+        /// ウィンドウに無い設定（形・BPM・NJS など）は、作り直すときにそれぞれの譜面から読む。
         /// </summary>
         private SoundSettings ChooseRebuildSound(IReadOnlyList<DrillLibrary.DrillLevel> copies, bool all)
         {
@@ -1136,7 +1136,7 @@ namespace JumpDrill.Gui
                 Click = (ClickMode)options.ClickIndex,
                 Tone = (ClickTone)options.Tone,
                 CountIn = (int)options.CountIn,
-                // 窓の欄（0〜10 秒・小数1桁）に入らない値は、欄を触っていなければ譜面の値のまま
+                // ウィンドウの欄（0〜10 秒・小数1桁）に入らない値は、欄を触っていなければ譜面の値のまま
                 TailSeconds = options.Tail == options.InitialTail ? initial.TailSeconds : (double)options.Tail,
             };
         }
@@ -1145,7 +1145,7 @@ namespace JumpDrill.Gui
         /// ドリルを同じ指定で作り直す（JumpDrill.Core の <c>DrillRebuild</c>）。同じ曲名の譜面が置き場所ごとにあれば全部。
         /// 生成の決まりを変えたあとで、今の決まりで書き直すのに使う。名前と ID は変わらないので記録はそのまま。
         /// </summary>
-        /// <param name="all">「すべて再作成」から（窓に表の名前と本数を出す）。</param>
+        /// <param name="all">「すべて再作成」から（ウィンドウに表の名前と本数を出す）。</param>
         private async Task Rebuild(IReadOnlyList<string> songNames, bool all = false)
         {
             if (_generating || _findDrills == null) return;
@@ -1164,7 +1164,7 @@ namespace JumpDrill.Gui
                 return;
             }
 
-            // 作り直す前に生成オプションの窓を出す。初期値は今の譜面の値（全件で違えば最初の1本の値）
+            // 作り直す前に生成オプションのウィンドウを出す。初期値は今の譜面の値（全件で違えば最初の1本の値）
             var sound = ChooseRebuildSound(copies, all);
             if (sound == null) return;
 

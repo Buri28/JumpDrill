@@ -217,7 +217,7 @@
     </vertical>
 
   </vertical>
-  <!-- 削除の前の確かめの窓（ConfirmPrompt.Markup と同じもの） -->
+  <!-- 削除の前の確かめのウィンドウ（ConfirmPrompt.Markup と同じもの） -->
   <modal id='confirm-modal' show-event='show-confirm' hide-event='hide-confirm' click-off-closes='true'
          move-to-center='true' size-delta-x='64' size-delta-y='26'>
     <vertical pad='3' spacing='2' child-expand-height='false'>

@@ -5,7 +5,7 @@ using System.Linq;
 namespace JumpDrill.Model
 {
     /// <summary>
-    /// 生成オプションの窓で選ぶ4項目（クリック音・音色・カウントイン・末尾の余白）。
+    /// 生成オプションのウィンドウで選ぶ4項目（クリック音・音色・カウントイン・末尾の余白）。
     /// どれも曲名と ID に入らないので、替えて作り直しても記録はそのまま続く。
     /// </summary>
     public sealed class SoundSettings
@@ -41,7 +41,7 @@ namespace JumpDrill.Model
         }
 
         /// <summary>
-        /// 何本かのドリルの値を窓の初期値にまとめる。最初の1本の値を使い、どれか違えば <paramref name="differ"/> を立てる。
+        /// 何本かのドリルの値をウィンドウの初期値にまとめる。最初の1本の値を使い、どれか違えば <paramref name="differ"/> を立てる。
         /// 1本も無ければ既定値。
         /// </summary>
         public static SoundSettings Common(IEnumerable<SoundSettings> settings, out bool differ)

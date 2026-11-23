@@ -97,7 +97,7 @@ namespace JumpDrillMod.UI.Leaderboard
             this.diagrams = diagrams;
 
             // 譜面が変われば選び直し。前の譜面の3位を選んでいた、を持ち越さない。
-            // 前の譜面の記録を消す確かめの窓も閉じる
+            // 前の譜面の記録を消す確かめのウィンドウも閉じる
             confirm.No(parserParams);
             selected = 0;
             page = 0;
@@ -234,7 +234,7 @@ namespace JumpDrillMod.UI.Leaderboard
 
         [UIParams] private readonly BeatSaberMarkupLanguage.Parser.BSMLParserParams? parserParams = null;
 
-        /// <summary>削除の前の確かめの窓（<see cref="ConfirmPrompt"/>）。</summary>
+        /// <summary>削除の前の確かめのウィンドウ（<see cref="ConfirmPrompt"/>）。</summary>
         private readonly ConfirmPrompt confirm = new ConfirmPrompt();
 
         [UIComponent("confirm-text")] private TextMeshProUGUI? confirmText = null;
@@ -246,7 +246,7 @@ namespace JumpDrillMod.UI.Leaderboard
         public void ConfirmNo() => confirm.No(parserParams);
 
         /// <summary>
-        /// 選んでいる記録を消す。窓で確かめてから消す（元に戻せない）。
+        /// 選んでいる記録を消す。ウィンドウで確かめてから消す（元に戻せない）。
         /// </summary>
         /// <remarks>
         /// ごみ箱は通さない（元に戻せない）。同じプレイの BeatLeader・LocalLeaderboard のコピーも消す

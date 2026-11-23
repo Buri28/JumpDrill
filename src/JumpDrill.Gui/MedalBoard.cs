@@ -123,7 +123,7 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 表の左端。窓が表より広ければ表を左右の真ん中に置き、右だけが余って見えないようにする。
+        /// 表の左端。ウィンドウが表より広ければ表を左右の真ん中に置き、右だけが余って見えないようにする。
         /// 表の幅は縦スクロールバーの分を空けて取ってあるので（その他で行が多いとき）、出ていなければその分も左右に分ける。
         /// </summary>
         private int OffsetX
@@ -154,9 +154,9 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 窓を合わせる広さ。高さは標準のステージ（14行）までで、それより多い行（「その他」）はスクロールで見せる。
-        /// 行が多いたびに窓が縦に伸びると、画面に収まらなくなる。
-        /// 幅には縦のスクロールバーのぶんを常に足す。窓の大きさは開いたときにしか決めないので、
+        /// ウィンドウを合わせる広さ。高さは標準のステージ（14行）までで、それより多い行（「その他」）はスクロールで見せる。
+        /// 行が多いたびにウィンドウが縦に伸びると、画面に収まらなくなる。
+        /// 幅には縦のスクロールバーのぶんを常に足す。ウィンドウの大きさは開いたときにしか決めないので、
         /// あとで行の多いステージに切り替えて縦のバーが出ても、横のバーまで出ないようにする。
         /// </summary>
         public Size ContentSize
@@ -180,7 +180,7 @@ namespace JumpDrill.Gui
             _rows = rows ?? new List<MedalRow>();
             _editable = editable;
 
-            // 表の広さはステージによらず標準（14行 × 8 Stage）に揃える。切り替えても窓の大きさが変わらない。
+            // 表の広さはステージによらず標準（14行 × 8 Stage）に揃える。切り替えてもウィンドウの大きさが変わらない。
             // 「+」は満杯でない行・表にしか出さないので、この広さを超えない。
             int columns = Math.Max(CustomStage.MaxDrillsPerRow, _rows.Count == 0 ? 0 : _rows.Max(r => r.Cells.Count + (CanAddCell(r) ? 1 : 0)));
             int count = Math.Max(CustomStage.MaxRows, _rows.Count + (CanAddRow ? 1 : 0));
@@ -581,7 +581,7 @@ namespace JumpDrill.Gui
         protected override void OnMouseCaptureChanged(EventArgs e)
         {
             base.OnMouseCaptureChanged(e);
-            // ほかの窓に移ったなどでつかみが外れたら、並べ替えずにやめる
+            // ほかのウィンドウに移ったなどでつかみが外れたら、並べ替えずにやめる
             if (!Capture && _dragRow >= 0 && MouseButtons == MouseButtons.None) EndDrag();
         }
 

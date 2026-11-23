@@ -165,7 +165,7 @@ namespace JumpDrill.Output
 
         /// <summary>
         /// 読み戻した指定のクリック音・音色・カウントイン・末尾の余白だけを <paramref name="sound"/> に替えて書き直す
-        /// （生成オプションの窓）。null なら読み戻したまま。どれも曲名と ID に入らないので、記録はそのまま続く。
+        /// （生成オプションのウィンドウ）。null なら読み戻したまま。どれも曲名と ID に入らないので、記録はそのまま続く。
         /// </summary>
         public static RebuildResult Rewrite(string folder, LevelWriteOptions writeOptions, SoundSettings sound)
         {
@@ -229,7 +229,7 @@ namespace JumpDrill.Output
             if (saved.TryGetValue("gap", out var g) && g is double gap) options.GapSeconds = gap;
         }
 
-        // 標準ステージでも変更できる音声設定だけを適用する（生成オプションの窓の4項目）。
+        // 標準ステージでも変更できる音声設定だけを適用する（生成オプションのウィンドウの4項目）。
         internal static void ApplyClickSettings(DrillOptions options, Dictionary<string, object> saved)
         {
             ApplyClick(options, saved);

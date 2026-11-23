@@ -12,8 +12,8 @@ using Xunit;
 namespace JumpDrill.Tests
 {
     /// <summary>
-    /// カスタムステージ・その他のドリルを、生成オプションの窓で選んだ値で作り直す（DrillRebuild.Rewrite の sound）。
-    /// 窓の4項目だけが替わり、形・BPM・NJS と曲名・ID は譜面のまま。
+    /// カスタムステージ・その他のドリルを、生成オプションのウィンドウで選んだ値で作り直す（DrillRebuild.Rewrite の sound）。
+    /// ウィンドウの4項目だけが替わり、形・BPM・NJS と曲名・ID は譜面のまま。
     /// </summary>
     public class RebuildSoundTests
     {
@@ -70,7 +70,7 @@ namespace JumpDrill.Tests
 
                 var read = DrillRebuild.Read(folder);
                 Assert.True(Chosen.SameAs(SoundSettings.Of(read)));
-                // 窓に無いものは譜面のまま
+                // ウィンドウに無いものは譜面のまま
                 Assert.Equal(options.Name, read.Name);
                 Assert.Equal(id, DrillNaming.ExtractId(read.Name));
                 Assert.Equal(17.0, read.Njs);

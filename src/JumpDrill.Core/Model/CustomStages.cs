@@ -209,7 +209,7 @@ namespace JumpDrill.Model
         private readonly HashSet<string> _onDisk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// 読んだとき（と最後に書いたとき）のファイルの中身。保存のとき、ほか（MOD や別の窓）が中身を変えていないかを見る。
+        /// 読んだとき（と最後に書いたとき）のファイルの中身。保存のとき、ほか（MOD や別のウィンドウ）が中身を変えていないかを見る。
         /// </summary>
         private readonly Dictionary<string, string> _diskText = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 

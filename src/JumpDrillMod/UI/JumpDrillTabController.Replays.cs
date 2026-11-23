@@ -62,7 +62,7 @@ namespace JumpDrillMod.UI
             }
         }
 
-        /// <summary>削除の前の確かめの窓（<see cref="ConfirmPrompt"/>）。</summary>
+        /// <summary>削除の前の確かめのウィンドウ（<see cref="ConfirmPrompt"/>）。</summary>
         private readonly ConfirmPrompt confirm = new ConfirmPrompt();
 
         [UIComponent("confirm-text")] private TMPro.TextMeshProUGUI? confirmText = null;
@@ -74,7 +74,7 @@ namespace JumpDrillMod.UI
         public void ConfirmNo() => confirm.No(parserParams);
 
         /// <summary>
-        /// 全部のドリルについて、上位より下の記録を消す。先に何件消えるかを数え、窓で確かめてから消す。
+        /// 全部のドリルについて、上位より下の記録を消す。先に何件消えるかを数え、ウィンドウで確かめてから消す。
         /// 消したものは下の文に出す。
         /// </summary>
         [UIAction("replay-delete")]

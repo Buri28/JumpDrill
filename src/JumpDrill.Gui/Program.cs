@@ -18,7 +18,7 @@ namespace JumpDrill.Gui
 
             Lang.English = LoadEnglish();
 
-            // 言語を切り替えると窓が閉じるので、作り直して開き直す。
+            // 言語を切り替えるとウィンドウが閉じるので、作り直して開き直す。
             MainForm form;
             do
             {

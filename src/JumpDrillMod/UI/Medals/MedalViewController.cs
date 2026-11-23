@@ -341,7 +341,7 @@ namespace JumpDrillMod.UI.Medals
 
             sb.Append("</vertical>");
 
-            // 別窓（ルート直下に置く）。ドリルの選択と、名前を入れるキーボード
+            // 別ウィンドウ（ルート直下に置く）。ドリルの選択と、名前を入れるキーボード
             AppendPicker(sb);
             sb.Append("<modal-keyboard id='keyboard' value='keyboard-text' on-enter='keyboard-enter' clear-on-open='false'");
             sb.Append(" show-event='show-keyboard' hide-event='hide-keyboard'/>");
@@ -565,7 +565,7 @@ namespace JumpDrillMod.UI.Medals
                             if (justMadeAt >= makerOpenedAt) RevealNewest();
                         }
 
-                        // 足す窓から Make drill へ行っていたら、窓を開き直して作ったものを選んでおく
+                        // 足すウィンドウから Make drill へ行っていたら、ウィンドウを開き直して作ったものを選んでおく
                         if (makeStage != null)
                         {
                             string stageName = makeStage;
@@ -939,7 +939,7 @@ namespace JumpDrillMod.UI.Medals
             }
 
             if (IsGenerating()) return;
-            // 上書きしないなら、窓で選ばせる前に知らせる（選んだ後で何も書かれないと、効かなかったように見える）
+            // 上書きしないなら、ウィンドウで選ばせる前に知らせる（選んだ後で何も書かれないと、効かなかったように見える）
             if (!overwrite && launcher != null && !SongCore.Loader.AreSongsLoading && !launcher.IsMissing(entry.Options.Name))
             {
                 SetStatus("This drill already exists. Turn on Overwrite to write it again.");

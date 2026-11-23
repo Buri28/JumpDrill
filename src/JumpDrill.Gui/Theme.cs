@@ -19,7 +19,7 @@ namespace JumpDrill.Gui
     /// </summary>
     internal static class Theme
     {
-        /// <summary>地の色。窓とパネル。</summary>
+        /// <summary>地の色。ウィンドウとパネル。</summary>
         public static readonly Color Background = Color.FromArgb(0x1E, 0x20, 0x24);
 
         /// <summary>表・入力欄・ボタンの面。地よりわずかに明るくして、境目を色で出す。</summary>
@@ -186,9 +186,9 @@ namespace JumpDrill.Gui
         /// <summary>
         /// スクロールバーとタイトルバーを暗くする。
         ///
-        /// この2つは<b>色を指定できる部品ではない</b>。窓の枠と同じで OS が描くので、
+        /// この2つは<b>色を指定できる部品ではない</b>。ウィンドウの枠と同じで OS が描くので、
         /// 暗い表の脇に白い棒が残る。Windows 10 1903 以降には暗色版があり、
-        /// 「この窓は暗色でよい」と申告すれば使ってくれる。
+        /// 「このウィンドウは暗色でよい」と申告すれば使ってくれる。
         ///
         /// 申告する口が<b>序数でしか公開されていない</b>（<c>uxtheme.dll</c> の #135）。
         /// 将来の Windows で消えても画面が明るいままになるだけなので、
@@ -236,7 +236,7 @@ namespace JumpDrill.Gui
 
         /// <summary>
         /// その部品のスクロールバーを暗色版に差し替える。
-        /// 窓が出来てからでないと効かないので、出来ていなければ出来たときに。
+        /// ウィンドウが出来てからでないと効かないので、出来ていなければ出来たときに。
         /// </summary>
         private static void DarkenScrollBars(Control control)
         {

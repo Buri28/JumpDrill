@@ -3,8 +3,8 @@ using System.Drawing;
 namespace JumpDrill.Gui
 {
     /// <summary>
-    /// 窓のアイコン。exe のアイコン（ApplicationIcon）と同じ JumpDrill.ico を埋め込んで使う。
-    /// 窓は Icon を指定しないと WinForms の既定のアイコンになる。
+    /// ウィンドウのアイコン。exe のアイコン（ApplicationIcon）と同じ JumpDrill.ico を埋め込んで使う。
+    /// ウィンドウは Icon を指定しないと WinForms の既定のアイコンになる。
     /// </summary>
     internal static class AppIcon
     {

@@ -1,14 +1,14 @@
 ﻿<#
 .SYNOPSIS
   JumpDrillGui.exe を見えない別のデスクトップで起動し、UI Automation で操作して PrintWindow で撮る。
-  ユーザーの画面には何も出ず、前面の窓（フォーカス）も変わらない。
+  ユーザーの画面には何も出ず、前面のウィンドウ（フォーカス）も変わらない。
 
 .DESCRIPTION
   1. CreateDesktop で見えないデスクトップを作る（SwitchDesktop はしない）。
   2. 操作役の powershell.exe（bg-driver.ps1）を CreateProcess の lpDesktop でそのデスクトップに起動する。
      操作役が GUI を起動するので、GUI も同じデスクトップに出る。UI Automation は同じデスクトップの中でしか効かない。
      操作役と GUI（子・孫も）は Job Object に入れ、残りの確認と後片付けは Job で行う。
-  3. その間ずっと 100 ms ごとに GetForegroundWindow を記録し、前面の窓が変わったか・起動したプロセスが前面に出たかを出す。
+  3. その間ずっと 100 ms ごとに GetForegroundWindow を記録し、前面のウィンドウが変わったか・起動したプロセスが前面に出たかを出す。
   4. 終わったら Job の中のプロセスを普通に閉じ（だめなら止め）、デスクトップを閉じる。
 
   -Exe の exe が使う workspace（settings.txt）は exe の場所から決まる（Workspace.AppRoot）。
@@ -19,7 +19,7 @@
   それでも、生成・再作成・削除・MOD 導入・フォルダや URL を開くボタンは手順に入れない（ユーザーのファイルや見える画面に触れる）。
 
 .EXAMPLE
-  # メイン画面・メダル画面・プルダウンの変更・生成オプションの窓（キャンセル）を撮る
+  # メイン画面・メダル画面・プルダウンの変更・生成オプションのウィンドウ（キャンセル）を撮る
   .\tools\bg-gui\Invoke-BgGui.ps1 -Build -SeedSettings .\workspace\settings.txt -Steps @(
     'launch', 'shot=01-main',
     'click=メダル', 'win=*メダル*', 'waitnotext=*読み込んで*', 'shot=02-medal', 'close', 'win=JumpDrill v*',
@@ -40,9 +40,9 @@ param(
   [string[]]$WatchPaths = @(),
   [int]$TimeoutSec = 180,
   [switch]$AllowRepoWorkspace,
-  # 比べるための通常起動。見えるデスクトップ（WinSta0\Default）で動かすので、GUI の窓が画面に出る
+  # 比べるための通常起動。見えるデスクトップ（WinSta0\Default）で動かすので、GUI のウィンドウが画面に出る
   [switch]$OnVisibleDesktop,
-  # launch で待つメインの窓の題名（ワイルドカード）。JumpDrill 以外の WinForms / WPF アプリにも使える
+  # launch で待つメインのウィンドウの題名（ワイルドカード）。JumpDrill 以外の WinForms / WPF アプリにも使える
   [string]$MainTitle = "JumpDrill*"
 )
 $ErrorActionPreference = "Stop"

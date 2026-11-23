@@ -5,10 +5,10 @@ using TMPro;
 namespace JumpDrillMod.UI
 {
     /// <summary>
-    /// 削除の前に出す確かめの窓（BSML の modal）。押し間違えで消さないように、何を消すかを書いて「Delete」を押させる。
+    /// 削除の前に出す確かめのウィンドウ（BSML の modal）。押し間違えで消さないように、何を消すかを書いて「Delete」を押させる。
     /// </summary>
     /// <remarks>
-    /// 窓のマークアップは <see cref="Markup"/>。ビューの BSML のルート直下に置き、
+    /// ウィンドウのマークアップは <see cref="Markup"/>。ビューの BSML のルート直下に置き、
     /// <c>confirm-text</c> をビューの欄で受けて <see cref="Ask"/> に渡し、<c>confirm-yes</c>・<c>confirm-no</c> を <see cref="Yes"/>・<see cref="No"/> につなぐ。
     /// </remarks>
     internal sealed class ConfirmPrompt
@@ -30,7 +30,7 @@ namespace JumpDrillMod.UI
                  + "</modal>";
         }
 
-        /// <summary>窓を出す。「Delete」を押したら <paramref name="onYes"/> を呼ぶ。窓が出せなければ何もしない（消さない）。</summary>
+        /// <summary>ウィンドウを出す。「Delete」を押したら <paramref name="onYes"/> を呼ぶ。ウィンドウが出せなければ何もしない（消さない）。</summary>
         internal void Ask(BSMLParserParams? parserParams, TextMeshProUGUI? text, string message, Action onYes)
         {
             if (parserParams == null || text == null) return;

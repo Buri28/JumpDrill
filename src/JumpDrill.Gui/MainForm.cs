@@ -192,10 +192,10 @@ namespace JumpDrill.Gui
         private string _latestTag;
         /// <summary>配布版だけに出す。同梱の MOD を Beat Saber へ入れる。</summary>
         private readonly Button _mod = new Button { Text = Lang.T("MOD のインストール", "Install MOD"), Height = 34, Dock = DockStyle.Fill };
-        /// <summary>画面の言語。切り替えたら窓を作り直す（Program が開き直す）。</summary>
+        /// <summary>画面の言語。切り替えたらウィンドウを作り直す（Program が開き直す）。</summary>
         private readonly ComboBox _language = Combo("日本語", "English");
 
-        /// <summary>言語を切り替えて閉じたとき true。Program がこれを見て窓を開き直す。</summary>
+        /// <summary>言語を切り替えて閉じたとき true。Program がこれを見てウィンドウを開き直す。</summary>
         public bool RestartRequested { get; private set; }
 
         private readonly Label _status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
@@ -242,12 +242,12 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 文字の実寸と画面の拡大率に合わせて、入力欄と窓の大きさを決める。
+        /// 文字の実寸と画面の拡大率に合わせて、入力欄とウィンドウの大きさを決める。
         /// 入力欄は列いっぱいに伸ばさず、中身が収まる幅にする。
         /// </summary>
         private void FitToText(bool center)
         {
-            // 言語を切り替えると窓を作り直すので、前の窓の選択肢が残っている。
+            // 言語を切り替えるとウィンドウを作り直すので、前のウィンドウの選択肢が残っている。
             _combos.RemoveAll(c => c.IsDisposed);
 
             // 選択肢は一番長いものが閉じた状態でも全部見える幅にする。
@@ -281,7 +281,7 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 設定欄を、入れ物の幅いっぱいまで広げる。下の確認欄・CLI は窓の幅いっぱいなので、
+        /// 設定欄を、入れ物の幅いっぱいまで広げる。下の確認欄・CLI はウィンドウの幅いっぱいなので、
         /// 設定欄が中身の幅のままだと右端がずれる。中身より狭ければ広げず、横にスクロールさせる。
         /// </summary>
         private void ApplyParamsWidth()
@@ -291,7 +291,7 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 窓を中身が収まる大きさにする。左の列と設定欄の幅、高い方の列の高さで決まる。
+        /// ウィンドウを中身が収まる大きさにする。左の列と設定欄の幅、高い方の列の高さで決まる。
         /// </summary>
         private void FitWindow(bool center)
         {
@@ -551,7 +551,7 @@ namespace JumpDrill.Gui
                     Row("", new Control { Width = 1, Height = _njs.Height }))),
                 Group(Lang.T("出力", "Output"), outInner));
 
-            // 入力欄は中身の幅なので、設定欄も中身の大きさで決まる。窓が狭ければスクロールする。
+            // 入力欄は中身の幅なので、設定欄も中身の大きさで決まる。ウィンドウが狭ければスクロールする。
             var panel = new TableLayoutPanel
             {
                 ColumnCount = 2,
@@ -650,7 +650,7 @@ namespace JumpDrill.Gui
 
         private static GroupBox Group(string title, Control content)
         {
-            // GrowOnly だと一度広がった枠が窓を狭めても縮まず、右端が切れる。
+            // GrowOnly だと一度広がった枠がウィンドウを狭めても縮まず、右端が切れる。
             var box = new GroupBox { Text = title, Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 4, 6, 4) };
             box.Controls.Add(content);
             return box;
@@ -876,7 +876,7 @@ namespace JumpDrill.Gui
             _browse.Click += (s, e) => Browse();
             _generate.Click += async (s, e) =>
             {
-                // 作れないと分かっているのに窓を出さない。窓の後の GenerateAsync でも同じ判定をする
+                // 作れないと分かっているのにウィンドウを出さない。ウィンドウの後の GenerateAsync でも同じ判定をする
                 if (!_overwrite.Checked && CurrentDrillExists())
                 {
                     _status.Text = AlreadyExists;
@@ -909,7 +909,7 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 言語を切り替える。文言は窓を作るときに決まるので、指定を保存して窓を開き直す。
+        /// 言語を切り替える。文言はウィンドウを作るときに決まるので、指定を保存してウィンドウを開き直す。
         /// </summary>
         private void SwitchLanguage()
         {
@@ -1418,7 +1418,7 @@ namespace JumpDrill.Gui
             }
         }
 
-        /// <summary>パック名を訊く。既定は JumpDrill。ほかの名前の入力と同じ形の窓を使う（ボタンが潰れない）。</summary>
+        /// <summary>パック名を訊く。既定は JumpDrill。ほかの名前の入力と同じ形のウィンドウを使う（ボタンが潰れない）。</summary>
         private string PromptPackName()
         {
             return StageDialogs.AskName(this, Lang.T("パック名", "Pack name"), "JumpDrill", null,
@@ -1566,8 +1566,8 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 編集中の指定の譜面が出力先に既にあるか。名前はクリック音・カウントイン・末尾の余白に左右されないので、生成オプションの窓の前に分かる。
-        /// 指定や出力先が読めないときは false（窓の後の GenerateAsync で知らせる）。
+        /// 編集中の指定の譜面が出力先に既にあるか。名前はクリック音・カウントイン・末尾の余白に左右されないので、生成オプションのウィンドウの前に分かる。
+        /// 指定や出力先が読めないときは false（ウィンドウの後の GenerateAsync で知らせる）。
         /// </summary>
         private bool CurrentDrillExists()
         {
@@ -1820,7 +1820,7 @@ namespace JumpDrill.Gui
             Preview(owner, folder);
         }
 
-        /// <summary>プレビューの一覧の窓。開いていなければ null。</summary>
+        /// <summary>プレビューの一覧のウィンドウ。開いていなければ null。</summary>
         private Form _previewForm;
         private ListView _previewList;
         private ImageList _previewIcons;
@@ -1831,8 +1831,8 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
-        /// 見つかったドリルを新しい順に並べる窓を開く（モードレス）。選んで［開く］かダブルクリックで ArcViewer を開き、
-        /// 窓は閉じるまで残る。行頭に方向の絵（メダル画面と同じもの）を付ける。名前の字だけでは配置が思い浮かばない。
+        /// 見つかったドリルを新しい順に並べるウィンドウを開く（モードレス）。選んで［開く］かダブルクリックで ArcViewer を開き、
+        /// ウィンドウは閉じるまで残る。行頭に方向の絵（メダル画面と同じもの）を付ける。名前の字だけでは配置が思い浮かばない。
         /// </summary>
         private void ShowPreviewList()
         {
@@ -1866,7 +1866,7 @@ namespace JumpDrill.Gui
             list.Columns.Add(Lang.T("置き場所", "Location"), Px(150));
             list.Columns.Add(Lang.T("書き出し", "Written"), Px(120));
 
-            // 横のスクロールを出さない。譜面の列を、窓の幅から右の2列を引いた残りにする（縦のバーが出ても収まる）
+            // 横のスクロールを出さない。譜面の列を、ウィンドウの幅から右の2列を引いた残りにする（縦のバーが出ても収まる）
             Action fitColumns = () =>
             {
                 int rest = list.ClientSize.Width - list.Columns[1].Width - list.Columns[2].Width - 1;

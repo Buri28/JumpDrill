@@ -16,7 +16,7 @@ using ScoreFormat = JumpDrill.Replays.ScoreFormat;
 namespace JumpDrillMod.UI.Medals
 {
     /// <summary>
-    /// カスタムステージに足すドリルを選ぶ別窓。GUI の「ドリルの選択」と同じ決まりで選ばせる。
+    /// カスタムステージに足すドリルを選ぶ別ウィンドウ。GUI の「ドリルの選択」と同じ決まりで選ばせる。
     /// </summary>
     /// <remarks>
     /// 1行は1方向。既にドリルのある行に足すときは、その行の方向のドリルだけを出す。
@@ -31,10 +31,10 @@ namespace JumpDrillMod.UI.Medals
     /// </remarks>
     internal partial class MedalViewController
     {
-        /// <summary>別窓の1ページの行数。</summary>
+        /// <summary>別ウィンドウの1ページの行数。</summary>
         private const int PickerRows = 10;
 
-        /// <summary>別窓の幅。</summary>
+        /// <summary>別ウィンドウの幅。</summary>
         private const int PickerWidth = 96;
 
         /// <summary>足す先の行。行の数と同じなら新しい行。</summary>
@@ -50,7 +50,7 @@ namespace JumpDrillMod.UI.Medals
         private readonly HashSet<string> pickerChosen = new HashSet<string>(StringComparer.Ordinal);
         private int pickerPage;
 
-        /// <summary>足す窓から Make drill へ行ったときの、戻り先のステージ。行っていなければ null。</summary>
+        /// <summary>足すウィンドウから Make drill へ行ったときの、戻り先のステージ。行っていなければ null。</summary>
         private string? makeStage;
 
         /// <summary>戻り先の行。</summary>
@@ -72,7 +72,7 @@ namespace JumpDrillMod.UI.Medals
         [UIComponent("picker-title")] private TextMeshProUGUI? pickerTitle = null;
         [UIComponent("picker-note")] private TextMeshProUGUI? pickerNote = null;
 
-        /// <summary>別窓のマークアップ。ルート直下に置く。</summary>
+        /// <summary>別ウィンドウのマークアップ。ルート直下に置く。</summary>
         private static void AppendPicker(StringBuilder sb)
         {
             string width = PickerWidth.ToString(CultureInfo.InvariantCulture);
@@ -145,7 +145,7 @@ namespace JumpDrillMod.UI.Medals
                 : CustomStage.MaxDrillsPerRow;
         }
 
-        /// <summary>別窓を開く。<paramref name="row"/> が行の数と同じなら新しい行に足す。</summary>
+        /// <summary>別ウィンドウを開く。<paramref name="row"/> が行の数と同じなら新しい行に足す。</summary>
         /// <param name="chooseSince">これより後に作ったドリルを選んだ状態で開く（Make drill から戻ったとき）。</param>
         private void OpenPicker(int row, DateTime? chooseSince = null)
         {
@@ -235,7 +235,7 @@ namespace JumpDrillMod.UI.Medals
             makeRow = pickerTarget;
             makeSince = DateTime.Now;
             makerOpenedAt = makeSince;
-            // 作る画面を出せなければ、戻ったときに窓を開き直さない
+            // 作る画面を出せなければ、戻ったときにウィンドウを開き直さない
             if (!onMake(pickerDirection)) makeStage = null;
         }
 
@@ -363,7 +363,7 @@ namespace JumpDrillMod.UI.Medals
                 : string.Empty);
         }
 
-        /// <summary>別窓の一覧を塗る。<paramref name="note"/> があれば件数の代わりに出す。</summary>
+        /// <summary>別ウィンドウの一覧を塗る。<paramref name="note"/> があれば件数の代わりに出す。</summary>
         private void FillPicker(string? note)
         {
             var ci = CultureInfo.InvariantCulture;

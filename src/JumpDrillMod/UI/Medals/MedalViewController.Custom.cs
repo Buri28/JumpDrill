@@ -62,7 +62,7 @@ namespace JumpDrillMod.UI.Medals
         [UIComponent("stage-dropdown")] private DropDownListSetting? stageDropdown = null;
         [UIComponent("keyboard")] private ModalKeyboard? keyboard = null;
 
-        /// <summary>削除の前の確かめの窓（<see cref="ConfirmPrompt"/>）。</summary>
+        /// <summary>削除の前の確かめのウィンドウ（<see cref="ConfirmPrompt"/>）。</summary>
         private readonly ConfirmPrompt confirm = new ConfirmPrompt();
 
         [UIComponent("confirm-text")] private TMPro.TextMeshProUGUI? confirmText = null;
@@ -143,7 +143,7 @@ namespace JumpDrillMod.UI.Medals
         /// 同じ ID でも曲名の違う譜面（NJS などだけ変えて作ったもの）は作り直さない。
         /// 生成の決まりを変えたあとで、今の決まりで書き直すのに使う。
         /// </summary>
-        /// <remarks>作り直す前に生成オプションの窓を出す。初期値は今の譜面の値（全件で違えば最初の1本の値）。</remarks>
+        /// <remarks>作り直す前に生成オプションのウィンドウを出す。初期値は今の譜面の値（全件で違えば最初の1本の値）。</remarks>
         private void Rebuild(IReadOnlyList<string> songNames, bool all)
         {
             if (launcher == null || drillSet == null || IsGenerating()) return;
@@ -172,7 +172,7 @@ namespace JumpDrillMod.UI.Medals
             string note = !all ? "Rebuilds with these values. Records are kept."
                 : differ ? "Values differ by drill. All are rebuilt with these values."
                 : "Rebuilds all with these values. Records are kept.";
-            float shownTail = Math.Max(0, Math.Min(10, (float)initial.TailSeconds));   // 窓が出す値（GenerationOptionsPrompt.Show と同じ）
+            float shownTail = Math.Max(0, Math.Min(10, (float)initial.TailSeconds));   // ウィンドウが出す値（GenerationOptionsPrompt.Show と同じ）
             generationOptions.Show(generationParent, target, all, initial.Click.ToString(), initial.Tone.ToString(),
                 initial.CountIn, (float)initial.TailSeconds,
                 (click, tone, countIn, tail) => RebuildNow(folders, new SoundSettings
@@ -180,7 +180,7 @@ namespace JumpDrillMod.UI.Medals
                     Click = (ClickMode)Enum.Parse(typeof(ClickMode), click),
                     Tone = (ClickTone)Enum.Parse(typeof(ClickTone), tone),
                     CountIn = countIn,
-                    // 窓の増減は float で 0.1 刻み。2.3 が 2.2999… にならないよう小数1桁にそろえる。
+                    // ウィンドウの増減は float で 0.1 刻み。2.3 が 2.2999… にならないよう小数1桁にそろえる。
                     // 欄を触っていなければ（0〜10 秒・0.1 刻みに入らない値でも）譜面の値のまま
                     TailSeconds = Math.Abs(tail - shownTail) < 0.001f ? initial.TailSeconds : Math.Round(tail, 1),
                 }),
@@ -218,7 +218,7 @@ namespace JumpDrillMod.UI.Medals
                 return;
             }
 
-            // 窓で確かめてから消す。記録は残る
+            // ウィンドウで確かめてから消す。記録は残る
             confirm.Ask(parserParams, confirmText, "Delete the map of\n" + NoParse(DrillNaming.DisplayName(songName)) + "?\nRecords are kept.", () => DeleteDrillNow(songName, id));
         }
 
@@ -455,13 +455,13 @@ namespace JumpDrillMod.UI.Medals
             var stage = CurrentStage;
             if (stage == null || bookBroken) return;
 
-            // 窓で確かめてから消す。譜面と記録は残る
+            // ウィンドウで確かめてから消す。譜面と記録は残る
             string name = stage.Name;
             confirm.Ask(parserParams, confirmText, "Delete the stage " + NoParse(name) + "?\nMaps and records are kept.", () => DeleteStageNow(name));
         }
 
         /// <summary>
-        /// 確かめた後で消す。窓を出している間にステージを読み直すことがある（読み込みが終わった、など）ので、名前で引き直す。
+        /// 確かめた後で消す。ウィンドウを出している間にステージを読み直すことがある（読み込みが終わった、など）ので、名前で引き直す。
         /// </summary>
         private void DeleteStageNow(string name)
         {
@@ -569,7 +569,7 @@ namespace JumpDrillMod.UI.Medals
             var row = SelectedRow();
             if (row == null || stage == null) return;
 
-            // 窓で確かめてから消す。ドリルの譜面と記録は残る
+            // ウィンドウで確かめてから消す。ドリルの譜面と記録は残る
             string stageName = stage.Name;
             int index = selectedRow;
             string rowName = row.Name;
@@ -579,7 +579,7 @@ namespace JumpDrillMod.UI.Medals
         }
 
         /// <summary>
-        /// 確かめた後で消す。窓を出している間にステージを読み直すことがある（読み込みが終わった、など）ので、
+        /// 確かめた後で消す。ウィンドウを出している間にステージを読み直すことがある（読み込みが終わった、など）ので、
         /// ステージは名前で、行は位置で引き直し、名前と中身が同じときだけ消す。食い違えば消さずに知らせる。
         /// </summary>
         private void DeleteRowNow(string stageName, int index, string rowName, List<string> drills)

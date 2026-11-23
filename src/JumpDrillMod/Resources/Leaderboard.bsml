@@ -103,7 +103,7 @@
       <text id='diagram-note' text='' font-size='2.6' align='Center' color='#8899AA'/>
       <button id='view-button' text='Mean only' on-click='toggle-mean' pref-width='22' pref-height='5'
               hover-hint='Draw only the mean path of each transition, or every swing. Same as the mean-only switch in the JumpDrill app.'/>
-      <!-- 選んでいる記録を消す。押すと確かめの窓を出す。字は橙赤（#FF8060）にして注意させる -->
+      <!-- 選んでいる記録を消す。押すと確かめのウィンドウを出す。字は橙赤（#FF8060）にして注意させる -->
       <button id='delete-button' text='&lt;color=#FF8060&gt;Delete&lt;/color&gt;' on-click='delete-record' pref-width='16' pref-height='5'
               hover-hint='Delete the selected record. This cannot be undone.'/>
       <!-- 曲選択の枠から Jump Drill 画面を開く。Jump Drill 画面の右の枠に出しているときは出さない。
@@ -138,7 +138,7 @@
     </horizontal>
 
   </vertical>
-  <!-- 削除の前の確かめの窓（ConfirmPrompt.Markup と同じもの） -->
+  <!-- 削除の前の確かめのウィンドウ（ConfirmPrompt.Markup と同じもの） -->
   <modal id='confirm-modal' show-event='show-confirm' hide-event='hide-confirm' click-off-closes='true'
          move-to-center='true' size-delta-x='64' size-delta-y='26'>
     <vertical pad='3' spacing='2' child-expand-height='false'>

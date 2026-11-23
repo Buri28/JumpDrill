@@ -8,8 +8,8 @@ using Xunit;
 namespace JumpDrill.Tests
 {
     /// <summary>
-    /// GUI の「生成」で、上書きしないときに生成オプションの窓より前に「既にあります」を出すための判定。
-    /// 窓で変えられるクリック音・音色・カウントイン・末尾の余白は名前に入らないので、窓の前の判定と書く前の判定が食い違わない。
+    /// GUI の「生成」で、上書きしないときに生成オプションのウィンドウより前に「既にあります」を出すための判定。
+    /// ウィンドウで変えられるクリック音・音色・カウントイン・末尾の余白は名前に入らないので、ウィンドウの前の判定と書く前の判定が食い違わない。
     /// </summary>
     public class LevelExistsTests
     {
@@ -28,7 +28,7 @@ namespace JumpDrill.Tests
                 Assert.Equal(Path.Combine(root, LevelWriter.SanitizeFolderName(entry.Options.Name)), folder);
 
                 Assert.True(LevelWriter.Exists(root, entry.Options.Name));
-                // 窓で選び直した音の指定でも同じ譜面として見つかる
+                // ウィンドウで選び直した音の指定でも同じ譜面として見つかる
                 Assert.True(LevelWriter.Exists(root, entry.WithClick(ClickMode.None, 0, ClickTone.SynthBass, 0).Options.Name));
                 Assert.False(LevelWriter.Exists(root, entries[4].Options.Name));
             }

@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
   任意のコマンドを見えない別のデスクトップで起動し、終わるまで（または時間切れまで）待つ。
-  その間 100 ms ごとに前面の窓を記録する。Beat Saber の fpfc をプローブ（ログ・カメラ撮影）で確かめるときに使う。
+  その間 100 ms ごとに前面のウィンドウを記録する。Beat Saber の fpfc をプローブ（ログ・カメラ撮影）で確かめるときに使う。
   起動したプロセス（子・孫も）は Job Object に入れ、時間切れのときは WM_CLOSE を送り、だめなら Job ごと止める。
   呼ぶ側の時間切れ（ツールの実行時間の上限）が -TimeoutSec より短いと、後片付けの前に止められるので、長く取るか後ろで動かす。
 
@@ -51,7 +51,7 @@ try {
   else { L "timeout after $TimeoutSec s" }
 } finally {
   if ($job) {
-    # 子（クラッシュハンドラーなど）も含めて、まず窓に WM_CLOSE を送り、だめなら Job ごと止める
+    # 子（クラッシュハンドラーなど）も含めて、まずウィンドウに WM_CLOSE を送り、だめなら Job ごと止める
     if (-not [BgDesk]::WaitAll($job, 5000)) {
       if ($hDesk -ne [IntPtr]::Zero) { L "WM_CLOSE sent to windows on the desktop: $([BgDesk]::CloseWindows($hDesk, $job))" }
       if (-not [BgDesk]::WaitAll($job, 15000)) {

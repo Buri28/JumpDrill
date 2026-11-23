@@ -16,7 +16,7 @@
     <ProjectReference Include="..\JumpDrill.Core\JumpDrill.Core.csproj" />
   </ItemGroup>
 
-  <!-- 窓のアイコン（AppIcon）。exe のアイコンと同じものを埋め込む -->
+  <!-- ウィンドウのアイコン（AppIcon）。exe のアイコンと同じものを埋め込む -->
   <ItemGroup>
     <EmbeddedResource Include="JumpDrill.ico" LogicalName="JumpDrill.ico" />
   </ItemGroup>

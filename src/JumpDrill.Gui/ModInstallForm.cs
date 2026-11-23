@@ -366,7 +366,7 @@ namespace JumpDrill.Gui
                 column.Width = header + slack;
             }
 
-            // 列が全部見える幅まで窓を広げる（画面より広くはしない）。狭めはしない
+            // 列が全部見える幅までウィンドウを広げる（画面より広くはしない）。狭めはしない
             int columns = _list.Columns.Cast<ColumnHeader>().Sum(c => c.Width);
             int want = columns + SystemInformation.VerticalScrollBarWidth + _list.Margin.Horizontal + Padding.Horizontal
                        + (int)Math.Round(36 * DeviceDpi / 96.0);
