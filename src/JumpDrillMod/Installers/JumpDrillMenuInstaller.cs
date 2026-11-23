@@ -23,6 +23,7 @@ namespace JumpDrillMod.Installers
             Container.BindInterfacesAndSelfTo<SongRefreshService>().AsSingle();
             Container.BindInterfacesAndSelfTo<DrillSetGenerationService>().AsSingle();
             Container.BindInterfacesAndSelfTo<LevelLauncher>().AsSingle();
+            Container.BindInterfacesAndSelfTo<SongAudioCacheService>().AsSingle();
             Container.BindInterfacesAndSelfTo<IconService>().AsSingle();
             Container.BindInterfacesAndSelfTo<UI.Medals.DrillSetScreen>().AsSingle();
             Container.BindInterfacesAndSelfTo<MenuUiRegistrar>().AsSingle();

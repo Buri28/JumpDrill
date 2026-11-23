@@ -21,7 +21,7 @@ namespace JumpDrill.Output
     /// <item>クリック・カウントイン・末尾の余白・ブロックの間は、Info.dat の <c>_jumpDrill</c> に書いてあればそこから。
     ///   それより前に作った譜面には無いので既定値（Down・8 発・1.5 秒）で作る。</item>
     /// </list>
-    /// 標準のステージのドリルは、指定を持っているのでそちらを使う。
+    /// 標準のステージのドリルは、指定を持っているのでそちらを使う（クリック音・音色・カウントイン・末尾の余白だけは <c>_jumpDrill</c> から）。
     /// 曲名は元のまま使う（名前と ID が変わると記録が切れ、フォルダも別になる）。
     /// ただし以前の書き方の alt の名前（BPM が片手の速さ）は、今の書き方（<see cref="DrillNaming.CurrentName"/>）に付け替え、
     /// フォルダも今の名前のものに移す。ID は変わらないので記録は続く。カスタムステージの曲名は呼んだ側が
@@ -43,35 +43,45 @@ namespace JumpDrill.Output
             string songName = root.TryGetValue("_songName", out var n) ? n as string : null;
             if (string.IsNullOrEmpty(songName)) throw new FormatException(Lang.T("曲名がありません。", "The map has no song name."));
 
-            // 標準のステージのものは指定をそのまま使う
+            var difficulty = FirstDifficulty(root);
+            var custom = (difficulty != null && difficulty.TryGetValue("_customData", out var c) ? c : null) as Dictionary<string, object>;
+            var saved = (custom != null && custom.TryGetValue(CustomDataKey, out var j) ? j : null) as Dictionary<string, object>;
+
+            // 標準のステージのものは指定をそのまま使う。クリック音・音色・カウントイン・末尾の余白は選べるので、作ったときのものを使う
             var standard = StandardOptions(songName);
-            if (standard != null) return standard;
+            if (standard != null)
+            {
+                if (saved != null)
+                {
+                    ApplyClickSettings(standard, saved);
+                }
+                return standard;
+            }
 
             var options = FromName(songName);
 
             if (root.TryGetValue("_beatsPerMinute", out var b) && b is double infoBpm && infoBpm > 0) options.Bpm = infoBpm;
 
-            var difficulty = FirstDifficulty(root);
             if (difficulty != null)
             {
                 if (difficulty.TryGetValue("_noteJumpMovementSpeed", out var njs) && njs is double njsValue && njsValue > 0)
                     options.Njs = njsValue;
                 if (difficulty.TryGetValue("_noteJumpStartBeatOffset", out var offset) && offset is double offsetValue)
                     options.NoteJumpStartBeatOffset = offsetValue;
-
-                var custom = (difficulty.TryGetValue("_customData", out var c) ? c : null) as Dictionary<string, object>;
-                var saved = (custom != null && custom.TryGetValue(CustomDataKey, out var j) ? j : null) as Dictionary<string, object>;
                 if (saved != null) ApplySaved(options, saved);
             }
 
             return options;
         }
 
-        /// <summary>標準のステージのドリルなら、その指定。違えば null。</summary>
+        /// <summary>
+        /// 標準のステージのドリルなら、その指定。違えば null。
+        /// ID が同じでも、Mods タブなどで NJS などを変えて作った別の譜面は標準のものとして扱わない
+        /// （<see cref="DrillSet.IsStandardName"/>）。標準の指定で作り直すと、その譜面の NJS などが消えるため。
+        /// </summary>
         public static DrillOptions StandardOptions(string songName)
         {
-            string id = DrillNaming.ExtractId(songName);
-            return id == null ? null : DrillSet.All().FirstOrDefault(e => DrillNaming.ExtractId(e.Options.Name) == id)?.Options;
+            return DrillSet.FindStandard(songName)?.Options;
         }
 
         /// <summary>
@@ -120,6 +130,7 @@ namespace JumpDrill.Output
             w.Property("intervalMs", options.IntervalMs);
             w.Property("notesPerBeat", options.NotesPerBeat);
             w.Property("click", options.Click.ToString());
+            w.Property("clickTone", options.ClickTone.ToString());
             w.Property("countIn", options.CountInClicks);
             w.Property("tail", options.TailSeconds);
             w.Property("minLeadIn", options.MinLeadInSeconds);
@@ -149,7 +160,17 @@ namespace JumpDrill.Output
         /// <summary>読み戻した指定で書き直す。</summary>
         public static RebuildResult Rewrite(string folder, LevelWriteOptions writeOptions = null)
         {
+            return Rewrite(folder, writeOptions, null);
+        }
+
+        /// <summary>
+        /// 読み戻した指定のクリック音・音色・カウントイン・末尾の余白だけを <paramref name="sound"/> に替えて書き直す
+        /// （生成オプションの窓）。null なら読み戻したまま。どれも曲名と ID に入らないので、記録はそのまま続く。
+        /// </summary>
+        public static RebuildResult Rewrite(string folder, LevelWriteOptions writeOptions, SoundSettings sound)
+        {
             var options = Read(folder);
+            sound?.ApplyTo(options);
             string oldName = options.Name;
             options.Name = DrillNaming.CurrentName(oldName);
             var map = Generation.DrillGenerator.Generate(options);
@@ -182,6 +203,7 @@ namespace JumpDrill.Output
             w.Property("intervalMs", options.IntervalMs);
             w.Property("notesPerBeat", options.NotesPerBeat);
             w.Property("click", options.Click.ToString());
+            w.Property("clickTone", options.ClickTone.ToString());
             w.Property("countIn", options.CountInClicks);
             w.Property("tail", options.TailSeconds);
             w.Property("minLeadIn", options.MinLeadInSeconds);
@@ -199,13 +221,45 @@ namespace JumpDrill.Output
                 Math.Abs(Tempo.EbpmFromHandIntervalMs(interval) - Tempo.EbpmFromHandIntervalMs(options.IntervalMs)) < 0.051)
                 options.IntervalMs = interval;
             if (saved.TryGetValue("notesPerBeat", out var d) && d is double div && div > 0) options.NotesPerBeat = div;
+            ApplyClick(options, saved);
+            ApplyCountIn(options, saved);
+            ApplyTone(options, saved);
+            ApplyTail(options, saved);
+            if (saved.TryGetValue("minLeadIn", out var l) && l is double lead && lead >= 0) options.MinLeadInSeconds = lead;
+            if (saved.TryGetValue("gap", out var g) && g is double gap) options.GapSeconds = gap;
+        }
+
+        // 標準ステージでも変更できる音声設定だけを適用する（生成オプションの窓の4項目）。
+        internal static void ApplyClickSettings(DrillOptions options, Dictionary<string, object> saved)
+        {
+            ApplyClick(options, saved);
+            ApplyCountIn(options, saved);
+            ApplyTone(options, saved);
+            ApplyTail(options, saved);
+        }
+
+        private static void ApplyTail(DrillOptions options, Dictionary<string, object> saved)
+        {
+            if (saved.TryGetValue("tail", out var t) && t is double tail && tail >= 0) options.TailSeconds = tail;
+        }
+
+        private static void ApplyClick(DrillOptions options, Dictionary<string, object> saved)
+        {
             // 数字の文字列（"123"）でも TryParse は通るので、定義された値かも見る
             if (saved.TryGetValue("click", out var c) && c is string click && Enum.TryParse(click, out ClickMode mode) &&
                 Enum.IsDefined(typeof(ClickMode), mode)) options.Click = mode;
+        }
+
+        private static void ApplyTone(DrillOptions options, Dictionary<string, object> saved)
+        {
+            // 消した音色（KickBass）はシンセベースとして読む
+            if (saved.TryGetValue("clickTone", out var t) && t is string text && ClickTones.TryParse(text, out ClickTone tone))
+                options.ClickTone = tone;
+        }
+
+        private static void ApplyCountIn(DrillOptions options, Dictionary<string, object> saved)
+        {
             if (saved.TryGetValue("countIn", out var k) && k is double count && count >= 0 && count <= MaxCountIn) options.CountInClicks = (int)count;
-            if (saved.TryGetValue("tail", out var t) && t is double tail && tail >= 0) options.TailSeconds = tail;
-            if (saved.TryGetValue("minLeadIn", out var l) && l is double lead && lead >= 0) options.MinLeadInSeconds = lead;
-            if (saved.TryGetValue("gap", out var g) && g is double gap) options.GapSeconds = gap;
         }
 
         private static Dictionary<string, object> FirstDifficulty(Dictionary<string, object> root)

@@ -55,6 +55,7 @@ namespace JumpDrillMod.Services
         /// <summary>
         /// そのドリルが始められるか。始められなければ画面に出す理由を返す。
         /// </summary>
+        /// <param name="drillId">曲名か ID（<see cref="Resolve"/>）。</param>
         internal string? Check(string drillId)
         {
             try
@@ -73,6 +74,7 @@ namespace JumpDrillMod.Services
         /// <summary>
         /// そのドリルの譜面がまだ無いか。曲一覧を読み込んでいる最中は分からないので false。
         /// </summary>
+        /// <param name="drillId">曲名か ID（<see cref="Resolve"/>）。標準のステージの曲名なら、その名前の譜面があるかだけを見る。</param>
         internal bool IsMissing(string drillId)
         {
             try
@@ -93,6 +95,7 @@ namespace JumpDrillMod.Services
         /// 叩き終えてメニューに戻ったところで呼ぶ（やり直しでは呼ばない）。
         /// </param>
         /// <param name="beforeSceneSwitch">場面が切り替わる直前に呼ぶ。始められなかったときは呼ばない。</param>
+        /// <param name="drillId">曲名か ID（<see cref="Resolve"/>）。表のマスからは曲名を渡す。</param>
         internal string? Start(string drillId,
             Action<StandardLevelScenesTransitionSetupDataSO, LevelCompletionResults>? onFinished,
             Action? beforeSceneSwitch = null)
@@ -274,7 +277,10 @@ namespace JumpDrillMod.Services
         /// 読み込まれているドリル譜面を全部。曲名に ID があるものがドリル。
         /// </summary>
         /// <remarks>
-        /// 専用パック → WIP → CustomLevels の順に見て、同じ ID は最初に見つけた方を採る。
+        /// 専用パック → WIP → CustomLevels の順に見て、同じ曲名は最初に見つけた方を採る。
+        /// <b>ID ではまとめない。</b> NJS やクリック音だけ変えて作った譜面は同じ ID の別の曲名になる
+        /// （標準のステージと同じ形を Mods タブで作ると、頭の並び順の印だけが違う）。ID でまとめると片方が一覧から消え、
+        /// どちらを叩くかが読み込みの順で決まってしまう。
         /// 一括生成やこのMODの生成は専用パックに書くが、CLI の <c>--install</c> などで
         /// 別の場所に置いたドリルもある。どこにあっても叩けるように全部見る。
         /// 選ぶときは、その譜面が入っているパックへ切り替える必要があるので、パックも一緒に持つ。
@@ -294,7 +300,7 @@ namespace JumpDrillMod.Services
                     if (level == null) continue;
 
                     string? id = DrillNaming.ExtractId(level.songName);
-                    if (id == null || !seen.Add(id)) continue;
+                    if (id == null || !seen.Add(level.songName)) continue;
 
                     found.Add(new DrillLevel
                     {
@@ -306,7 +312,7 @@ namespace JumpDrillMod.Services
             string folder = pack.ResolveOutputFolder(PluginConfig.Instance?.PackName ?? "JumpDrill");
             var separates = SongCore.Loader.SeparateSongFolders ?? new List<SongCore.Data.SeparateSongFolder>();
 
-            // 専用パックを先に。同じ ID が別の場所にもあれば、ここのものを選ばせる
+            // 専用パックを先に。同じ曲名が別の場所にもあれば、ここのものを選ばせる
             foreach (var separate in separates.Where(f => SamePath(f.SongFolderEntry?.Path, folder)))
                 Add(separate.Levels, separate.LevelPack);
             foreach (var separate in separates.Where(f => !SamePath(f.SongFolderEntry?.Path, folder)))
@@ -319,10 +325,9 @@ namespace JumpDrillMod.Services
         }
 
         /// <summary>
-        /// その ID の譜面のフォルダを、読み込まれている場所すべてから集める（同じドリルが複数の場所にあることがある）。
-        /// ドリルの削除で使う。
+        /// 読み込まれているドリル譜面のフォルダを全部（同じ曲名が別の場所にあっても全部）。鍵は SongCore の一覧のまま。
         /// </summary>
-        internal List<string> FoldersOf(string drillId)
+        internal List<string> DrillFolders()
         {
             var folders = new List<string>();
 
@@ -330,8 +335,35 @@ namespace JumpDrillMod.Services
             {
                 if (levels == null) return;
                 foreach (var entry in levels)
+                    if (entry.Value != null && DrillNaming.ExtractId(entry.Value.songName) != null) folders.Add(entry.Key);
+            }
+
+            foreach (var separate in SongCore.Loader.SeparateSongFolders ?? new List<SongCore.Data.SeparateSongFolder>())
+                Add(separate.Levels);
+            Add(SongCore.Loader.CustomWIPLevels);
+            Add(SongCore.Loader.CustomLevels);
+            return folders;
+        }
+
+        /// <summary>
+        /// その曲名の譜面のフォルダを、読み込まれている場所すべてから集める（同じドリルが複数の場所にあることがある）。
+        /// ドリルの削除と作り直しで使う。ID を渡したときは、その ID の譜面を全部。
+        /// </summary>
+        /// <remarks>
+        /// 曲名で見るのは、同じ ID の別の譜面（NJS などだけ変えたもの）まで消したり作り直したりしないため。
+        /// </remarks>
+        internal List<string> FoldersOf(string drillId)
+        {
+            var folders = new List<string>();
+            bool byName = IsSongName(drillId);
+
+            void Add(IEnumerable<KeyValuePair<string, BeatmapLevel>>? levels)
+            {
+                if (levels == null) return;
+                foreach (var entry in levels)
                 {
-                    if (entry.Value == null || DrillNaming.ExtractId(entry.Value.songName) != drillId) continue;
+                    if (entry.Value == null) continue;
+                    if (byName ? entry.Value.songName != drillId : DrillNaming.ExtractId(entry.Value.songName) != drillId) continue;
                     if (!folders.Any(f => SamePath(f, entry.Key))) folders.Add(entry.Key);
                 }
             }
@@ -343,11 +375,34 @@ namespace JumpDrillMod.Services
             return folders;
         }
 
-        /// <summary>ID から譜面と、それが入っているパックを引く。無ければ null。</summary>
+        /// <summary>
+        /// 曲名か ID から譜面と、それが入っているパックを引く。無ければ null。
+        /// </summary>
+        /// <remarks>
+        /// 表のマスからは曲名で引く。ID だけで引くと、同じ ID の別の譜面（NJS などだけ変えて作ったもの）を始めてしまう。
+        /// 曲名の譜面が無いとき、標準のステージの曲名なら無いと答える（Play がその1本を作ってから始める）。
+        /// それ以外は古い名前のままのマスなどなので、今までどおり同じ ID の譜面で代わりにする。
+        /// </remarks>
         private DrillLevel? Resolve(string drillId)
         {
-            return DrillLevels().FirstOrDefault(d => d.Id == drillId);
+            var levels = DrillLevels();
+            if (!IsSongName(drillId)) return levels.FirstOrDefault(d => d.Id == drillId);
+
+            var exact = levels.FirstOrDefault(d => d.SongName == drillId);
+            if (exact != null) return exact;
+            if (DrillSet.IsStandardName(drillId))
+            {
+                // カスタムステージに古い書き方の名前（EBPM など）で残っているマスは、今の名前の譜面で始める
+                string? current = DrillSet.FindStandard(drillId)?.Options.Name;
+                return current == null || current == drillId ? null : levels.FirstOrDefault(d => d.SongName == current);
+            }
+
+            string? id = DrillNaming.ExtractId(drillId);
+            return id == null ? null : levels.FirstOrDefault(d => d.Id == id);
         }
+
+        /// <summary>ID（5文字）ではなく曲名か。</summary>
+        private static bool IsSongName(string key) => DrillNaming.ExtractId(key) != null;
 
         /// <summary>
         /// 画面に出ている方を掴む。

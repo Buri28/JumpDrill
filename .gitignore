@@ -31,3 +31,17 @@ BeatSaberPath.props
 
 ## Release build output
 release/
+
+## Test results
+TestResults/
+
+## Game files, replays and archives (never commit)
+*.dll
+*.pdb
+*.bsor
+*.zip
+
+## OS
+Thumbs.db
+desktop.ini
+.DS_Store

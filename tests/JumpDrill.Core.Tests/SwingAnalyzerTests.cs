@@ -321,11 +321,11 @@ namespace JumpDrill.Tests
     {
         [Theory]
         // LocalLeaderboard は末尾に "_<長い数字>" を足すだけ。そこだけ落とす。
-        [InlineData("76561198324870685-Drill R_8_b-Std-ABC-1788657947_639242548163678667",
-                    "76561198324870685-Drill R_8_b-Std-ABC-1788657947")]
+        [InlineData("76561190000000001-Drill R_8_b-Std-ABC-1788657947_639242548163678667",
+                    "76561190000000001-Drill R_8_b-Std-ABC-1788657947")]
         // BeatLeader 側はそのまま。曲名の "_" で切ってはいけない。
-        [InlineData("76561198324870685-Drill R_8_b-Std-ABC-1788657947",
-                    "76561198324870685-Drill R_8_b-Std-ABC-1788657947")]
+        [InlineData("76561190000000001-Drill R_8_b-Std-ABC-1788657947",
+                    "76561190000000001-Drill R_8_b-Std-ABC-1788657947")]
         [InlineData("A_B", "A_B")]
         [InlineData("A_12345", "A_12345")]
         [InlineData("", "")]

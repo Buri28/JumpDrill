@@ -67,6 +67,20 @@ namespace JumpDrillMod
 
         /// <summary>クリックの粒度。JumpDrill.Core の <c>ClickMode</c> の名前をそのまま入れる。</summary>
         public virtual string Click { get; set; } = "Down";
+        public virtual string ClickTone { get; set; } = "Standard";
+        public virtual string StandardClickTone { get; set; } = "Standard";
+
+        /// <summary>メダル画面で標準のステージを作るときのクリック音。<c>ClickMode</c> の名前。曲名と ID に入らないので記録は続く。</summary>
+        public virtual string StandardClick { get; set; } = "Down";
+
+        /// <summary>メダル画面で標準のステージを作るときのカウントインの回数。0 で鳴らさない。曲名と ID に入らないので記録は続く。</summary>
+        public virtual int StandardCountIn { get; set; } = 8;
+
+        public virtual float TailSeconds { get; set; } = 1.5f;
+        public virtual float StandardTailSeconds { get; set; } = 1.5f;
+
+        /// <summary>メダル画面の Generate で、既にある標準のステージを書き直すか（画面の Overwrite）。生成・プレイの後も、起動し直しても残す。</summary>
+        public virtual bool StandardOverwrite { get; set; }
 
         /// <summary>カウントインのクリック数。クリック周期で先頭に並ぶ。</summary>
         public virtual int CountInClicks { get; set; } = 8;
@@ -109,6 +123,12 @@ namespace JumpDrillMod
         /// そのままだと振りの中に立つ形になり、全体を見渡しにくい。
         /// </summary>
         public virtual float DiagramRoomForward { get; set; } = 0f;
+
+        /// <summary>
+        /// 空間に出す振りの向き。空なら正面（プレイしたときと同じ向き）、<c>left</c> なら左パネルの方へ回して置く
+        /// （JumpDrill.Core の <c>RoomPlacement</c>）。
+        /// </summary>
+        public virtual string DiagramRoomFacing { get; set; } = string.Empty;
 
         /// <summary>
         /// リーダーボードを新しい順に並べるか。false なら順位（<see cref="RankByAccuracy"/> の数字の高い順）。

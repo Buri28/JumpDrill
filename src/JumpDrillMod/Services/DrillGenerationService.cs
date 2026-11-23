@@ -159,10 +159,12 @@ namespace JumpDrillMod.Services
                 Sets = config.Sets,
                 FlickPercent = config.FlickPercent,
                 CountInClicks = config.CountInClicks,
+                TailSeconds = config.TailSeconds,
                 Direction = ParseEnum(config.Direction, DirectionMode.Axis),
                 HandPattern = ParseEnum(config.HandPattern, HandPattern.Split),
                 Tower = config.Tower,
                 Click = ParseEnum(config.Click, ClickMode.Down),
+                ClickTone = ParseTone(config.ClickTone),
             };
 
             options.Validate();
@@ -199,11 +201,20 @@ namespace JumpDrillMod.Services
         /// 設定ファイルには enum を名前で持たせている。手で書き換えられたときに
         /// 落とさず既定へ倒す（設定が1つ壊れただけで生成できなくなると困るため）。
         /// </summary>
+        /// <summary>消した音色（KickBass）はシンセベースとして読む。</summary>
+        private static ClickTone ParseTone(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return ClickTone.Standard;
+            if (ClickTones.TryParse(text!, out var tone)) return tone;
+            Plugin.Log?.Warn($"unknown ClickTone: '{text}'. falling back to {ClickTone.Standard}");
+            return ClickTone.Standard;
+        }
+
         private static T ParseEnum<T>(string? text, T fallback) where T : struct
         {
             if (string.IsNullOrWhiteSpace(text)) return fallback;
             T parsed;
-            if (Enum.TryParse(text!.Trim(), ignoreCase: true, result: out parsed)) return parsed;
+            if (Enum.TryParse(text!.Trim(), ignoreCase: true, result: out parsed) && Enum.IsDefined(typeof(T), parsed)) return parsed;
 
             Plugin.Log?.Warn($"unknown {typeof(T).Name}: '{text}'. falling back to {fallback}");
             return fallback;

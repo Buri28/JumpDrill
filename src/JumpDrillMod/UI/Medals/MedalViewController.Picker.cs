@@ -351,7 +351,7 @@ namespace JumpDrillMod.UI.Medals
 
             if (found && selectedRow < customRows.Count && selectedColumn < customRows[selectedRow].Cells.Count)
             {
-                selectedId = customRows[selectedRow].Cells[selectedColumn].Id;
+                SelectCell(customRows[selectedRow].Cells[selectedColumn]);
                 Fill();
                 onSelect?.Invoke(selectedId);
             }

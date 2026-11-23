@@ -36,7 +36,8 @@ namespace JumpDrill.Generation
             // どのステップで鳴らすかは時刻に依らないので、これで確定できる。
             var notesByStep = BuildSteps(options, stepCount, stepsPerBlock);
 
-            var plan = ClickPlanner.Plan(notesByStep, options.Click);
+            int stepsPerBeat = StepsPerBeat(options);
+            var plan = ClickPlanner.Plan(notesByStep, options.Click, stepsPerBeat, StepsPerBar(options, stepsPerBeat), stepsPerBlock);
             if (options.HandPattern == HandPattern.Alternate)
                 plan = FirstHandSteps(plan, options, blockCount, stepsPerBlock);
             double clickPeriodSec = DeriveClickPeriod(plan, intervalSec);
@@ -73,7 +74,7 @@ namespace JumpDrill.Generation
 
             // クリックもノーツと同じ時刻に鳴らす（間隔を詰めて戻りで鳴らすなら前へ寄せる）。
             foreach (var entry in plan)
-                clicks.Add(new ClickEvent(StepTime(entry.StepIndex, stepsPerBlock, intervalSec, leadIn, gapSec, flickSec), entry.Accent));
+                clicks.Add(new ClickEvent(StepTime(entry.StepIndex, stepsPerBlock, intervalSec, leadIn, gapSec, flickSec), entry.Accent, false, entry.Weak));
 
             clicks.Sort((a, b) => a.TimeSeconds.CompareTo(b.TimeSeconds));
 
@@ -170,6 +171,26 @@ namespace JumpDrill.Generation
             return result;
         }
 
+        /// <summary>1拍あたりのステップ数。NotesPerBeat（1/2 なら 2）を整数に丸める。1拍に1ノーツ未満のときも 1。</summary>
+        internal static int StepsPerBeat(DrillOptions options)
+        {
+            double perBeat = options.NotesPerBeat;
+            if (double.IsNaN(perBeat) || perBeat < 1.0) return 1;
+            return (int)Math.Round(perBeat, MidpointRounding.AwayFromZero);
+        }
+
+        /// <summary>
+        /// 1小節（4拍）のステップ数。1拍に1ノーツ未満（2/1 なら 1ノーツで2拍）のときは
+        /// 4拍に入るノーツ数で数える（最低 1）。
+        /// </summary>
+        internal static int StepsPerBar(DrillOptions options, int stepsPerBeat)
+        {
+            double perBeat = options.NotesPerBeat;
+            if (!double.IsNaN(perBeat) && perBeat > 0 && perBeat < 1.0)
+                return Math.Max(1, (int)Math.Round(ClickPlanner.BeatsPerBar * perBeat, MidpointRounding.AwayFromZero));
+            return stepsPerBeat * ClickPlanner.BeatsPerBar;
+        }
+
         /// <summary>往復ごとに交互のときの、1回の手番の長さ。いちばん長い手の循環1周。</summary>
         internal static int RoundTripLength(IReadOnlyList<HandSequence> sequences)
         {
@@ -221,7 +242,7 @@ namespace JumpDrill.Generation
             for (int k = count; k >= 1; k--)
             {
                 double t = target - k * periodSec;
-                if (t >= notBefore && t >= 0.0) clicks.Add(new ClickEvent(t, true));
+                if (t >= notBefore && t >= 0.0) clicks.Add(new ClickEvent(t, true, true));
             }
         }
 

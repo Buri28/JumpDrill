@@ -30,6 +30,7 @@ namespace JumpDrill.Tests
                 Njs = 19,
                 JumpDistance = 22,
                 Click = ClickMode.All,
+                ClickTone = ClickTone.Low,
                 CountInClicks = 4,
                 TailSeconds = 3,
             };
@@ -40,6 +41,25 @@ namespace JumpDrill.Tests
         private static string TempPath(string suffix)
         {
             return Path.Combine(Path.GetTempPath(), "jd-export-" + Guid.NewGuid().ToString("N") + suffix);
+        }
+
+        [Fact]
+        public void A_missing_standard_drill_keeps_its_exported_audio_settings()
+        {
+            string file = TempPath(".json");
+            try
+            {
+                var options = DrillSet.Entries("8b")[0].WithClick(ClickMode.Up, 4, ClickTone.Low).Options;
+                var stage = new CustomStage { Name = "低音", Rows = { new CustomStageRow { Name = "R8b", Drills = { options.Name } } } };
+                CustomStageExport.Write(file, stage, name => options);
+                var made = Assert.Single(CustomStageExport.Plan(CustomStageExport.Read(file), Enumerable.Empty<string>()).ToGenerate);
+                Assert.Equal(options.Name, made.Name);
+                Assert.Equal(options.Njs, made.Njs);
+                Assert.Equal(ClickMode.Up, made.Click);
+                Assert.Equal(4, made.CountInClicks);
+                Assert.Equal(ClickTone.Low, made.ClickTone);
+            }
+            finally { if (File.Exists(file)) File.Delete(file); }
         }
 
         [Fact]
@@ -64,6 +84,7 @@ namespace JumpDrill.Tests
                 Assert.Equal(options.Name, made.Name);
                 Assert.Equal(19.0, made.Njs);
                 Assert.Equal(ClickMode.All, made.Click);
+                Assert.Equal(ClickTone.Low, made.ClickTone);
                 Assert.Equal(4, made.CountInClicks);
                 Assert.Equal(3.0, made.TailSeconds);
 

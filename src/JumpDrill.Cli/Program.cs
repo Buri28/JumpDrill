@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -19,7 +19,7 @@ namespace JumpDrill.Cli
         {
             "seq","interval","div","sec","dir","tower","tight","hands","mirror","order","sets",
             "njs","jd","rt","offset","bpm",
-            "click","count-in","tail","lead-in","gap",
+            "click","click-tone","count-in","tail","lead-in","gap",
             "name","out","install","register-pack","zip","wav","quality","rate",
             "bulk","skip-existing","medals",
             "dry-run","h","help",
@@ -234,6 +234,10 @@ namespace JumpDrill.Cli
             options.ReactionTimeMs = cmd.GetDouble("rt");
             options.NoteJumpStartBeatOffset = cmd.GetDouble("offset");
             options.Click = ParseClickMode(cmd.GetString(new[] { "click" }));
+            string tone = cmd.GetString(new[] { "click-tone" }) ?? "standard";
+            if (!ClickTones.TryParse(tone, out ClickTone parsedTone))
+                throw new FormatException("--click-tone は standard / low / kick / retro / synthbass です。");
+            options.ClickTone = parsedTone;
             options.CountInClicks = cmd.GetInt("count-in") ?? options.CountInClicks;
             options.TailSeconds = cmd.GetDouble("tail") ?? options.TailSeconds;
             options.MinLeadInSeconds = cmd.GetDouble("lead-in") ?? options.MinLeadInSeconds;
@@ -262,6 +266,7 @@ namespace JumpDrill.Cli
                 ReactionTimeMs = source.ReactionTimeMs,
                 NoteJumpStartBeatOffset = source.NoteJumpStartBeatOffset,
                 Click = source.Click,
+                ClickTone = source.ClickTone,
                 CountInClicks = source.CountInClicks,
                 TailSeconds = source.TailSeconds,
                 MinLeadInSeconds = source.MinLeadInSeconds,
@@ -383,7 +388,8 @@ namespace JumpDrill.Cli
                 case "down": case "2": case "lv2": return ClickMode.Down;
                 case "up": case "3": case "lv3": return ClickMode.Up;
                 case "every4": case "4": case "lv4": return ClickMode.Every4;
-                default: throw new FormatException("--click は none / all / down / up / every4 です。");
+                case "beat": case "5": return ClickMode.Beat;
+                default: throw new FormatException("--click は none / all / down / up / every4 / beat です。");
             }
         }
 
@@ -469,6 +475,9 @@ namespace JumpDrill.Cli
 
 クリック（音源に焼き込む）
   --click <mode>     none / all(Lv1) / down(Lv2・既定) / up(Lv3) / every4(Lv4)
+                     / beat（全ノーツ。小節の頭を強く、拍の間を弱く）
+  --click-tone <t>   standard（既定）/ low（低音）/ kick（キック）/ retro（レトロ）
+                     / synthbass（シンセベース）
   --count-in <n>     カウントインのクリック数。既定 8
   --lead-in <秒>     曲頭の空白の下限。既定 2（ジャンプ時間から自動で伸びる）
   --tail <秒>        末尾の余白。既定 1.5

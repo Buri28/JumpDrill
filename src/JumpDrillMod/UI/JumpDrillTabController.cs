@@ -501,24 +501,8 @@ namespace JumpDrillMod.UI
             set { if (Config != null) Config.FlickPercent = value; }
         }
 
-        // ───────── クリック ─────────
-
-        [UIValue("click-options")]
-        public List<object> ClickOptions { get; } = new List<object> { "Down", "Up", "All", "Every4", "None" };
-
-        [UIValue("click")]
-        public string Click
-        {
-            get => Config?.Click ?? "Down";
-            set { if (Config != null) Config.Click = value; }
-        }
-
-        [UIValue("count-in")]
-        public int CountIn
-        {
-            get => Config?.CountInClicks ?? 8;
-            set { if (Config != null) Config.CountInClicks = value; }
-        }
+        [UIObject("generation-parent")] private UnityEngine.GameObject? generationParent = null;
+        private readonly GenerationOptionsPrompt generationOptions = new GenerationOptionsPrompt();
 
         // ───────── 生成 ─────────
 
@@ -555,9 +539,33 @@ namespace JumpDrillMod.UI
                 return;
             }
 
+            var config = Config;
+            string click = DrillSetGenerationService.ParseClick(config.Click).ToString();
+            // 消した音色（KickBass）はシンセベースとして出す
+            string tone = JumpDrill.Model.ClickTones.Parse(config.ClickTone ?? "", JumpDrill.Model.ClickTone.Standard).ToString();
+
+            generationOptions.Show(generationParent, "Target: current drill (one map)", false, click, tone,
+                config.CountInClicks, config.TailSeconds, (chosenClick, chosenTone, countIn, tail) =>
+                {
+                    if (drillSet.IsRunning)
+                    {
+                        SetStatus("Wait until the drills are generated");
+                        return;
+                    }
+
+                    if (chosenClick != click) config.Click = chosenClick;
+                    if (chosenTone != tone) config.ClickTone = chosenTone;
+                    if (countIn != config.CountInClicks) config.CountInClicks = countIn;
+                    if (tail != config.TailSeconds) config.TailSeconds = tail;
+                    GenerateConfirmed(config);
+                });
+        }
+
+        private void GenerateConfirmed(PluginConfig config)
+        {
             SetStatus("Generating...");
 
-            var result = generator.Generate(Config);
+            var result = generator.Generate(config);
             if (!result.Ok)
             {
                 SetStatus(result.Message);

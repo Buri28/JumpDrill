@@ -1,0 +1,19 @@
+<modal show-event='show-options' hide-event='hide-options' click-off-closes='false'
+       move-to-center='true' size-delta-x='108' size-delta-y='66'>
+  <vertical pad='3' spacing='1' child-expand-height='false'>
+    <text text='Generation options' font-size='4' align='Center'/>
+    <text id='generation-target' text='' font-size='3' align='Center'/>
+    <list-setting text='Click sound' value='click' options='click-options' on-change='click-changed' get-event='load-options'
+                  hover-hint='Which notes have a click. Beat accents the bar and beat.'/>
+    <list-setting id='generation-tone' text='Tone' value='tone' options='tone-options' apply-on-change='true' get-event='load-options'/>
+    <increment-setting id='generation-count-in' text='Count-in' value='count-in' apply-on-change='true' get-event='load-options'
+                       integer-only='true' min='0' max='16' increment='1'/>
+    <increment-setting text='Tail padding (s)' value='tail' apply-on-change='true' get-event='load-options'
+                       min='0' max='10' increment='0.1'/>
+    <text text='Count-in plays independently of the click sound.' font-size='2.6' align='Center'/>
+    <horizontal spacing='3' pref-height='7'>
+      <button text='Cancel' on-click='cancel' pref-width='22' pref-height='7'/>
+      <button id='generate-confirm' text='Generate' on-click='generate' pref-width='28' pref-height='7'/>
+    </horizontal>
+  </vertical>
+</modal>

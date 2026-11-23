@@ -129,7 +129,8 @@ namespace JumpDrill.Model
         /// </summary>
         /// <remarks>
         /// 行は方向の名前順。曲名に BPM の無いもの（ID を入れる前の古い名前）は速さで並べられないので入れない。
-        /// 同じ ID の譜面が複数の場所にあっても1本と数える。行の数に上限は付けない（画面側で送る）。
+        /// 同じ曲名の譜面が複数の場所にあっても1本と数える。ID が同じでも曲名が違えば（標準のステージと同じ形で NJS などを変えて作ったもの等）
+        /// 別の譜面として出す。行の数に上限は付けない（画面側で送る）。
         /// </remarks>
         /// <param name="assigned">
         /// カスタムステージ。ここに並べたドリルは Other に出さない（どこかのステージに入っていないものが Other）。
@@ -140,19 +141,28 @@ namespace JumpDrill.Model
         {
             if (songNames == null) throw new ArgumentNullException(nameof(songNames));
 
-            var setIds = includeDrillSet
-                ? new HashSet<string>(StringComparer.Ordinal)
-                : new HashSet<string>(DrillSet.All().Select(e => DrillNaming.ExtractId(e.Options.Name)), StringComparer.Ordinal);
+            // 曲名で見る。ID は記録をまとめる鍵で、NJS やクリック音だけ変えて作った譜面も同じ ID になる。
+            // ID で除くと、標準のステージやカスタムステージと同じ ID の別の譜面がどこにも出なくなる
+            var names = songNames.Where(n => !string.IsNullOrEmpty(n)).ToList();
+            var present = new HashSet<string>(names, StringComparer.Ordinal);
+            var assignedNames = new HashSet<string>(StringComparer.Ordinal);
+            var staleIds = new HashSet<string>(StringComparer.Ordinal);
             if (assigned != null)
                 foreach (var name in assigned.SelectMany(s => s.Rows).SelectMany(r => r.Drills))
-                    setIds.Add(DrillNaming.ExtractId(name) ?? name);
+                {
+                    assignedNames.Add(name);
+                    // マスの曲名の譜面が無い（古い名前のまま等）ときは、同じ ID の譜面をそのマスのものとみなす（今までどおり）
+                    // 標準のステージの曲名はいつでも作り直せるので、そのまま（同じ ID の別の譜面は隠さない）
+                    if (!present.Contains(name) && !DrillSet.IsStandardName(name)) staleIds.Add(DrillNaming.ExtractId(name) ?? name);
+                }
 
-            var drills = songNames
-                .Where(n => !string.IsNullOrEmpty(n))
+            var drills = names
                 .Select(n => new { Name = n, Id = DrillNaming.ExtractId(n) ?? n, Bpm = DrillNaming.ParseBpm(n) })
-                .Where(d => d.Bpm.HasValue && !setIds.Contains(d.Id))
-                .GroupBy(d => d.Id, StringComparer.Ordinal)
-                .Select(g => g.First());
+                .Where(d => d.Bpm.HasValue && !(!includeDrillSet && DrillSet.IsStandardName(d.Name))
+                            && !assignedNames.Contains(d.Name) && !staleIds.Contains(d.Id))
+                // 同じ曲名が複数の場所にあれば1本。標準のステージの譜面は古い名前（EBPM）の写しもあるので ID で1本にし、今の名前を採る
+                .GroupBy(d => DrillSet.IsStandardName(d.Name) ? "std:" + d.Id : d.Name, StringComparer.Ordinal)
+                .Select(g => g.OrderBy(d => DrillNaming.ExtractSetTag(d.Name) != null ? 0 : 1).First());
 
             var stage = new CustomStage { Name = "Other" };
             foreach (var group in drills

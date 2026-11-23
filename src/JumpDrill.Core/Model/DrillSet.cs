@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -23,6 +23,35 @@ namespace JumpDrill.Model
 
         /// <summary>生成に渡す指定。<see cref="DrillOptions.Name"/> まで埋めてある。</summary>
         public DrillOptions Options { get; internal set; }
+
+        /// <summary>
+        /// クリック音だけを変えた写し。クリック音は曲名と ID に入らないので、記録はそのまま続く。
+        /// </summary>
+        public DrillSetEntry WithClick(ClickMode click)
+        {
+            return WithClick(click, Options.CountInClicks);
+        }
+
+        /// <summary>クリック音とカウントインの回数を変えた写し。どちらも曲名と ID に入らないので、記録はそのまま続く。</summary>
+        public DrillSetEntry WithClick(ClickMode click, int countIn)
+        {
+            return WithClick(click, countIn, Options.ClickTone);
+        }
+
+        public DrillSetEntry WithClick(ClickMode click, int countIn, ClickTone tone)
+        {
+            return WithClick(click, countIn, tone, Options.TailSeconds);
+        }
+
+        public DrillSetEntry WithClick(ClickMode click, int countIn, ClickTone tone, double tailSeconds)
+        {
+            var options = Options.Clone();
+            options.TailSeconds = tailSeconds;
+            options.Click = click;
+            options.ClickTone = tone;
+            options.CountInClicks = countIn;
+            return new DrillSetEntry { Direction = Direction, Stage = Stage, Bpm = Bpm, Tag = Tag, Options = options };
+        }
 
         /// <summary>標準のステージ以外のドリルを、一括生成と同じ経路で書くための入れ物（カスタムステージのインポート）。</summary>
         public static DrillSetEntry ForOptions(DrillOptions options)
@@ -86,6 +115,59 @@ namespace JumpDrill.Model
         public static List<DrillSetEntry> All()
         {
             return Directions.SelectMany(Entries).ToList();
+        }
+
+        /// <summary>全方向・全 Stage を、クリック音を指定して。</summary>
+        public static List<DrillSetEntry> All(ClickMode click)
+        {
+            return All().Select(e => e.WithClick(click)).ToList();
+        }
+
+        /// <summary>全方向・全 Stage を、クリック音とカウントインの回数を指定して。</summary>
+        public static List<DrillSetEntry> All(ClickMode click, int countIn, ClickTone tone = ClickTone.Standard)
+        {
+            return All().Select(e => e.WithClick(click, countIn, tone)).ToList();
+        }
+
+        public static List<DrillSetEntry> All(ClickMode click, int countIn, ClickTone tone, double tailSeconds)
+        {
+            return All().Select(e => e.WithClick(click, countIn, tone, tailSeconds)).ToList();
+        }
+
+        /// <summary>
+        /// 標準のステージの譜面か。<b>ID だけでは決めない。</b>
+        /// </summary>
+        /// <remarks>
+        /// ID は遷移・BPM・尺・セット数だけから作るので、Mods タブや GUI で同じ形・同じ速さ・同じ尺のドリルを
+        /// NJS やクリック音を変えて作ると、標準のステージと同じ ID の別の譜面になる（記録は ID で続く）。
+        /// これを標準のものと取り違えると、一覧から消えたり、Play で別の譜面が始まったりする。
+        /// 標準のステージの譜面は一括生成が並び順の印（<c>{R8bL5a 300}</c>）を頭に付けるので、ID と印の両方で見る。
+        /// 印を付ける前の古い一括生成は速さを「EBPM」と書いていた（今は誰も書かない）ので、それも標準のものとして扱う。
+        /// </remarks>
+        public static bool IsStandardName(string songName)
+        {
+            string id = DrillNaming.ExtractId(songName);
+            if (id == null || !StandardIds.Contains(id)) return false;
+            return DrillNaming.ExtractSetTag(songName) != null || songName.IndexOf(" EBPM ", StringComparison.Ordinal) >= 0;
+        }
+
+        /// <summary>曲名から標準のステージの1本を引く。<see cref="IsStandardName"/> でなければ null。</summary>
+        public static DrillSetEntry FindStandard(string songName)
+        {
+            if (!IsStandardName(songName)) return null;
+            string id = DrillNaming.ExtractId(songName);
+            return All().FirstOrDefault(e => DrillNaming.ExtractId(e.Options.Name) == id);
+        }
+
+        private static HashSet<string> standardIds;
+
+        private static HashSet<string> StandardIds
+        {
+            get
+            {
+                return standardIds ?? (standardIds = new HashSet<string>(
+                    All().Select(e => DrillNaming.ExtractId(e.Options.Name)), StringComparer.Ordinal));
+            }
         }
 
         /// <summary>1方向ぶんの Stage。通常の Stage を速さ順に並べ、最後に持久の Stage。</summary>

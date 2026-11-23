@@ -64,6 +64,8 @@ namespace JumpDrill.Model
 
         public ClickMode Click { get; set; } = ClickMode.Down;
 
+        public ClickTone ClickTone { get; set; } = ClickTone.Standard;
+
         /// <summary>カウントインのクリック数。クリック周期で先頭に並ぶ。</summary>
         public int CountInClicks { get; set; } = 8;
 
@@ -90,6 +92,12 @@ namespace JumpDrill.Model
 
         /// <summary>曲名。省略すると内容から自動生成する。</summary>
         public string Name { get; set; }
+
+        /// <summary>同じ指定の写し。遷移の並びは変更されないので共有する。</summary>
+        public DrillOptions Clone()
+        {
+            return (DrillOptions)MemberwiseClone();
+        }
 
         public void Validate()
         {

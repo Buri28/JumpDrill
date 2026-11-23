@@ -77,6 +77,13 @@ namespace JumpDrill.Output
             return folder;
         }
 
+        /// <summary>この名前の譜面が出力先に既にあるか（Info.dat の有無）。上書きしないときに書く前に確かめる。</summary>
+        public static bool Exists(string root, string name)
+        {
+            if (string.IsNullOrWhiteSpace(root)) return false;
+            return File.Exists(Path.Combine(root, SanitizeFolderName(name), "Info.dat"));
+        }
+
         /// <summary>遷移記法の記号がそのままではファイル名に使えないので置き換える。</summary>
         public static string SanitizeFolderName(string name)
         {

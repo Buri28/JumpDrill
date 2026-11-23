@@ -235,3 +235,21 @@ BeatLeader / LocalLeaderboard / JumpDrillMod が保存したリプレイ（`.bso
 - [OggVorbisEncoder](https://github.com/SteveLillis/.NET-Ogg-Vorbis-Encoder)（MIT）。[libvorbis](https://github.com/xiph/vorbis) のコードブックのデータを含みます（BSD、Xiph.Org Foundation）
 - .NET ランタイム（MIT、.NET Foundation。アプリのみ）
 - System.Memory / System.Buffers / System.Numerics.Vectors / System.Runtime.CompilerServices.Unsafe（MIT、.NET Foundation。MOD のみ）
+
+### クリックの音色
+
+GUI の「クリック音」→「音色」で選んで生成します。
+メダル画面の標準ステージにも「音色」があり、作成済みの譜面を変える場合は「上書き」をオンにします。
+MOD は Click タブの Tone、標準ステージはメダル画面の Tone で選びます。
+CLI は `--click-tone <音色>`（既定は `standard`）。粒度・カウントインは従来どおり別に設定できます。
+
+| GUI | MOD・CLI | 音 |
+|---|---|---|
+| 標準 | Standard / `standard` | 1000 Hz（強拍 2000 Hz）の短い音 |
+| 低音 | Low / `low` | 160 Hz（強拍 240 Hz）、長さ 60 ms の短い減衰正弦波 |
+| キック | Kick / `kick` | 音程が 50 Hz（強拍 75 Hz）まで下がる重いキック |
+| レトロ | Retro / `retro` | 98 Hz（強拍 147 Hz）の短い矩形波 |
+| シンセベース | SynthBass / `synthbass` | 82 Hz（強拍 123 Hz）のノコギリ波をローパスでこもらせたベース |
+
+音色は Info.dat とカスタムステージの設定に保存され、再作成・エクスポートでも引き継ぎます。
+音色を変えても譜面名とドリルIDは変わりません。

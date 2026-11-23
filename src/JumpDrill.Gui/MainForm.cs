@@ -106,8 +106,24 @@ namespace JumpDrill.Gui
         private readonly ComboBox _jumpMode = Combo(Lang.T("既定 (オフセット 0)", "Default (offset 0)"), Lang.T("ジャンプ距離 (m)", "Jump distance (m)"), Lang.T("反応時間 (ms)", "Reaction time (ms)"), Lang.T("オフセット (拍)", "Offset (beats)"));
         private readonly NumericUpDown _jumpValue = Spin(-10, 100, 18, 2);
 
-        private readonly ComboBox _click = Combo(Lang.T("none  鳴らさない", "none  off"), Lang.T("all   Lv1 全ノーツ+アクセント", "all   Lv1 every note + accent"), Lang.T("down  Lv2 切り下げのみ", "down  Lv2 down cuts only"), Lang.T("up    Lv3 切り上げのみ", "up    Lv3 up cuts only"), Lang.T("every4 Lv4 4ノーツに1回", "every4 Lv4 once every 4 notes"));
-        private readonly NumericUpDown _countIn = Spin(0, 32, 8, 0);
+        private int _click = (int)ClickMode.Down;
+        private int _clickTone;
+        internal static string[] ClickToneItems() => new[] {
+            Lang.T("標準", "Standard"), Lang.T("低音", "Low"), Lang.T("キック", "Kick"),
+            Lang.T("レトロ", "Retro"), Lang.T("シンセベース", "SynthBass") };
+
+        /// <summary>クリック音のプルダウンの項目。並びは <see cref="ClickMode"/> の値の順（メダル画面と共通）。</summary>
+        internal static string[] ClickItems()
+        {
+            return new[]
+            {
+                Lang.T("none  鳴らさない", "none  off"), Lang.T("all   Lv1 全ノーツ+アクセント", "all   Lv1 every note + accent"),
+                Lang.T("down  Lv2 切り下げのみ", "down  Lv2 down cuts only"), Lang.T("up    Lv3 切り上げのみ", "up    Lv3 up cuts only"),
+                Lang.T("every4 Lv4 4ノーツに1回", "every4 Lv4 once every 4 notes"),
+                Lang.T("beat  全ノーツ+拍の強弱", "beat  every note, bar/beat accents"),
+            };
+        }
+        private decimal _countIn = 8;
         private readonly NumericUpDown _tail = Spin(0, 10, 1.5m, 1);
 
 
@@ -199,7 +215,6 @@ namespace JumpDrill.Gui
 
             _direction.SelectedIndex = 0;
             _hands.SelectedIndex = 0;
-            _click.SelectedIndex = 2;   // Lv2 が標準
             _jumpMode.SelectedIndex = 0;
             _order.SelectedIndex = 0;
             _language.SelectedIndex = Lang.English ? 1 : 0;
@@ -245,7 +260,7 @@ namespace JumpDrill.Gui
                 combo.DropDownWidth = combo.Width;
             }
 
-            foreach (var spin in new[] { _interval, _seconds, _sets, _flick, _njs, _jumpValue, _countIn, _tail })
+            foreach (var spin in new[] { _interval, _seconds, _sets, _flick, _njs, _jumpValue, _tail })
                 spin.Width = Px(80);
 
             _browse.Width = Px(28);
@@ -505,11 +520,7 @@ namespace JumpDrill.Gui
                     Row(Lang.T("タワー／スタック", "Tower / stack"), _tower),
                     Row(Lang.T("配置パターン", "Hand pattern"), _hands),
                     Row(Lang.T("セットの順番", "Set order"), _order),
-                    Row(Lang.T("セット数", "Sets"), _sets))),
-                Group(Lang.T("クリック音（音源に焼き込む）", "Click (baked into the audio)"), Rows(
-                    Row(Lang.T("粒度", "Pattern"), _click),
-                    Row(Lang.T("カウントイン", "Count-in"), _countIn),
-                    Row(Lang.T("末尾の余白", "Tail padding"), _tail))));
+                    Row(Lang.T("セット数", "Sets"), _sets))));
 
             var outRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
             outRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -836,11 +847,10 @@ namespace JumpDrill.Gui
 
             _order.SelectedIndexChanged += (s, e) => RefreshPreview();
 
-            foreach (var c in new Control[] { _interval, _sets, _flick, _seconds, _njs, _jumpValue, _countIn, _tail })
+            foreach (var c in new Control[] { _interval, _sets, _flick, _seconds, _njs, _jumpValue, _tail })
                 ((NumericUpDown)c).ValueChanged += (s, e) => RefreshPreview();
 
-            foreach (var c in new[] { _direction, _click })
-                c.SelectedIndexChanged += (s, e) => RefreshPreview();
+            _direction.SelectedIndexChanged += (s, e) => RefreshPreview();
 
             _hands.SelectedIndexChanged += (s, e) => { ApplyHandPattern(); RefreshPreview(); };
             _mirror.CheckedChanged += (s, e) => { _picker.Mirror = _mirror.Checked; ApplyHandPattern(); };
@@ -864,7 +874,24 @@ namespace JumpDrill.Gui
             _browseWorkspace.Click += (s, e) => BrowseWorkspace();
             new ToolTip().SetToolTip(_workspace, Lang.T("専用パックと zip をこの下に置く。", "Packs and zips are saved under this folder.") + Environment.NewLine + Lang.T("Beat Saber の中に置くと BSManager の更新で消える。", "Inside Beat Saber they are deleted when BSManager updates."));
             _browse.Click += (s, e) => Browse();
-            _generate.Click += async (s, e) => await GenerateAsync();
+            _generate.Click += async (s, e) =>
+            {
+                // 作れないと分かっているのに窓を出さない。窓の後の GenerateAsync でも同じ判定をする
+                if (!_overwrite.Checked && CurrentDrillExists())
+                {
+                    _status.Text = AlreadyExists;
+                    return;
+                }
+                using var options = new GenerationOptionsForm(Lang.T("編集中のドリル（1曲）", "Current drill (one map)"),
+                    false, _click, _clickTone, _countIn, _tail.Value);
+                if (options.ShowDialog(this) != DialogResult.OK) return;
+                _click = options.ClickIndex;
+                _clickTone = options.Tone;
+                _countIn = options.CountIn;
+                _tail.Value = options.Tail;
+                RefreshPreview();
+                await GenerateAsync();
+            };
             _overwrite.CheckedChanged += (s, e) => RefreshPreview();
             _tips.SetToolTip(_overwrite, Lang.T(
                 "オフ: 同じ名前の譜面が既にあれば書かない（一括生成は無いものだけ作る）\r\nオン: 書き直す。記録は消えない",
@@ -1086,8 +1113,9 @@ namespace JumpDrill.Gui
                 // ノーツの実時刻は ms から決まるので、譜面そのものは変わらない。
                 Bpm = (double)_interval.Value,
                 Njs = (double)_njs.Value,
-                Click = (ClickMode)_click.SelectedIndex,
-                CountInClicks = (int)_countIn.Value,
+                Click = (ClickMode)_click,
+                ClickTone = (ClickTone)_clickTone,
+                CountInClicks = (int)_countIn,
                 TailSeconds = (double)_tail.Value,
             };
 
@@ -1149,9 +1177,10 @@ namespace JumpDrill.Gui
             else if (_jumpMode.SelectedIndex == 2) sb.AppendFormat(ci, " --rt {0:0}", _jumpValue.Value);
             else if (_jumpMode.SelectedIndex == 3) sb.AppendFormat(ci, " --offset {0:0.###}", _jumpValue.Value);
 
-            string[] clickNames = { "none", "all", "down", "up", "every4" };
-            if (_click.SelectedIndex != 2) sb.Append(" --click ").Append(clickNames[_click.SelectedIndex]);
-            if (_countIn.Value != 8m) sb.AppendFormat(ci, " --count-in {0:0}", _countIn.Value);
+            string[] clickNames = { "none", "all", "down", "up", "every4", "beat" };
+            if (_click != 2) sb.Append(" --click ").Append(clickNames[_click]);
+            if (_clickTone > 0) sb.Append(" --click-tone ").Append(((ClickTone)_clickTone).ToString().ToLowerInvariant());
+            if (_countIn != 8m) sb.AppendFormat(ci, " --count-in {0:0}", _countIn);
             if (_tail.Value != 1.5m) sb.AppendFormat(ci, " --tail {0:0.#}", _tail.Value);
 
             sb.Append(" --out \"").Append(_outDir.Text.Trim()).Append('"');
@@ -1193,8 +1222,9 @@ namespace JumpDrill.Gui
                 ApplyJumpModeRanges();
                 _jumpValue.Value = _settings.GetDecimal("jump.value", _jumpValue.Value, _jumpValue.Minimum, _jumpValue.Maximum);
 
-                _click.SelectedIndex = _settings.GetInt("click", 2, 0, _click.Items.Count - 1);
-                _countIn.Value = _settings.GetDecimal("countIn", 8, _countIn.Minimum, _countIn.Maximum);
+                _click = _settings.GetInt("click", 2, 0, ClickItems().Length - 1);
+                _clickTone = (int)ClickTones.FromIndex(_settings.GetInt("clickTone", 0, int.MinValue, int.MaxValue));
+                _countIn = _settings.GetDecimal("countIn", 8, 0, 32);
                 _tail.Value = _settings.GetDecimal("tail", 1.5m, _tail.Minimum, _tail.Maximum);
 
 
@@ -1285,8 +1315,9 @@ namespace JumpDrill.Gui
             _settings.Set("jump.mode", _jumpMode.SelectedIndex);
             _settings.Set("jump.value", _jumpValue.Value);
 
-            _settings.Set("click", _click.SelectedIndex);
-            _settings.Set("countIn", _countIn.Value);
+            _settings.Set("click", _click);
+            _settings.Set("clickTone", _clickTone);
+            _settings.Set("countIn", _countIn);
             _settings.Set("tail", _tail.Value);
 
 
@@ -1488,7 +1519,7 @@ namespace JumpDrill.Gui
             }
 
             options.Name = DrillNaming.Compose(options);
-            if (!_overwrite.Checked && File.Exists(Path.Combine(root, LevelWriter.SanitizeFolderName(options.Name), "Info.dat")))
+            if (!_overwrite.Checked && LevelWriter.Exists(root, options.Name))
             {
                 _status.Text = AlreadyExists;
                 return;
@@ -1534,7 +1565,37 @@ namespace JumpDrill.Gui
             }
         }
 
-        private static string AlreadyExists => Lang.T(
+        /// <summary>
+        /// 編集中の指定の譜面が出力先に既にあるか。名前はクリック音・カウントイン・末尾の余白に左右されないので、生成オプションの窓の前に分かる。
+        /// 指定や出力先が読めないときは false（窓の後の GenerateAsync で知らせる）。
+        /// </summary>
+        private bool CurrentDrillExists()
+        {
+            try
+            {
+                var options = BuildOptions(ToIntervalMs(_interval.Value));
+                return LevelWriter.Exists(ResolveOutputRoot(), DrillNaming.Compose(options));
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>この名前の譜面が今の出力先に既にあるか。出力先が読めないときは false。メダル画面から呼ぶ。</summary>
+        internal bool LevelExists(string name)
+        {
+            try
+            {
+                return LevelWriter.Exists(ResolveOutputRoot(), name);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        internal static string AlreadyExists => Lang.T(
             "既にあります。作り直すときは［上書き］にチェックを入れてください。",
             "Already exists. Check [Overwrite] to write it again.");
 
@@ -1565,7 +1626,7 @@ namespace JumpDrill.Gui
 
             // 1本だけなら、飛ばして黙って終わるより、既にあると知らせる
             if (!overwrite && entries.Count == 1 &&
-                File.Exists(Path.Combine(root, LevelWriter.SanitizeFolderName(entries[0].Options.Name), "Info.dat")))
+                LevelWriter.Exists(root, entries[0].Options.Name))
             {
                 report(AlreadyExists);
                 return false;
@@ -1672,6 +1733,7 @@ namespace JumpDrill.Gui
             var form = new MedalForm(CurrentWorkspace().Root, _settings, PreviewByName, OpenScoreboard, FollowScoreboard, GenerateSetAsync,
                 () => DrillLibrary.Find(CurrentWorkspace().Root, _outDir.Text.Trim(), _lastOutputFolder));
             form.WriteOptions = () => new LevelWriteOptions { ZipDirectory = _zip.Checked ? CurrentWorkspace().ZipFolder : null };
+            form.LevelExists = LevelExists;
             form.FormClosed += (s, e) => _medalForm = null;
             _medalForm = form;
             form.Show(this);

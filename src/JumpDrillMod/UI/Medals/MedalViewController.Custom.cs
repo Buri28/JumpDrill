@@ -109,7 +109,7 @@ namespace JumpDrillMod.UI.Medals
 
         [UIObject("drill-row")] private GameObject? drillRow = null;
 
-        /// <summary>選んでいるマスの曲名。カスタムでは行と列で、Other・All では ID で選んでいる。</summary>
+        /// <summary>選んでいるマスの曲名。カスタムでは行と列で、Other・All では曲名で選んでいる。</summary>
         private string? SelectedSongName()
         {
             if (mode == ViewMode.Custom)
@@ -117,8 +117,8 @@ namespace JumpDrillMod.UI.Medals
                 var row = SelectedRow();
                 return row != null && HasSelectedCell(row) ? row.Drills[selectedColumn] : null;
             }
-            return selectedId == null ? null
-                : ListRows.SelectMany(r => r.Cells).FirstOrDefault(c => c.Id == selectedId)?.SongName;
+            return selectedName == null ? null
+                : ListRows.SelectMany(r => r.Cells).FirstOrDefault(c => c.SongName == selectedName)?.SongName;
         }
 
         /// <summary>選んだドリルを同じ指定で作り直す。</summary>
@@ -131,26 +131,32 @@ namespace JumpDrillMod.UI.Medals
                 SetStatus("Pick a drill first.");
                 return;
             }
-            Rebuild(new[] { songName });
+            Rebuild(new[] { songName }, all: false);
         }
 
         /// <summary>いま出している表のドリルを全部、同じ指定で作り直す。</summary>
         [UIAction("drill-rebuild-all")]
-        public void RebuildAll() => Rebuild(ListRows.SelectMany(r => r.Cells).Select(c => c.SongName).ToList());
+        public void RebuildAll() => Rebuild(ListRows.SelectMany(r => r.Cells).Select(c => c.SongName).ToList(), all: true);
 
         /// <summary>
-        /// ドリルを作り直す（JumpDrill.Core の <c>DrillRebuild</c>）。同じ ID の譜面が置き場所ごとにあれば全部。
+        /// ドリルを作り直す（JumpDrill.Core の <c>DrillRebuild</c>）。同じ曲名の譜面が置き場所ごとにあれば全部。
+        /// 同じ ID でも曲名の違う譜面（NJS などだけ変えて作ったもの）は作り直さない。
         /// 生成の決まりを変えたあとで、今の決まりで書き直すのに使う。
         /// </summary>
-        private void Rebuild(IReadOnlyList<string> songNames)
+        /// <remarks>作り直す前に生成オプションの窓を出す。初期値は今の譜面の値（全件で違えば最初の1本の値）。</remarks>
+        private void Rebuild(IReadOnlyList<string> songNames, bool all)
         {
-            if (launcher == null || drillSet == null) return;
+            if (launcher == null || drillSet == null || IsGenerating()) return;
 
-            var folders = songNames
-                .Select(n => DrillNaming.ExtractId(n))
-                .Where(id => id != null)
+            var found = songNames
+                .Where(n => DrillNaming.ExtractId(n) != null)
                 .Distinct()
-                .SelectMany(id => launcher.FoldersOf(id!))
+                .Select(n => (name: n, folders: launcher.FoldersOf(n)))
+                .Where(f => f.folders.Count > 0)
+                .ToList();
+            var folders = found
+                .SelectMany(f => f.folders)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
             if (folders.Count == 0)
             {
@@ -158,8 +164,35 @@ namespace JumpDrillMod.UI.Medals
                 return;
             }
 
+            var initial = SoundSettings.Common(folders.Select(Services.DrillSetGenerationService.ReadSound), out bool differ);
+            string stageName = mode == ViewMode.Custom ? customName ?? "" : allDrills ? AllOption : OtherOption;
+            string target = all
+                ? string.Format(CultureInfo.InvariantCulture, "Target: {0} drill(s) in {1}", found.Count, NoParse(stageName))
+                : "Target: " + NoParse(DrillNaming.DisplayName(found[0].name));
+            string note = !all ? "Rebuilds with these values. Records are kept."
+                : differ ? "Values differ by drill. All are rebuilt with these values."
+                : "Rebuilds all with these values. Records are kept.";
+            float shownTail = Math.Max(0, Math.Min(10, (float)initial.TailSeconds));   // 窓が出す値（GenerationOptionsPrompt.Show と同じ）
+            generationOptions.Show(generationParent, target, all, initial.Click.ToString(), initial.Tone.ToString(),
+                initial.CountIn, (float)initial.TailSeconds,
+                (click, tone, countIn, tail) => RebuildNow(folders, new SoundSettings
+                {
+                    Click = (ClickMode)Enum.Parse(typeof(ClickMode), click),
+                    Tone = (ClickTone)Enum.Parse(typeof(ClickTone), tone),
+                    CountIn = countIn,
+                    // 窓の増減は float で 0.1 刻み。2.3 が 2.2999… にならないよう小数1桁にそろえる。
+                    // 欄を触っていなければ（0〜10 秒・0.1 刻みに入らない値でも）譜面の値のまま
+                    TailSeconds = Math.Abs(tail - shownTail) < 0.001f ? initial.TailSeconds : Math.Round(tail, 1),
+                }),
+                note, all ? "Rebuild all" : "Rebuild");
+        }
+
+        private void RebuildNow(IReadOnlyList<string> folders, SoundSettings sound)
+        {
+            if (drillSet == null || IsGenerating()) return;
+
             SetStatus("Rebuilding...");
-            drillSet.Rebuild(folders,
+            drillSet.Rebuild(folders, sound,
                 (done, total) => SetStatus(string.Format(CultureInfo.InvariantCulture, "Rebuilding... {0}/{1}", done, total)),
                 (ok, message, renamed) =>
                 {
@@ -193,7 +226,8 @@ namespace JumpDrillMod.UI.Medals
         {
             if (launcher == null || drillSet == null) return;
 
-            var folders = launcher.FoldersOf(id);
+            // 曲名で集める。ID だと、同じ ID の別の譜面（標準のステージのものなど）まで消してしまう
+            var folders = launcher.FoldersOf(songName);
             if (!bookBroken)
             {
                 bool changed = false;
@@ -204,7 +238,7 @@ namespace JumpDrillMod.UI.Medals
             }
 
             selectedColumn = -1;
-            selectedId = null;
+            SelectCell(null);
             SetStatus("Deleting the drill...");
             drillSet.Delete(folders, (ok, message) =>
             {
@@ -360,7 +394,7 @@ namespace JumpDrillMod.UI.Medals
             EvaluateOthers();
 
             // Other を開いたとき何も選んでいなければ、いちばん新しく作ったドリルを選んで見せる
-            if (mode == ViewMode.Other && (selectedId == null || !OtherCells.Any(c => c.Id == selectedId)) && RevealNewest())
+            if (mode == ViewMode.Other && (selectedName == null || !OtherCells.Any(c => c.SongName == selectedName)) && RevealNewest())
                 return;
             ApplyView();
         }

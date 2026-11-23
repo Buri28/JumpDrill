@@ -87,8 +87,21 @@ namespace JumpDrillMod.UI.Medals
         /// </summary>
         private List<MedalRow> otherRows = new List<MedalRow>();
 
-        /// <summary>選んでいるドリルの ID。Drill と Other で共通。</summary>
+        /// <summary>選んでいるドリルの ID。Drill と Other で共通。右の記録はこれで引く。</summary>
         private string? selectedId;
+
+        /// <summary>
+        /// 選んでいるドリルの曲名。Play・作り直し・削除はこれで譜面を引く。
+        /// ID だけだと、NJS などだけ変えて作った同じ ID の別の譜面と取り違える。
+        /// </summary>
+        private string? selectedName;
+
+        /// <summary>マスを選ぶ。ID（記録）と曲名（譜面）を一緒に持つ。</summary>
+        private void SelectCell(MedalCell? cell)
+        {
+            selectedId = cell?.Id;
+            selectedName = cell?.SongName;
+        }
 
         /// <summary>Other の何ページ目か。</summary>
         private int otherPage;
@@ -181,7 +194,7 @@ namespace JumpDrillMod.UI.Medals
             string width = TableWidth.ToString(CultureInfo.InvariantCulture);
 
             // 幅は表の幅に合わせる。広く取ると上の総合と下の内訳が端へ散る
-            sb.Append("<bg><vertical pref-width='").Append(width)
+            sb.Append("<bg id='generation-parent'><vertical pref-width='").Append(width)
               .Append("' spacing='0.3' pad='2' child-expand-height='false' child-align='UpperCenter'>");
 
             // 総合と切り替え。2段に分ける。
@@ -316,7 +329,7 @@ namespace JumpDrillMod.UI.Medals
             sb.Append(" hover-hint='Generate all 112 drills (14 directions x 8 stages).'/>");
             // toggle-setting は文字を左端、スイッチを右端に置くので、幅を詰めて間を空けすぎないようにする
             sb.Append("<horizontal pref-width='26'>");
-            sb.Append("<toggle-setting text='Overwrite' value='overwrite' apply-on-change='true' get-event='overwrite-reset'");
+            sb.Append("<toggle-setting text='Overwrite' value='overwrite' apply-on-change='true' get-event='overwrite-get'");
             sb.Append(" hover-hint='Off: drills that already exist are skipped. On: they are written again. Records are kept.'/>");
             sb.Append("</horizontal>");
             sb.Append("</horizontal>");
@@ -543,7 +556,7 @@ namespace JumpDrillMod.UI.Medals
                         LoadOthers();
 
                         // 選んでいた Other のドリルが消えていたら選び直させる
-                        if (selectedId != null && !IsListed(selectedId)) selectedId = null;
+                        if (selectedName != null && !IsListed(selectedName)) SelectCell(null);
 
                         if (revealPending)
                         {
@@ -636,7 +649,7 @@ namespace JumpDrillMod.UI.Medals
                 RefreshDropdown();
             }
             otherPage = index / OtherRows;
-            selectedId = otherRows[index].Cells.First(c => c.SongName == justMade[0]).Id;
+            SelectCell(otherRows[index].Cells.First(c => c.SongName == justMade[0]));
             ApplyView();
             onSelect?.Invoke(selectedId);
             return true;
@@ -659,10 +672,10 @@ namespace JumpDrillMod.UI.Medals
 
         private IEnumerable<MedalCell> OtherCells => otherRows.SelectMany(r => r.Cells);
 
-        private bool IsListed(string id)
+        private bool IsListed(string songName)
         {
-            return rows.Any(r => r.Cells.Any(c => c.Id == id)) || OtherCells.Any(c => c.Id == id) ||
-                   customRows.Any(r => r.Cells.Any(c => c.Id == id));
+            return rows.Any(r => r.Cells.Any(c => c.SongName == songName)) || OtherCells.Any(c => c.SongName == songName) ||
+                   customRows.Any(r => r.Cells.Any(c => c.SongName == songName));
         }
 
         /// <summary>真ん中の下の表（Other かカスタムステージ）に出している行。</summary>
@@ -718,7 +731,7 @@ namespace JumpDrillMod.UI.Medals
         {
             if (row >= rows.Count || column >= rows[row].Cells.Count) return;
 
-            selectedId = rows[row].Cells[column].Id;
+            SelectCell(rows[row].Cells[column]);
             Fill();
             onSelect?.Invoke(selectedId);
         }
@@ -738,7 +751,7 @@ namespace JumpDrillMod.UI.Medals
 
             if (index >= list.Count || column >= list[index].Cells.Count) return;
 
-            selectedId = list[index].Cells[column].Id;
+            SelectCell(list[index].Cells[column]);
             selectedRow = index;
             selectedColumn = column;
             Fill();
@@ -764,7 +777,7 @@ namespace JumpDrillMod.UI.Medals
         }
 
         /// <summary>
-        /// 開くたびに Overwrite を外す。ビューは使い回すので、外さないと前に開いたときのままになる。
+        /// 開くたびに Overwrite の表示を設定に合わせる（値は設定に残し、外さない）。
         /// </summary>
         protected override void DidActivate(bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling)
         {
@@ -778,8 +791,7 @@ namespace JumpDrillMod.UI.Medals
 
             if (firstActivation) return;
 
-            Overwrite = false;
-            parserParams?.EmitEvent("overwrite-reset");
+            parserParams?.EmitEvent("overwrite-get");
         }
 
         protected override void DidDeactivate(bool removedFromHierarchy, bool screenSystemDisabling)
@@ -831,12 +843,37 @@ namespace JumpDrillMod.UI.Medals
             if (parserParams != null) Fill();
         }
 
+        [UIObject("generation-parent")] private GameObject? generationParent = null;
+        private readonly GenerationOptionsPrompt generationOptions = new GenerationOptionsPrompt();
+
+        private void ShowGenerationOptions(string target, bool all, Action generate)
+        {
+            var config = PluginConfig.Instance;
+            if (config == null) return;
+            string click = DrillSetGenerationService.StandardClick.ToString();
+            string tone = DrillSetGenerationService.StandardTone.ToString();
+            int countIn = DrillSetGenerationService.StandardCountIn;
+            generationOptions.Show(generationParent, target, all, click, tone, countIn, DrillSetGenerationService.StandardTail,
+                (chosenClick, chosenTone, chosenCountIn, tail) =>
+                {
+                    if (chosenClick != click) config.StandardClick = chosenClick;
+                    if (chosenTone != tone) config.StandardClickTone = chosenTone;
+                    if (chosenCountIn != countIn) config.StandardCountIn = chosenCountIn;
+                    if (tail != config.StandardTailSeconds) config.StandardTailSeconds = tail;
+                    generate();
+                });
+        }
+
         /// <summary>
         /// 既にあるものを書き直すか。既定は書き直さない（足りない分だけ作る）。
-        /// 設定には残さない。上書きは作り方が変わった版を入れたときにだけ要るので、開くたびに外しておく。
+        /// 選んだ値は設定（<c>StandardOverwrite</c>）に残す。生成・プレイの後も、起動し直しても変わらない。
         /// </summary>
         [UIValue("overwrite")]
-        public bool Overwrite { get; set; }
+        public bool Overwrite
+        {
+            get => PluginConfig.Instance?.StandardOverwrite ?? false;
+            set { if (PluginConfig.Instance != null) PluginConfig.Instance.StandardOverwrite = value; }
+        }
 
         /// <summary>
         /// ドリルセット（14方向 × 8段）を全部書く。GUI の「ドリル一括生成」と同じもの。
@@ -848,17 +885,25 @@ namespace JumpDrillMod.UI.Medals
         /// 書き終えたら曲一覧が読み直されるので、そのあとで表も読み直す（Play が通るようになる）。
         /// </remarks>
         [UIAction("generate-all")]
-        public void GenerateAll() => GenerateSet(Overwrite);
+        public void GenerateAll()
+        {
+            bool overwrite = Overwrite;
+            if (drillSet == null || IsGenerating()) return;
+            ShowGenerationOptions("Target: all 112 standard drills", true, () => GenerateSet(overwrite));
+        }
+
+        private bool IsGenerating()
+        {
+            if (drillSet?.IsRunning != true) return false;
+            SetStatus("Already generating...");
+            return true;
+        }
 
         private void GenerateSet(bool overwrite)
         {
             if (drillSet == null) return;
 
-            if (drillSet.IsRunning)
-            {
-                SetStatus("Already generating...");
-                return;
-            }
+            if (IsGenerating()) return;
 
             SetStatus(string.Format(CultureInfo.InvariantCulture,
                 "Generating drills... 0/{0}", DrillSetGenerationService.Total));
@@ -875,31 +920,38 @@ namespace JumpDrillMod.UI.Medals
 
         /// <summary>選んでいる1本を書く。ドリルセットのものだけ（Other は作った設定が分からない）。</summary>
         [UIAction("generate-selected")]
-        public void GenerateSelected() => GenerateOne(Overwrite);
-
-        private void GenerateOne(bool overwrite)
+        public void GenerateSelected()
         {
+            bool overwrite = Overwrite;
             if (drillSet == null) return;
 
-            if (selectedId == null)
+            if (selectedName == null)
             {
                 SetStatus("Pick a drill first.");
                 return;
             }
 
-            var entry = SetEntry(selectedId);
+            var entry = SetEntry(selectedName);
             if (entry == null)
             {
                 SetStatus("Only drills in the table can be generated.");
                 return;
             }
 
-            if (drillSet.IsRunning)
+            if (IsGenerating()) return;
+            // 上書きしないなら、窓で選ばせる前に知らせる（選んだ後で何も書かれないと、効かなかったように見える）
+            if (!overwrite && launcher != null && !SongCore.Loader.AreSongsLoading && !launcher.IsMissing(entry.Options.Name))
             {
-                SetStatus("Already generating...");
+                SetStatus("This drill already exists. Turn on Overwrite to write it again.");
                 return;
             }
+            ShowGenerationOptions($"Target: {entry.Direction} / Stage {entry.Stage} / {entry.Bpm:0.#} BPM", false,
+                () => GenerateOne(entry, overwrite));
+        }
 
+        private void GenerateOne(DrillSetEntry entry, bool overwrite)
+        {
+            if (drillSet == null || IsGenerating()) return;
             // 曲一覧の読み込み中は、譜面があるか分からない
             if (SongCore.Loader.AreSongsLoading)
             {
@@ -907,7 +959,7 @@ namespace JumpDrillMod.UI.Medals
                 return;
             }
 
-            if (!overwrite && launcher != null && !launcher.IsMissing(selectedId))
+            if (!overwrite && launcher != null && !launcher.IsMissing(entry.Options.Name))
             {
                 SetStatus("This drill already exists. Turn on Overwrite to write it again.");
                 return;
@@ -931,17 +983,20 @@ namespace JumpDrillMod.UI.Medals
         [UIAction("play")]
         public void Play()
         {
-            if (selectedId == null)
+            if (selectedName == null)
             {
                 SetStatus("Pick a drill first.");
                 return;
             }
 
-            string id = selectedId;
-            var entry = SetEntry(id);
-            if (entry == null || drillSet == null || launcher == null || !launcher.IsMissing(id))
+            // 曲名で始める。ID で引くと、同じ ID の別の譜面（NJS などだけ変えて作ったもの）を始めてしまう
+            string picked = selectedName;
+            // 標準のステージの1本は今の名前で扱う（カスタムステージに古い書き方の名前で残っていることがある）
+            string name = DrillSet.FindStandard(picked)?.Options.Name ?? picked;
+            var entry = SetEntry(name);
+            if (entry == null || drillSet == null || launcher == null || !launcher.IsMissing(name))
             {
-                onPlay?.Invoke(id);
+                onPlay?.Invoke(name);
                 return;
             }
 
@@ -954,10 +1009,10 @@ namespace JumpDrillMod.UI.Medals
             SetStatus("Generating the drill...");
             drillSet.StartOne(entry, overwrite: false, (ok, message) =>
             {
-                if (ok && isActivated && selectedId == id)
+                if (ok && isActivated && selectedName == picked)
                 {
                     SetStatus(string.Empty);
-                    onPlay?.Invoke(id);
+                    onPlay?.Invoke(name);
                     return;
                 }
 
@@ -965,10 +1020,10 @@ namespace JumpDrillMod.UI.Medals
             });
         }
 
-        /// <summary>ドリルセットの1本。ドリルセットの ID でなければ null。</summary>
-        private DrillSetEntry? SetEntry(string id)
+        /// <summary>ドリルセットの1本。標準のステージの曲名でなければ null（同じ ID の別の譜面も null）。</summary>
+        private DrillSetEntry? SetEntry(string songName)
         {
-            return rows.SelectMany(r => r.Cells).FirstOrDefault(c => c.Id == id)?.Entry;
+            return rows.SelectMany(r => r.Cells).FirstOrDefault(c => c.SongName == songName)?.Entry;
         }
 
         // ───────── 塗り ─────────
@@ -1015,7 +1070,7 @@ namespace JumpDrillMod.UI.Medals
                     if (!cells.TryGetValue(Key(r, c), out text)) continue;
 
                     var cell = row.Cells[c];
-                    Paint(text, cell.BestPercent, cell.Id == selectedId, center: true, label: null);
+                    Paint(text, cell.BestPercent, cell.SongName == selectedName, center: true, label: null);
                 }
             }
         }
@@ -1094,7 +1149,7 @@ namespace JumpDrillMod.UI.Medals
                     }
 
                     var cell = row.Cells[c];
-                    bool picked = custom ? index == selectedRow && c == selectedColumn : cell.Id == selectedId;
+                    bool picked = custom ? index == selectedRow && c == selectedColumn : cell.SongName == selectedName;
                     Paint(text, cell.BestPercent, picked, center: true, label: null);
                 }
             }
@@ -1166,7 +1221,7 @@ namespace JumpDrillMod.UI.Medals
             var medal = played ? DrillSetMedals.MedalOf(bestValue) : Medal.None;
             string medalText = medal == Medal.None ? string.Empty : "  " + medal;
 
-            var cell = rows.SelectMany(r => r.Cells).FirstOrDefault(c => c.Id == selectedId);
+            var cell = rows.SelectMany(r => r.Cells).FirstOrDefault(c => c.SongName == selectedName);
             if (cell != null)
             {
                 var entry = cell.Entry;
@@ -1177,7 +1232,7 @@ namespace JumpDrillMod.UI.Medals
                 return;
             }
 
-            var other = OtherCells.Concat(customRows.SelectMany(r => r.Cells)).FirstOrDefault(c => c.Id == selectedId);
+            var other = OtherCells.Concat(customRows.SelectMany(r => r.Cells)).FirstOrDefault(c => c.SongName == selectedName);
             detail.text = other == null
                 ? string.Empty
                 : string.Format(ci, "{0}{1}   {2}{3}", justMade.Contains(other.SongName) ? "<color=#E0B060>NEW</color>  " : string.Empty,

@@ -81,7 +81,8 @@ namespace JumpDrillMod.Services
 
                 var map = new Dictionary<string, string>(StringComparer.Ordinal);
                 foreach (var level in levels.DrillLevels())
-                    if (!string.IsNullOrEmpty(level.Folder)) map[level.Id] = level.Folder;
+                    // 同じ ID の譜面が複数あれば先に見つけた方（専用パック）。ノーツ数を数えるだけなので、どれでも同じ数になる
+                    if (!string.IsNullOrEmpty(level.Folder) && !map.ContainsKey(level.Id)) map[level.Id] = level.Folder;
                 levelFolders = map;
             }
             catch (Exception e)

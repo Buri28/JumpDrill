@@ -5,7 +5,7 @@
     1. Drill                      ドリルセット（一括生成もその中）。押し間違えないよう右端
     2. 遷移の表示と Generate       いま組んでいるドリルと、それを書き出すボタン
     3. 状態の1行
-    4. タブ（Transition / Hand & Direction / Timing / Click）
+    4. タブ（Transition / Hand & Direction / Timing / Replays）
 
   スクロールさせずにタブで分けてある。設定を1列に積むと縦に収まらず、
   下の項目がスクロールの外に隠れて探しにくい。タブの中身は、どのタブも枠の高さに収まる量にしてある。
@@ -19,7 +19,7 @@
     - 幅は 100〜110
   タブまわりの寸法は LRCounter（この Mods タブで正常に出ているもの）に合わせてある。
 -->
-<bg>
+<bg id='generation-parent'>
   <vertical spacing='0.5' pad='1' align='TopCenter' pref-width='110'>
 
     <!-- ───── ドリルセット ─────
@@ -179,23 +179,6 @@
                              integer-only='true'
                              min='0' max='50' increment='5'
                              hover-hint='Shortens the gap to the next note by this share of the interval, and widens the gap after that by the same amount (notes 1-2 closer, 2-3 farther). 0 is off. Two-point transitions only.'/>
-        </vertical>
-      </tab>
-
-      <tab tags='jd-tabs' tab-name='Click'>
-        <vertical spacing='0.5' pad='1' pref-width='104' child-expand-height='false' child-align='UpperCenter'>
-          <list-setting text='Click'
-                        value='click'
-                        options='click-options'
-                        apply-on-change='true' get-event='jd-get'
-                        hover-hint='Which notes the click sounds on. Down is the standard.'/>
-
-          <increment-setting text='Count-in'
-                             value='count-in'
-                             apply-on-change='true' get-event='jd-get'
-                             integer-only='true'
-                             min='0' max='16' increment='1'
-                             hover-hint='Clicks before the first note.'/>
         </vertical>
       </tab>
 

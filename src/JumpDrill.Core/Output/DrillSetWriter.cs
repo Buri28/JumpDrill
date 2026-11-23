@@ -20,7 +20,7 @@ namespace JumpDrill.Output
         /// <param name="progress">1本書くごとに（書いた数, 全体の数, 譜面名）で呼ぶ。</param>
         /// <param name="skipExisting">
         /// Info.dat が既にあるマスは書き直さない。ID は設定から決まるので、
-        /// 同じ名前のフォルダがあれば中身も同じ。途中で止めた続きから再開できる。
+        /// 同じ名前のフォルダがあれば中身もクリック音とカウントインのほかは同じ。途中で止めた続きから再開できる。
         /// </param>
         public static List<string> WriteAll(string root, LevelWriteOptions options,
             Action<int, int, string> progress = null, bool skipExisting = false)

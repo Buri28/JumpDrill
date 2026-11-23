@@ -31,7 +31,22 @@ namespace JumpDrill.Generation
         /// </summary>
         public static List<ClickPlanEntry> Plan(IReadOnlyList<IReadOnlyList<DrillNote>> notesByStep, ClickMode mode)
         {
+            return Plan(notesByStep, mode, 1, BeatsPerBar, notesByStep.Count);
+        }
+
+        /// <summary>小節の長さ（拍）。粒度 Beat の強拍の間隔。</summary>
+        public const int BeatsPerBar = 4;
+
+        /// <param name="stepsPerBeat">1拍あたりのステップ数（粒度 Beat だけが使う）。</param>
+        /// <param name="stepsPerBar">1小節のステップ数（粒度 Beat だけが使う）。</param>
+        /// <param name="stepsPerBlock">1ブロックのステップ数。粒度 Beat は拍をブロックの頭から数える。</param>
+        public static List<ClickPlanEntry> Plan(IReadOnlyList<IReadOnlyList<DrillNote>> notesByStep, ClickMode mode,
+            int stepsPerBeat, int stepsPerBar, int stepsPerBlock)
+        {
             var result = new List<ClickPlanEntry>();
+            if (stepsPerBeat < 1) stepsPerBeat = 1;
+            if (stepsPerBar < 1) stepsPerBar = 1;
+            if (stepsPerBlock < 1) stepsPerBlock = 1;
 
             for (int step = 0; step < notesByStep.Count; step++)
             {
@@ -58,6 +73,16 @@ namespace JumpDrill.Generation
                     case ClickMode.Every4:
                         if (step % 4 == 0) result.Add(new ClickPlanEntry(step, false));
                         break;
+
+                    case ClickMode.Beat:
+                        {
+                            // 小節の頭は強拍、拍の頭はふつう、拍の間は弱く
+                            int inBlock = step % stepsPerBlock;
+                            bool bar = inBlock % stepsPerBar == 0;
+                            bool beat = inBlock % stepsPerBeat == 0;
+                            result.Add(new ClickPlanEntry(step, bar, !beat));
+                            break;
+                        }
                 }
             }
 
@@ -70,10 +95,17 @@ namespace JumpDrill.Generation
         public int StepIndex { get; }
         public bool Accent { get; }
 
+        /// <summary>弱く鳴らすか（粒度 Beat の拍の間）。</summary>
+        public bool Weak { get; }
+
         public ClickPlanEntry(int stepIndex, bool accent)
+            : this(stepIndex, accent, false) { }
+
+        public ClickPlanEntry(int stepIndex, bool accent, bool weak)
         {
             StepIndex = stepIndex;
             Accent = accent;
+            Weak = weak && !accent;
         }
     }
 }

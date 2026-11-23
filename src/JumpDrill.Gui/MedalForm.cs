@@ -144,6 +144,9 @@ namespace JumpDrill.Gui
         /// <summary>いま出している表の行。すべて再作成で使う。</summary>
         private List<MedalRow> _shownRows = new List<MedalRow>();
 
+        /// <summary>この名前の譜面が出力先に既にあるか。上書きしない1本の生成で、生成オプションの窓を出す前に見る。無ければ見ない。</summary>
+        internal Func<string, bool> LevelExists { get; set; }
+
         /// <summary>再作成で書くときの指定（メイン画面の「zip も出す」など）。無ければ既定。</summary>
         internal Func<LevelWriteOptions> WriteOptions { get; set; }
 
@@ -261,13 +264,13 @@ namespace JumpDrill.Gui
             {
                 var cell = _board.Selected;
                 if (cell == null) return;
-                if (IsStandard) { if (cell.Entry != null) await Generate(new[] { cell.Entry }); }
+                if (IsStandard) { if (cell.Entry != null) await GenerateWithOptions(cell.Entry); }
                 else await Rebuild(new[] { cell.SongName });
             };
             _generateAll.Click += async (s, e) =>
             {
-                if (IsStandard) await Generate(DrillSet.All());
-                else await Rebuild(_shownRows.SelectMany(r => r.Cells).Select(c => c.SongName).ToList());
+                if (IsStandard) await GenerateWithOptions(null);
+                else await Rebuild(_shownRows.SelectMany(r => r.Cells).Select(c => c.SongName).ToList(), all: true);
             };
             _tips.SetToolTip(_preview, Lang.T("選んだマスの譜面を ArcViewer で開きます。", "Opens the selected map in ArcViewer."));
             _tips.SetToolTip(_generate, Lang.T("選んだマスの譜面を出力先に作成します。", "Writes the selected map to the output folder."));
@@ -969,6 +972,37 @@ namespace JumpDrill.Gui
             UpdateButtons();
         }
 
+        /// <summary>標準のステージを作るときのクリック音。</summary>
+        private async Task GenerateWithOptions(DrillSetEntry entry)
+        {
+            bool all = entry == null;
+            string target = all ? Lang.T("標準の全112曲", "All 112 standard drills")
+                : $"{entry.Direction} / Stage {entry.Stage} / {entry.Bpm:0.#} BPM";
+            // 作れないと分かっているのに窓を出さない。クリック音などは名前に入らないので窓の前に分かる。
+            // 書く前（GenerateSetAsync）でも同じ判定をする。すべて生成は無いものだけ作るので見ない
+            if (!all && !_overwrite.Checked && LevelExists != null && LevelExists(entry.Options.Name))
+            {
+                _status.Text = MainForm.AlreadyExists;
+                return;
+            }
+            using var options = new GenerationOptionsForm(target, all,
+                _settings.GetInt("medalClick", (int)ClickMode.Down, 0, MainForm.ClickItems().Length - 1),
+                (int)ClickTones.FromIndex(_settings.GetInt("medalClickTone", 0, int.MinValue, int.MaxValue)),
+                _settings.GetDecimal("medalCountIn", 8, 0, 32),
+                _settings.GetDecimal("medalTail", 1.5m, 0, 10));
+            if (options.ShowDialog(this) != DialogResult.OK) return;
+
+            _settings.Set("medalClick", options.ClickIndex);
+            _settings.Set("medalClickTone", options.Tone);
+            _settings.Set("medalCountIn", options.CountIn);
+            _settings.Set("medalTail", options.Tail);
+            var click = (ClickMode)options.ClickIndex;
+            var tone = (ClickTone)options.Tone;
+            int countIn = (int)options.CountIn;
+            if (all) await Generate(DrillSet.All(click, countIn, tone, (double)options.Tail));
+            else await Generate(new[] { entry.WithClick(click, countIn, tone, (double)options.Tail) });
+        }
+
         private void UpdateButtons()
         {
             var cell = _board.Selected;
@@ -1070,10 +1104,49 @@ namespace JumpDrill.Gui
         }
 
         /// <summary>
+        /// 作り直す前の生成オプションの窓。キャンセルなら null（何も書かない）。
+        /// 窓に無い設定（形・BPM・NJS など）は、作り直すときにそれぞれの譜面から読む。
+        /// </summary>
+        private SoundSettings ChooseRebuildSound(IReadOnlyList<DrillLibrary.DrillLevel> copies, bool all)
+        {
+            var current = new List<SoundSettings>();
+            foreach (var copy in copies)
+            {
+                try { current.Add(SoundSettings.Of(DrillRebuild.Read(copy.Path))); }
+                catch (Exception) { }   // 読めない譜面は作り直しでも失敗として出る
+            }
+            var initial = SoundSettings.Common(current, out bool differ);
+
+            int drills = copies.Select(c => c.SongName).Distinct(StringComparer.Ordinal).Count();
+            string target = all
+                ? string.Format(CultureInfo.CurrentCulture, Lang.T("{0}（{1} 本）", "{0} ({1} drills)"), _stagePicker.SelectedItem, drills)
+                : DrillNaming.DisplayName(copies[0].SongName);
+            string note = !all ? Lang.T("選んだ値で作り直します。記録は消えません。", "Rebuilds with these values. Records are kept.")
+                : differ ? Lang.T("ドリルごとに値が違います。選んだ値で全部を作り直します。", "The drills have different values. All are rebuilt with these values.")
+                : Lang.T("選んだ値で全部を作り直します。記録は消えません。", "All are rebuilt with these values. Records are kept.");
+
+            using var options = new GenerationOptionsForm(target, all,
+                Math.Max(0, Math.Min(MainForm.ClickItems().Length - 1, (int)initial.Click)),
+                Math.Max(0, Math.Min(MainForm.ClickToneItems().Length - 1, (int)initial.Tone)),
+                initial.CountIn, (decimal)initial.TailSeconds,
+                note, all ? Lang.T("すべて再作成", "Rebuild all") : Lang.T("再作成", "Rebuild"));
+            if (options.ShowDialog(this) != DialogResult.OK) return null;
+            return new SoundSettings
+            {
+                Click = (ClickMode)options.ClickIndex,
+                Tone = (ClickTone)options.Tone,
+                CountIn = (int)options.CountIn,
+                // 窓の欄（0〜10 秒・小数1桁）に入らない値は、欄を触っていなければ譜面の値のまま
+                TailSeconds = options.Tail == options.InitialTail ? initial.TailSeconds : (double)options.Tail,
+            };
+        }
+
+        /// <summary>
         /// ドリルを同じ指定で作り直す（JumpDrill.Core の <c>DrillRebuild</c>）。同じ曲名の譜面が置き場所ごとにあれば全部。
         /// 生成の決まりを変えたあとで、今の決まりで書き直すのに使う。名前と ID は変わらないので記録はそのまま。
         /// </summary>
-        private async Task Rebuild(IReadOnlyList<string> songNames)
+        /// <param name="all">「すべて再作成」から（窓に表の名前と本数を出す）。</param>
+        private async Task Rebuild(IReadOnlyList<string> songNames, bool all = false)
         {
             if (_generating || _findDrills == null) return;
 
@@ -1091,11 +1164,9 @@ namespace JumpDrill.Gui
                 return;
             }
 
-            if (names.Count > 1 && MessageBox.Show(this,
-                    string.Format(CultureInfo.CurrentCulture, Lang.T(
-                        "{0} 本のドリルを同じ指定で作り直します。記録は消えません。",
-                        "Rebuild {0} drills with the same settings? Records are kept."), names.Count),
-                    "JumpDrill", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            // 作り直す前に生成オプションの窓を出す。初期値は今の譜面の値（全件で違えば最初の1本の値）
+            var sound = ChooseRebuildSound(copies, all);
+            if (sound == null) return;
 
             _generating = true;
             _generate.Enabled = false;
@@ -1118,7 +1189,7 @@ namespace JumpDrill.Gui
                             i + 1, copies.Count, DrillNaming.DisplayName(copies[i].SongName)));
                         try
                         {
-                            var result = DrillRebuild.Rewrite(copies[i].Path, zipped.Add(copies[i].SongName) ? write : noZip);
+                            var result = DrillRebuild.Rewrite(copies[i].Path, zipped.Add(copies[i].SongName) ? write : noZip, sound);
                             if (result.Renamed) lock (renamed) renamed[result.OldName] = result.NewName;
                         }
                         catch (Exception ex) { failures.Add(DrillNaming.DisplayName(copies[i].SongName) + ": " + ex.Message); }

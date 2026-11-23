@@ -15,6 +15,8 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using ScoreFormat = JumpDrill.Replays.ScoreFormat;
+using RoomFacing = JumpDrill.Replays.RoomFacing;
+using RoomPlacement = JumpDrill.Replays.RoomPlacement;
 
 namespace JumpDrillMod.UI.Leaderboard
 {
@@ -286,6 +288,7 @@ namespace JumpDrillMod.UI.Leaderboard
         [UIComponent("order-dropdown")] private DropDownListSetting? orderDropdown = null;
         [UIComponent("stroke-dropdown")] private DropDownListSetting? strokeDropdown = null;
         [UIComponent("room-dropdown")] private DropDownListSetting? roomDropdown = null;
+        [UIComponent("facing-dropdown")] private DropDownListSetting? facingDropdown = null;
         [UIComponent("size-dropdown")] private DropDownListSetting? sizeDropdown = null;
 
         [UIValue("order-options")]
@@ -393,7 +396,31 @@ namespace JumpDrillMod.UI.Leaderboard
                 room.Hide(this);
                 return;
             }
-            room.Show(this, score.ReplayPath, OnlyForehand, RoomForward, Hitbox, MeanOnly);
+            room.Show(this, score.ReplayPath, OnlyForehand, RoomForward, Hitbox, MeanOnly, Facing);
+        }
+
+        private const string FacingFront = "Front";
+        private const string FacingLeft = "Left";
+
+        private static RoomFacing Facing => RoomPlacement.Parse(PluginConfig.Instance?.DiagramRoomFacing);
+
+        [UIValue("facing-options")]
+        public List<object> FacingOptions => new List<object> { FacingFront, FacingLeft };
+
+        [UIValue("facing")]
+        public string FacingLabel
+        {
+            get => Facing == RoomFacing.LeftPanel ? FacingLeft : FacingFront;
+            set { }
+        }
+
+        /// <summary>空間の振りを正面に出すか、左パネルの方に出すか。今どちらかが分かるようにプルダウンにする。</summary>
+        [UIAction("facing-changed")]
+        public void FacingChanged(object value)
+        {
+            var facing = value as string == FacingLeft ? RoomFacing.LeftPanel : RoomFacing.Front;
+            if (PluginConfig.Instance != null) PluginConfig.Instance.DiagramRoomFacing = RoomPlacement.ToSetting(facing);
+            UpdateRoom();
         }
 
         private const string StrokeBoth = "Fore + back";
@@ -525,6 +552,9 @@ namespace JumpDrillMod.UI.Leaderboard
             RankSetting.Changed += Rerank;
             if (rankedMetric != RankSetting.Current) Rerank();
 
+            // 3D の置き場所・向きは曲選択の枠と Jump Drill 画面の両方にあるので、もう片方で変えた値に合わせる
+            roomDropdown?.ReceiveValue();
+            facingDropdown?.ReceiveValue();
             UpdateRoom();
         }
 
@@ -854,7 +884,7 @@ namespace JumpDrillMod.UI.Leaderboard
         {
             CreateUnderlines();
             CreateFigureLabels();
-            foreach (var setting in new[] { strokeDropdown, roomDropdown, sizeDropdown }) FitToFrame(setting);
+            foreach (var setting in new[] { strokeDropdown, roomDropdown, facingDropdown, sizeDropdown }) FitToFrame(setting);
 
             // 枠に出ているのがこのビューかどうかは画面からは分かりにくい。
             // 出るはずのときに出ていない、を切り分けられるようにしておく

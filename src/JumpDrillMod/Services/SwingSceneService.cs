@@ -90,9 +90,13 @@ namespace JumpDrillMod.Services
         /// <param name="owner">出す側（リーダーボード）。消すときは出した側だけが消せる（<see cref="Hide(object)"/>）。</param>
         /// <param name="hitbox">ノーツを当たり判定の大きさで置くか。</param>
         /// <param name="meanOnly">平均の振りだけを出すか。false なら1本1本の振りも薄く出す（図の ALL SWINGS と同じ）。</param>
-        internal void Show(object owner, string? replayPath, bool? onlyForehand, float forward = 0f, bool hitbox = false, bool meanOnly = true)
+        /// <param name="facing">正面に置くか、左パネルの方へ回して置くか。</param>
+        internal void Show(object owner, string? replayPath, bool? onlyForehand, float forward = 0f, bool hitbox = false, bool meanOnly = true,
+                           RoomFacing facing = RoomFacing.Front)
         {
             this.owner = owner;
+            this.forward = forward;
+            this.facing = facing;
             if (string.IsNullOrEmpty(replayPath))
             {
                 Hide();
@@ -105,8 +109,8 @@ namespace JumpDrillMod.Services
             var box = hitbox ? NoteBox.Hitbox : NoteBox.Visual;
             if (root != null && key == shownKey)
             {
-                // ずらす量だけ変わったときは、置き直さずに動かす
-                root.transform.position = new UVector3(0f, 0f, forward);
+                // ずらす量・向きだけ変わったときは、置き直さずに動かす
+                ApplyPose();
                 return;
             }
 
@@ -118,7 +122,7 @@ namespace JumpDrillMod.Services
             SwingScene? cached;
             if (TryCached(replayPath!, out cached))
             {
-                Place(key, cached, onlyForehand, forward, box, meanOnly);
+                Place(key, cached, onlyForehand, box, meanOnly);
                 return;
             }
 
@@ -128,11 +132,11 @@ namespace JumpDrillMod.Services
                 var scene = task.IsFaulted ? null : task.Result;
                 Remember(path, scene);
                 // 読んでいる間に別の記録を選んだ・消したなら置かない
-                if (pendingKey == key) Place(key, scene, onlyForehand, forward, box, meanOnly);
+                if (pendingKey == key) Place(key, scene, onlyForehand, box, meanOnly);
             }, UnityMainThreadTaskScheduler.Default);
         }
 
-        private void Place(string key, SwingScene? scene, bool? onlyForehand, float forward, NoteBox box, bool meanOnly)
+        private void Place(string key, SwingScene? scene, bool? onlyForehand, NoteBox box, bool meanOnly)
         {
             pendingKey = null;
             if (scene == null || scene.Means.Count == 0) return;
@@ -142,14 +146,109 @@ namespace JumpDrillMod.Services
                 // 読み込みを2回頼んで2回とも置きに来たときに、前のものを残さない
                 ClearPlaced();
                 root = new GameObject("JumpDrillSwingScene");
-                root.transform.position = new UVector3(0f, 0f, forward);
+                farZ = float.NaN;
                 Build(root.transform, scene, onlyForehand, box, meanOnly);
                 shownKey = key;
+                ApplyPose();
             }
             catch (Exception e)
             {
                 Plugin.Log?.Error("could not place the swings in the room: " + e);
                 Hide();
+            }
+        }
+
+        /// <summary>頼まれた前へのずらし量 (m) と向き。</summary>
+        private float forward;
+        private RoomFacing facing = RoomFacing.Front;
+
+        /// <summary>置いたものの奥の端（ずらす前の Z、m）。左パネルに重ならないよう、ずらす量を抑えるのに使う。</summary>
+        private float farZ = float.NaN;
+
+        /// <summary>
+        /// 頼まれた位置・向きに置き直す。左パネル側は、左の画面（ScreenSystem.leftScreen）の位置と向きをその都度読んで合わせる。
+        /// 左の画面が見つからなければ正面に置く。
+        /// </summary>
+        private void ApplyPose()
+        {
+            if (root == null) return;
+            float? panelX = null, panelZ = null, panelYaw = null;
+            if (facing == RoomFacing.LeftPanel)
+            {
+                // 画面の切り替えの途中などで読めなければ、最後に読めた位置を使う（黙って正面に置かない）
+                if (TryLeftPanel(out var panelAt, out float yaw)) lastPanel = (panelAt.x, panelAt.z, yaw);
+                if (lastPanel.HasValue)
+                {
+                    panelX = lastPanel.Value.X;
+                    panelZ = lastPanel.Value.Z;
+                    panelYaw = lastPanel.Value.Yaw;
+                }
+            }
+            var pose = RoomPlacement.Place(forward, facing, panelX, panelZ, panelYaw, farZ);
+            root.transform.SetPositionAndRotation(new UVector3(pose.X, 0f, pose.Z), UnityEngine.Quaternion.Euler(0f, pose.YawDegrees, 0f));
+            Plugin.LogDebug($"room pose: facing={facing} panel=({panelX},{panelZ}) yaw={panelYaw} farZ={farZ} forward={forward}->{pose.Forward} at=({pose.X},{pose.Z}) rot={pose.YawDegrees}");
+        }
+
+        /// <summary>最後に読めた左の画面の中心 (X, Z) と向き。</summary>
+        private (float X, float Z, float Yaw)? lastPanel;
+
+        private static readonly System.Reflection.FieldInfo? ScreenSystemField =
+            typeof(HMUI.FlowCoordinator).GetField("_screenSystem", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        /// <summary>
+        /// メニューの左の画面の、見えている中心の位置と向き（Y 回転、度）。
+        /// </summary>
+        /// <remarks>
+        /// 左の画面の Transform 自体は回っていない（1.40.8 で回転 0、正面の画面の 140 単位左に平らに置かれている）。
+        /// 本体は画面を入れたキャンバス（ScreenContainer）ごと <c>CurvedCanvasSettings</c> で円筒に曲げて見せていて、
+        /// 平らな位置の X が円筒の角度になる（<c>TransformPointFromCanvasTo3D</c>：角度 = X / 半径）。
+        /// ここでも同じ式で曲げた先を求める。
+        ///
+        /// ScreenSystem はメインの画面のもの（MainFlowCoordinator が使っているもの）を使う。
+        /// BeatLeader なども自分の ScreenSystem を作るので、名前や見つかった順では選ばない。
+        /// </remarks>
+        private static bool TryLeftPanel(out UVector3 center, out float yaw)
+        {
+            center = UVector3.zero;
+            yaw = 0f;
+            try
+            {
+                HMUI.ScreenSystem? system = null;
+                var main = BeatSaberMarkupLanguage.BeatSaberUI.MainFlowCoordinator;
+                if (main != null && ScreenSystemField != null) system = ScreenSystemField.GetValue(main) as HMUI.ScreenSystem;
+                if (system == null || !system.gameObject.activeInHierarchy || system.leftScreen == null) return false;
+
+                var rect = system.leftScreen.transform as RectTransform;
+                if (rect == null) return false;
+                UVector3 flat = rect.TransformPoint(rect.rect.center);
+
+                var canvas = rect.GetComponentInParent<Canvas>();
+                HMUI.CurvedCanvasSettings? curved = null;
+                if (canvas != null)
+                {
+                    curved = canvas.GetComponent<HMUI.CurvedCanvasSettings>();
+                    if (curved == null) curved = canvas.rootCanvas.GetComponent<HMUI.CurvedCanvasSettings>();
+                }
+                if (curved == null || curved.radius <= 0f)
+                {
+                    center = flat;
+                    yaw = rect.eulerAngles.y;
+                    return true;
+                }
+
+                var space = curved.transform;
+                var local = space.InverseTransformPoint(flat);
+                float radius = curved.radius;
+                float angle = local.x / radius;
+                var bent = new UVector3(Mathf.Sin(angle) * radius, local.y, Mathf.Cos(angle) * radius - radius + local.z);
+                center = space.TransformPoint(bent);
+                yaw = (space.rotation * UnityEngine.Quaternion.Euler(0f, angle * Mathf.Rad2Deg, 0f)).eulerAngles.y;
+                return true;
+            }
+            catch (Exception e)
+            {
+                Plugin.LogDebug("could not read the left panel: " + e);
+                return false;
             }
         }
 
@@ -443,6 +542,7 @@ namespace JumpDrillMod.Services
             go.transform.SetParent(parent, false);
             var line = go.AddComponent<LineRenderer>();
             line.useWorldSpace = false;
+            foreach (var point in points) KeepFar(point.z + width);
             line.sharedMaterial = Material;
             line.positionCount = points.Count;
             line.SetPositions(points.ToArray());
@@ -628,6 +728,11 @@ namespace JumpDrillMod.Services
             triangles.Add(first); triangles.Add(first + 2); triangles.Add(first + 3);
         }
 
+        private void KeepFar(float z)
+        {
+            if (float.IsNaN(farZ) || z > farZ) farZ = z;
+        }
+
         private void AddMesh(Transform parent, string name, List<UVector3> vertices, List<Color> colors, List<int> triangles)
         {
             if (triangles.Count == 0) return;
@@ -638,6 +743,7 @@ namespace JumpDrillMod.Services
             mesh.SetColors(colors.Select(ToBuffer).ToList());
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateBounds();
+            KeepFar(mesh.bounds.max.z);
 
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);

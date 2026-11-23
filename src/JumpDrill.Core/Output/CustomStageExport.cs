@@ -173,6 +173,8 @@ namespace JumpDrill.Output
                             options = DrillRebuild.FromName(drill);
                             if (exported.Settings.TryGetValue(drill, out var settings)) DrillRebuild.ApplySettings(options, settings);
                         }
+                        else if (exported.Settings.TryGetValue(drill, out var standardSettings))
+                            DrillRebuild.ApplyClickSettings(options, standardSettings);
                         // 外から来たファイルなので、極端な値（とても長い尺・余白など）は作らずに知らせる
                         if (!Reasonable(options)) throw new FormatException(drill);
                         plan.ToGenerate.Add(options);

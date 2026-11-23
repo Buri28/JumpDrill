@@ -42,20 +42,37 @@ namespace JumpDrillMod.Services
         /// 全部を書き始める。<paramref name="onProgress"/> と <paramref name="onDone"/> はメインスレッドで呼ばれる。
         /// </summary>
         /// <param name="overwrite">
-        /// false なら既にあるものは書き直さない。ID は設定から決まるので同じ名前なら中身も同じ。
+        /// false なら既にあるものは書き直さない。ID は設定から決まるので同じ名前なら中身もクリック音とカウントインのほかは同じ。
         /// 途中でやめても、次は続きから書ける。true は作り方が変わった版で作り直すとき。
         /// </param>
         /// <param name="onProgress">1本書くごとに（書いた数, 全体）。</param>
         /// <param name="onDone">終わったら（成功したか, 画面に出す1行）。</param>
         internal void Start(bool overwrite, Action<int, int> onProgress, Action<bool, string> onDone)
         {
-            Start(DrillSet.All(), overwrite, onProgress, onDone);
+            Start(DrillSet.All(StandardClick, StandardCountIn, StandardTone, StandardTail), overwrite, onProgress, onDone);
         }
 
         /// <summary>1本だけ書く。Play で無かったときと、選んだものを作り直すとき。</summary>
         internal void StartOne(DrillSetEntry entry, bool overwrite, Action<bool, string> onDone)
         {
-            Start(new[] { entry }, overwrite, (done, total) => { }, onDone);
+            Start(new[] { entry.WithClick(StandardClick, StandardCountIn, StandardTone, StandardTail) }, overwrite, (done, total) => { }, onDone);
+        }
+
+        /// <summary>標準のステージを作るときのクリック音（設定の <c>StandardClick</c>）。読めなければ Down。</summary>
+        internal static ClickTone StandardTone => ClickTones.Parse(PluginConfig.Instance?.StandardClickTone ?? "", ClickTone.Standard);
+
+        internal static ClickMode StandardClick => ParseClick(PluginConfig.Instance?.StandardClick);
+        internal static float StandardTail => Math.Max(0, Math.Min(10, PluginConfig.Instance?.StandardTailSeconds ?? 1.5f));
+
+        /// <summary>カウントインの回数の上限。Mods タブの Count-in と同じ。</summary>
+        internal const int MaxCountIn = 16;
+
+        /// <summary>標準のステージを作るときのカウントインの回数（設定の <c>StandardCountIn</c>）。範囲の外は収める。</summary>
+        internal static int StandardCountIn => Math.Max(0, Math.Min(MaxCountIn, PluginConfig.Instance?.StandardCountIn ?? 8));
+
+        internal static ClickMode ParseClick(string? name)
+        {
+            return Enum.TryParse(name, true, out ClickMode mode) && Enum.IsDefined(typeof(ClickMode), mode) ? mode : ClickMode.Down;
         }
 
         private void Start(IReadOnlyList<DrillSetEntry> entries, bool overwrite,
@@ -147,7 +164,8 @@ namespace JumpDrillMod.Services
         /// 名前と ID は変わらないので記録はそのまま。<paramref name="onProgress"/> と <paramref name="onDone"/> はメインスレッドで呼ばれる。
         /// </summary>
         /// <param name="onDone">（成功したか, 画面に出す1行, 曲名を付け替えたもの 旧→新）。</param>
-        internal void Rebuild(IReadOnlyList<string> folders, Action<int, int> onProgress,
+        /// <param name="sound">生成オプションの窓で選んだ値。null なら譜面ごとの今の値のまま。</param>
+        internal void Rebuild(IReadOnlyList<string> folders, SoundSettings? sound, Action<int, int> onProgress,
             Action<bool, string, IReadOnlyDictionary<string, string>> onDone)
         {
             var renamed = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -166,7 +184,9 @@ namespace JumpDrillMod.Services
                 {
                     try
                     {
-                        var result = DrillRebuild.Rewrite(folders[i], new LevelWriteOptions { Format = AudioFormat.Ogg });
+                        string folder = folders[i];
+                        // 1.44 の SongCore は読み込み済みの譜面の .dat の直接読みを止めるので、許可を立てて読む
+                        var result = SongCoreFileAccess.Run(() => DrillRebuild.Rewrite(folder, new LevelWriteOptions { Format = AudioFormat.Ogg }, sound));
                         if (result.Renamed) renamed[result.OldName] = result.NewName;
                     }
                     catch (Exception e)
@@ -191,6 +211,17 @@ namespace JumpDrillMod.Services
                         renamed);
                 }, fullRefresh: true);
             }, UnityMainThreadTaskScheduler.Default);
+        }
+
+        /// <summary>譜面フォルダの今のクリック音などの値（生成オプションの窓の初期値）。読めなければ null。</summary>
+        internal static SoundSettings? ReadSound(string folder)
+        {
+            try { return SongCoreFileAccess.Run(() => SoundSettings.Of(DrillRebuild.Read(folder))); }
+            catch (Exception e)
+            {
+                Plugin.Log?.Warn($"could not read the settings of {folder}: {e.Message}");
+                return null;
+            }
         }
 
         private static void OnMainThread(Action action)
