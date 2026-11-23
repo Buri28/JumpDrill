@@ -1817,7 +1817,7 @@ namespace JumpDrill.Gui
                 string replayUrl = _server.Publish(score.Replay.Path);
                 string mapUrl = _server.Publish(zip);
 
-                string url = "https://replay.beatleader.xyz/?link=" + Uri.EscapeDataString(replayUrl)
+                string url = "https://replay.beatleader.com/?link=" + Uri.EscapeDataString(replayUrl)
                            + "&mapLink=" + Uri.EscapeDataString(mapUrl);
 
                 Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });

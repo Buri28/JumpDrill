@@ -61,7 +61,7 @@ namespace JumpDrill.Tests
         [Fact]
         public async Task Allows_the_replayer_to_fetch_across_origins()
         {
-            // リプレイヤーは beatleader.xyz から取りに来るので CORS が要る。
+            // リプレイヤーは replay.beatleader.com から取りに来るので CORS が要る。
             string url = _server.Publish(WriteFile("a.bsor", Encoding.UTF8.GetBytes("x")));
 
             using (var response = await Client.GetAsync(url))
